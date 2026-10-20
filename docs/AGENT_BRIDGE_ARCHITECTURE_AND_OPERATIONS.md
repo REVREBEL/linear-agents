@@ -1,7 +1,7 @@
 # REVREBEL Linear Agent Bridge
 ## Architecture, construction notes, operations and code audit
 
-**Snapshot:** 2026-10-20  
+**Snapshot:** 2026-10-20 (updated after live router was committed)  
 **Repository:** https://github.com/REVREBEL/linear-agents  
 **Review scope:** root bridge and Python runners, four Worker sources and Wrangler configurations, root README, source tree. This is a static source review, not a production environment inspection or proof of successful end-to-end runs.
 
@@ -61,11 +61,11 @@ Each Worker has a distinct KV namespace ID, but the binding key is always `LINEA
 - `linear-{antigravity,trae,gemini,chatgpt}-worker/src/index.ts`: generic OAuth/webhook/completion Worker, duplicated across four folders.
 - `linear-*/wrangler.jsonc`: individual Worker name, KV binding, callback URL, public bridge endpoint.
 - `run_agent.py`: Antigravity CLI runner; also tries to create Linear Agent Activities with locally configured token or API key.
-- `bridge_daemon.py`: alternative FastAPI Antigravity receiver using `agy` CLI and its own task queue/lock.
-- `chatgpt-bridge.mjs`: older Node receiver; despite its name, it runs `run_agent.py` for incoming Agent Session events.
-- **`agent-bridge.mjs` is not in the repo as of this review.** A unified hostname router was prepared during development, but it has not been checked into this repository. Consequently no committed local source demonstrates Trae and Gemini dispatch from one listener.
+- `.linear-agent-bridge/agent-bridge.mjs`: the committed canonical hostname-based router for Antigravity, Trae, Gemini and ChatGPT.
+- `.linear-agent-bridge/.trae/`: the Trae session-start hook integration.
+- The superseded root-level `bridge_daemon.py` and `chatgpt-bridge.mjs` were removed in repository cleanup; their history remains in Git.
 
-Do not assume the alternative receivers can all listen on port 8788 simultaneously. Choose one actual listener and configure the LaunchAgent accordingly.
+Use `.linear-agent-bridge/agent-bridge.mjs` as the sole intended listener on port 8788. Ensure the LaunchAgent points to the deployed copy and that `RUN_AGENT_PATH` resolves to the Python runner.
 
 ## How OAuth is constructed
 
@@ -103,7 +103,7 @@ X-Linear-Webhook-Id: <delivery-id>
 
 The Worker forwards a JSON envelope including `organizationId`, `agentSessionId`, `completionUrl`, `payload.data.promptContext` (amended), and `payload.original` (original Linear event). The local bridge should validate authorization **before** persisting or dispatching a job, return quickly, and make execution errors observable.
 
-The intended unified router selects the runtime using the hostname: `antigravity-agent.revrebel.io`, `trae-agent.revrebel.io`, `gemini-agent.revrebel.io`, or `chatgpt-agent.revrebel.io`. Its files and LaunchAgent must be added and tested separately; they are not present in this repository snapshot.
+The committed unified router selects the runtime using the hostname: `antigravity-agent.revrebel.io`, `trae-agent.revrebel.io`, `gemini-agent.revrebel.io`, or `chatgpt-agent.revrebel.io`. Its LaunchAgent configuration and execution must still be validated against the live Mac; the router itself is committed.
 
 On a local macOS LaunchAgent use an explicit Python venv binary, CLI executable paths and repository workspaces. Validate the `GEMINI_BIN`, `TRAE_BIN`, their arguments, authentication and whether the command blocks or merely opens an IDE session. A successful process spawn is not proof that the work completed.
 
@@ -187,7 +187,7 @@ The following observations are from source on `main` at review time. They are no
 
 ### P0 / blocking or security-sensitive
 
-1. **Unified bridge missing:** `agent-bridge.mjs` is absent; the committed `chatgpt-bridge.mjs` is an older Antigravity runner, and `bridge_daemon.py` is Antigravity-only. Commit and test a single canonical multi-agent listener, plus explicit runtime configuration and LaunchAgent example, before relying on Trae/Gemini routing in this repository.
+1. **Unified router now committed (resolved):** `.linear-agent-bridge/agent-bridge.mjs` contains the multi-agent hostname router. The older receivers have been deleted. Still verify the active LaunchAgent points at this version and that `RUN_AGENT_PATH` references an existing `run_agent.py` (the default path is inside `.linear-agent-bridge/`, while the repository's runner is currently at the root).
 2. **Completion secret reachability:** Worker injects literal `$BRIDGE_SHARED_SECRET` into CLI task text, but no committed setup ensures that environment variable is available inside every executing agent. Terminal callback can silently fail with 401. Use an authorized, short-lived per-session token instead of exposing a reusable bridge secret broadly.
 3. **Legacy runner auth contradiction:** `run_agent.py` attempts `agentActivityCreate` with `LINEAR_API_KEY` or `LINEAR_ACCESS_TOKEN`; the former was rejected by Linear and the latter is not automatically propagated from Worker KV. Choose Worker `/complete` as canonical terminal activity path; retire duplicate local mutations.
 4. **Acknowledged delivery without execution guarantee:** Worker sends initial `thought` then schedules dispatch using `ctx.waitUntil`. It returns `forwarded: true` before verifying Tunnel/local acceptance, and catches/logs forwarding failures without retry or a failed Agent Activity. Add durable queue/retry/dead-letter behavior and honest response diagnostics.
@@ -210,11 +210,11 @@ The following observations are from source on `main` at review time. They are no
 15. The root `.gitignore` does not explicitly ignore `.dev.vars`, `.venv/`, `linear-jobs/`, or `.wrangler/`; some Worker-local ignores cover some of these, but add repo-wide protection.
 16. The committed generated `worker-configuration.d.ts` files are very large; decide whether to regenerate instead of hand-maintaining and keep type contracts in sync.
 17. The root has no integrated test suite or CI for webhook signatures, dedupe, initial session acknowledgment, completion auth, hostname routing, CLI argument integrity, and duplicate delivery.
-18. Audit `/health` and logs for sensitive information; the Worker health route is intentionally sparse, but the earlier unified local router code had exposed secrets in diagnostic JSON. Restrict operational diagnostics where practical.
+18. Audit `/health` and logs for sensitive information; the committed local router reports booleans for secret presence rather than secret contents, but logs and saved job payloads can still contain sensitive task context. Restrict operational diagnostics where practical.
 
 ## Recommended remediation order
 
-1. Commit the corrected `agent-bridge.mjs` and a sanitized LaunchAgent example. Make one listener canonical; archive or clearly label alternative implementations.
+1. **Router committed and legacy receivers removed.** Next, add a sanitized LaunchAgent example and verify `RUN_AGENT_PATH`, the Trae hook and CLI paths against the live host.
 2. Replace reusable shared-secret completion with scoped short-lived session authorization, then add explicit terminal-status validation and idempotency.
 3. Fix Worker event selection, dedupe transaction semantics and retry/error reporting.
 4. Consolidate the four Worker sources, add tests and a deploy matrix in CI.
@@ -228,7 +228,9 @@ Keep app OAuth credentials in Worker secrets and KV; do not expose them to the M
 
 - `linear-trae-worker/src/index.ts` (duplicated in the other three Workers)
 - `linear-*/wrangler.jsonc`
-- `chatgpt-bridge.mjs`, `bridge_daemon.py`, `run_agent.py`
-- Local unified `agent-bridge.mjs` built during development but **not committed here**
+- `.linear-agent-bridge/agent-bridge.mjs` and `.linear-agent-bridge/.trae/` session hooks
+- `run_agent.py` (Antigravity runner)
+
+**Cleanup record:** Removed `bridge_daemon.py` and `chatgpt-bridge.mjs` after confirming the canonical router replaced their receiver roles. Retained `run_agent.py` because `startAntigravity()` still launches a Python runner. No live Worker, router, Python runner or hook behavior was altered during cleanup.
 
 This document supersedes earlier conversation-only architecture notes where their assumptions conflict with the actual repository snapshot.
