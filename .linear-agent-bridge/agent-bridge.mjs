@@ -17,6 +17,7 @@ const AGENT_ENV_FILE = process.env.AGENT_ENV_FILE || path.join(PROJECT_DIR, ".en
 const PROJECTS_ROOT =
   process.env.PROJECTS_ROOT || path.join(os.homedir(), "github-revrebel");
 const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs");
+const ROUTING_CONFIG_FILE = process.env.ROUTING_CONFIG_FILE || path.join(PROJECT_DIR, "routing.json");
 const AGENT_JOB_DIRS = {
   antigravity: path.join(JOBS_DIR, "antigravity"),
   chatgpt: path.join(JOBS_DIR, "chatgpt"),
@@ -124,19 +125,34 @@ const server = http.createServer(async (request, response) => {
       `job-${Date.now()}-${crypto.randomUUID()}`;
     const safeJobId = String(jobId).replace(/[^a-zA-Z0-9._-]/g, "_");
     const agent = agentForHost(host);
-    const filename = path.join(AGENT_JOB_DIRS[agent], `${safeJobId}.json`);
+    const route = await resolveJobRoute(job);
+    if (!route.ok) {
+      const pendingFile = path.join(AGENT_JOB_DIRS[agent], `${safeJobId}.unrouted.json`);
+      await fs.writeFile(pendingFile, JSON.stringify({ reason: route.error, job }, null, 2), { mode: 0o600 });
+      console.error(`Routing failed: ${route.error}; saved pending job to ${pendingFile}`);
+      return sendJson(response, 422, { ok: false, accepted: false, error: route.error });
+    }
 
-    await fs.writeFile(filename, JSON.stringify(job, null, 2), "utf8");
-
-    const workspace = await resolveJobWorkspace(
-      job,
-      configuredWorkspaceForAgent(agent),
-    );
+    const workspace = route.launchDirectory;
+    const taskDir = path.join(route.repositoryRoot, ".linear-agent", "projects", route.scopeKey, "inbox");
+    await fs.mkdir(taskDir, { recursive: true, mode: 0o700 });
+    const filename = path.join(taskDir, `${safeJobId}.json`);
+    await fs.writeFile(filename, JSON.stringify({
+      ...job,
+      resolvedRouting: {
+        repositoryRoot: route.repositoryRoot,
+        projectScope: route.projectScope,
+        launchDirectory: route.launchDirectory,
+        linearProjectId: route.projectId,
+        linearInitiativeId: route.initiativeId,
+      },
+    }, null, 2), { mode: 0o600 });
 
     console.log("\nLinear job received");
     console.log(`Host: ${host}`);
     console.log(`Saved to: ${filename}`);
     console.log(`Resolved workspace: ${workspace}`);
+    console.log(`Project scope: ${route.projectScope}`);
 
     if (agent === "antigravity") {
       startAntigravity(job, filename, workspace);
@@ -382,99 +398,59 @@ function configuredWorkspaceForAgent(agent) {
   return AGENT_WORKSPACE;
 }
 
-async function resolveJobWorkspace(job, fallbackWorkspace) {
-  const repositoryNames = extractRepositoryNames(job);
-
-  if (repositoryNames.length === 0) {
-    console.log(`Workspace resolver: no REVREBEL repository reference; using ${fallbackWorkspace}`);
-    return fallbackWorkspace;
-  }
-
-  let entries;
-  let projectsRoot;
-
+async function resolveJobRoute(job) {
+  let config;
   try {
-    projectsRoot = await fs.realpath(PROJECTS_ROOT);
-    entries = await fs.readdir(projectsRoot, { withFileTypes: true });
+    config = JSON.parse(await fs.readFile(ROUTING_CONFIG_FILE, "utf8"));
   } catch (error) {
-    console.error(
-      `Workspace resolver could not read ${PROJECTS_ROOT}: ${error.message}`,
-    );
-    return fallbackWorkspace;
+    return { ok: false, error: `Cannot load routing config ${ROUTING_CONFIG_FILE}: ${error.message}` };
   }
-
-  const directories = entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name);
-
-  for (const repositoryName of repositoryNames) {
-    const exactMatches = directories.filter(
-      (directory) => directory.toLowerCase() === repositoryName.toLowerCase(),
-    );
-    const normalizedMatches = directories.filter(
-      (directory) =>
-        normalizeRepositoryName(directory) ===
-        normalizeRepositoryName(repositoryName),
-    );
-    const matches = exactMatches.length > 0 ? exactMatches : normalizedMatches;
-
-    if (matches.length !== 1) {
-      if (matches.length > 1) {
-        console.error(
-          `Workspace resolver found multiple matches for ${repositoryName}: ${matches.join(", ")}`,
-        );
-      }
-      continue;
-    }
-
-    const candidate = await fs.realpath(path.join(projectsRoot, matches[0]));
-    if (!candidate.startsWith(`${projectsRoot}${path.sep}`)) {
-      console.error(
-        `Workspace resolver rejected path outside projects root: ${candidate}`,
-      );
-      continue;
-    }
-
-    console.log(
-      `Workspace resolver matched REVREBEL/${repositoryName} to ${candidate}`,
-    );
-    return candidate;
+  const routing = job?.routing || {};
+  const projectId = routing.projectId;
+  const initiativeIds = Array.isArray(routing.initiativeIds) ? routing.initiativeIds : [];
+  if (!projectId || initiativeIds.length === 0) {
+    return { ok: false, error: "Missing structured Linear project ID or initiative IDs; no implicit fallback" };
   }
-
-  console.error(
-    `Workspace resolver found no local checkout for ${repositoryNames.join(", ")}; using ${fallbackWorkspace}`,
-  );
-  return fallbackWorkspace;
-}
-
-function extractRepositoryNames(job) {
-  const issue = job?.payload?.original?.agentSession?.issue ?? {};
-  const sources = [
-    issue.description,
-    issue.title,
-    job?.payload?.data?.originalPromptContext,
-    job?.payload?.original?.promptContext,
-  ].filter((value) => typeof value === "string");
-  const names = [];
-  const seen = new Set();
-  const repositoryPattern = /\brevrebel\/([a-z0-9._-]+)/gi;
-
-  for (const source of sources) {
-    for (const match of source.matchAll(repositoryPattern)) {
-      const name = match[1].replace(/\.git$/i, "");
-      const key = name.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        names.push(name);
-      }
-    }
+  const project = config.projects?.[projectId];
+  if (!project) return { ok: false, error: `Unmapped Linear project: ${projectId}` };
+  const matches = initiativeIds.filter(id => config.initiatives?.[id] && (!project.initiativeId || project.initiativeId === id));
+  if (matches.length !== 1) return { ok: false, error: `Expected one mapped initiative for project ${projectId}, found ${matches.length}` };
+  const initiativeId = matches[0];
+  const initiative = config.initiatives[initiativeId];
+  const repoName = initiative.repository;
+  if (typeof repoName !== "string" || !/^REVREBEL\/[a-zA-Z0-9._-]+$/.test(repoName)) {
+    return { ok: false, error: "Invalid or missing allowed REVREBEL repository mapping" };
   }
-
-  return names;
-}
-
-function normalizeRepositoryName(value) {
-  return String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const root = path.resolve(config.projectsRoot || PROJECTS_ROOT);
+  const target = path.resolve(root, repoName.split("/")[1]);
+  let repositoryRoot;
+  try {
+    const realRoot = await fs.realpath(root);
+    repositoryRoot = await fs.realpath(target);
+    if (!repositoryRoot.startsWith(realRoot + path.sep) || !(await fs.stat(path.join(repositoryRoot, ".git"))).isDirectory()) {
+      return { ok: false, error: "Repository escapes projects root or is not a Git checkout" };
+    }
+  } catch (error) {
+    return { ok: false, error: `Repository not available: ${target}: ${error.message}` };
+  }
+  const projectScope = project.scope || ".";
+  if (typeof projectScope !== "string" || path.isAbsolute(projectScope)) {
+    return { ok: false, error: "Invalid project scope" };
+  }
+  const scoped = path.resolve(repositoryRoot, projectScope);
+  let actualScope;
+  try {
+    actualScope = await fs.realpath(scoped);
+    if (actualScope !== repositoryRoot && !actualScope.startsWith(repositoryRoot + path.sep)) {
+      return { ok: false, error: "Project scope escapes repository root" };
+    }
+    if (!(await fs.stat(actualScope)).isDirectory()) throw new Error("Not a directory");
+  } catch (error) {
+    return { ok: false, error: `Project scope does not exist: ${scoped}: ${error.message}` };
+  }
+  const launchDirectory = project.launchFromScope === true ? actualScope : repositoryRoot;
+  const scopeKey = String(projectId).replace(/[^a-zA-Z0-9_-]/g, "_");
+  return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId };
 }
 
 function extractAgentSessionId(job) {
