@@ -1,0 +1,40 @@
+# .github/workflows/readme-templatize.yml
+name: README Templatize
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  templatize:
+    # Do not materialize placeholders inside the template repo itself.
+    # The workflow should only run after a new repository is created from this template.
+    if: github.repository != 'REVREBEL/revrebel-repo-template'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Replace placeholders in README
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+          REPO_UPPER="$(printf '%s' "$REPO" | tr '[:lower:]' '[:upper:]')"
+          sed -i.bak "s#__OWNER__#${OWNER}#g" README.md || true
+          sed -i.bak "s#__REPO_UPPER__#${REPO_UPPER}#g" README.md || true
+          sed -i.bak "s#__REPO__#${REPO}#g" README.md || true
+          rm -f README.md.bak
+
+      - name: Commit updated README if changed
+        run: |
+          if git diff --quiet; then
+            echo "No changes."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add README.md
+            git commit -m "chore: materialize README with repo info"
+            git push
+          fi

@@ -1,0 +1,72 @@
+name: Generate README Banner
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/assets/templates/**'
+      - '.github/assets/fonts/**'
+      - '.github/scripts/generate-readme-banner.mjs'
+      - '.github/workflows/generate-readme-banner.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-banner:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check for banner generator
+        id: generator
+        run: |
+          if [ -f .github/scripts/generate-readme-banner.mjs ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo ".github/scripts/generate-readme-banner.mjs not found; skipping banner generation."
+          fi
+
+      - name: Set up Node.js
+        if: steps.generator.outputs.exists == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies if package.json exists
+        if: steps.generator.outputs.exists == 'true'
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          elif [ -f package.json ]; then
+            npm install
+          else
+            echo "No package.json found; skipping dependency install."
+          fi
+
+      - name: Generate README banners
+        if: steps.generator.outputs.exists == 'true'
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node .github/scripts/generate-readme-banner.mjs
+
+      - name: Commit generated banners
+        if: steps.generator.outputs.exists == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add .github/assets/readme-banner_light.png .github/assets/readme-banner_dark.png .github/assets/readme-banner_light.jpg .github/assets/readme-banner_dark.jpg || true
+
+          if git diff --cached --quiet; then
+            echo "No banner changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: regenerate README banners"
+          git push
