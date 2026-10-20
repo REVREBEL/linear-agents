@@ -136,6 +136,16 @@ const server = http.createServer(async (request, response) => {
     const workspace = route.launchDirectory;
     const taskDir = path.join(route.repositoryRoot, ".linear-agent", "projects", route.scopeKey, "inbox");
     await fs.mkdir(taskDir, { recursive: true, mode: 0o700 });
+    // Keep runtime task payloads local without modifying the repository's tracked .gitignore.
+    const localExclude = path.join(route.repositoryRoot, ".git", "info", "exclude");
+    try {
+      const existingExclude = await fs.readFile(localExclude, "utf8");
+      if (!existingExclude.split(/\r?\n/).includes("/.linear-agent/")) {
+        await fs.appendFile(localExclude, "\n/.linear-agent/\n");
+      }
+    } catch (error) {
+      console.warn(`Unable to set local Git exclusion for task directory: ${error.message}`);
+    }
     const filename = path.join(taskDir, `${safeJobId}.json`);
     await fs.writeFile(filename, JSON.stringify({
       ...job,
