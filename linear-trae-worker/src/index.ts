@@ -403,12 +403,25 @@ async function handleLinearWebhook(
       webhookId,
       linearEvent,
       env,
-    ).catch((error) => {
+    ).catch(async (error) => {
       console.error("Failed to forward job to Mac bridge", {
         webhookId,
         linearEvent,
         error: error instanceof Error ? error.message : String(error),
       });
+      if (agentSessionId) {
+        try {
+          await createAgentActivity(installation.accessToken, agentSessionId, {
+            type: "error",
+            body: "Unable to deliver this task to a verified local workspace. Check the local bridge routing configuration and Worker logs.",
+          });
+        } catch (activityError) {
+          console.error("Failed to report local dispatch error to Linear", {
+            agentSessionId,
+            error: activityError instanceof Error ? activityError.message : String(activityError),
+          });
+        }
+      }
     }),
   );
 
