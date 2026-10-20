@@ -82,6 +82,16 @@ cd linear-trae-worker && npx wrangler tail
 
 The bare OAuth callback should return a 400 for missing code/state. `/install` should redirect to Linear. Do not publish shared secrets or OAuth authorization codes from log output.
 
+## Initiative / project routing
+
+The Worker enriches Agent Session webhooks using Linear GraphQL: issue → project ID → initiative IDs. The local bridge resolves those IDs using a **local routing.json** file. Initiative selects the repository; project selects the application scope within that repository. The agent launches from the repository root by default to preserve root-level trust and session context. Set `launchFromScope: true` only for projects that deliberately maintain independent subfolder-based CLI sessions.
+
+Copy `[.linear-agent-bridge/routing.example.json](.linear-agent-bridge/routing.example.json)` to `routing.json` in the **live bridge folder**. Set `PROJECTS_ROOT` or edit `projectsRoot` to the actual Mac repositories parent directory. The example is built from the current Linear initiative/project IDs. Verify the GuestBridge repository mapping and any project scopes still set to `.`.
+
+Each successfully routed job is saved beneath the Git repository at `.linear-agent/projects/<Linear-project-UUID>/inbox/` before dispatch. The bridge writes a local `/.linear-agent/` exclusion into `.git/info/exclude` when available. If the initiative, project, or directory mapping is missing, the job is saved under the central `linear-jobs/<agent>/` as `*.unrouted.json`, and the bridge returns HTTP 422 instead of launching into the wrong workspace.
+
+**Deployment note:** The four Workers must be deployed from their respective directories, and the changed local router must be installed/restarted on the Mac. Git commits alone do not replace a live LaunchAgent process or deploy Workers. The Linear GraphQL enrichment schema and live delivery should be validated using a smoke-test Agent Session before depending on it.
+
 ## Worker HTTP routes
 
 | Method and path | Purpose |
