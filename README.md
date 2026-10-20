@@ -92,6 +92,10 @@ Each successfully routed job is saved beneath the Git repository at `.linear-age
 
 **Deployment note:** The four Workers must be deployed from their respective directories, and the changed local router must be installed/restarted on the Mac. Git commits alone do not replace a live LaunchAgent process or deploy Workers. The Linear GraphQL enrichment schema and live delivery should be validated using a smoke-test Agent Session before depending on it.
 
+## Edge webhook protection
+
+See [Linear Webhook Traffic Protection](docs/LINEAR_WEBHOOK_TRAFFIC_PROTECTION.md) for the proposed WAF rule, `linear_webhooks` IP list, current Linear published source addresses, Worker exposure settings, and pending live Cloudflare verification. The Worker verifies signed webhook bodies; timestamp freshness validation is not yet implemented.
+
 ## Worker HTTP routes
 
 | Method and path | Purpose |
