@@ -348,7 +348,39 @@ async function handleLinearWebhook(
     )
     : promptContext;
 
+  // Enrich the signed session with stable Linear IDs; do not infer paths from issue prose.
+  let routing: { projectId: string; projectName: string; initiativeIds: string[] } | undefined;
+  if (agentSessionId) {
+    const issueId = stringValue(getNested(payload, "agentSession", "issueId")) ||
+      stringValue(getNested(payload, "agentSession", "issue", "id"));
+    if (issueId) {
+      try {
+        const result = await linearGraphql<{
+          issue: { project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
+        }>(installation.accessToken,
+          `query BridgeIssueRouting($issueId: String!) {
+            issue(id: $issueId) {
+              project { id name initiatives { nodes { id name } } }
+            }
+          }`, { issueId });
+        if (result.issue?.project) {
+          routing = {
+            projectId: result.issue.project.id,
+            projectName: result.issue.project.name,
+            initiativeIds: result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
+          };
+        }
+      } catch (error) {
+        console.error("Unable to enrich routing metadata", {
+          agentSessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
   const bridgeJob = {
+    routing,
     source: "linear",
     receivedAt: new Date().toISOString(),
     organizationId: installation.organizationId,
