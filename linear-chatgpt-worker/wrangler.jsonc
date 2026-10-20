@@ -1,0 +1,24 @@
+/** @format */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "linear-chatgpt-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+	"workers_dev": false,
+	"preview_urls": false,
+  "observability": {
+    "enabled": true,
+  },
+  "kv_namespaces": [
+    {
+      "binding": "LINEAR_DATA",
+      "id": "bc748d6c2d8c45e1bd9cfdd18ee75b4e",
+    },
+  ],
+  "vars": {
+    "SERVICE_NAME": "linear-chatgpt-agent",
+    "LINEAR_REDIRECT_URI": "https://linear-chatgpt.revrebel.io/oauth/callback",
+    "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
+    "BRIDGE_URL": "https://chatgpt-agent.revrebel.io/jobs"
+  },
+}

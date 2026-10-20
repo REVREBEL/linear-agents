@@ -1,0 +1,38 @@
+/** @format */
+
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "linear-trae-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": false,
+    "head_sampling_rate": 1,
+    "redact_query_string": false,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": true,
+      "persist": true,
+      "head_sampling_rate": 1
+    }
+  },
+  "kv_namespaces": [
+    {
+      "binding": "LINEAR_DATA",
+      "id": "ac66956f443c4c388cca895758672ed7"
+    }
+  ],
+  "vars": {
+    "SERVICE_NAME": "linear-trae-agent",
+    "LINEAR_REDIRECT_URI": "https://linear-trae.revrebel.io/oauth/callback",
+    "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
+    "BRIDGE_URL": "https://trae-agent.revrebel.io/jobs"
+  }
+}

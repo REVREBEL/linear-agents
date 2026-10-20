@@ -1,0 +1,4 @@
+LINEAR_CLIENT_ID=replace_me
+LINEAR_CLIENT_SECRET=replace_me
+LINEAR_WEBHOOK_SECRET=replace_me
+BRIDGE_SHARED_SECRET=replace_with_a_long_random_value

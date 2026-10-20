@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "linear-antigravity-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true
+  },
+  "kv_namespaces": [
+    {
+      "binding": "LINEAR_DATA",
+      "id": "ab6e185720b34329ada2391bbecf14c9",
+    }
+  ],
+  "vars": {
+    "SERVICE_NAME": "linear-antigravity-agent", 
+    "LINEAR_REDIRECT_URI": "https://linear-antigravity.revrebel.io/oauth/callback",
+    "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
+    "BRIDGE_URL": "https://antigravity-agent.revrebel.io/jobs"
+  }
+}
