@@ -9,7 +9,7 @@
 
 **REVREBEL's Linear-to-local-agent integration.** Four independently installed Linear app agents each use a Cloudflare Worker for OAuth, authenticated webhooks, initial Agent Session activity and completion callbacks. Workers forward jobs over Cloudflare Tunnel to a local machine.
 
-> **Repository status:** The four Workers are committed and share the same `src/index.ts`. The *unified* multi-agent `agent-bridge.mjs` developed separately is **not currently committed here**. The root contains an older `chatgpt-bridge.mjs` (which actually launches the Antigravity Python runner) and an alternative `bridge_daemon.py`. Do not assume that the checked-in local bridge automatically routes Trae and Gemini. Review [the audit notes](docs/AGENT_BRIDGE_ARCHITECTURE_AND_OPERATIONS.md#repository-audit-and-open-items) before deployment.
+> **Repository status:** The canonical hostname router is now checked in at [`.linear-agent-bridge/agent-bridge.mjs`](.linear-agent-bridge/agent-bridge.mjs). The older `chatgpt-bridge.mjs` and `bridge_daemon.py` receivers have been retired. The Antigravity Python runner `run_agent.py` remains at the repository root and may still need to be referenced via `RUN_AGENT_PATH` on the deployed Mac.
 
 ## Architecture
 
@@ -52,9 +52,10 @@ linear-antigravity-worker/
 linear-trae-worker/
 linear-gemini-worker/
 linear-chatgpt-worker/
-bridge_daemon.py          # alternative / legacy Python receiver
-chatgpt-bridge.mjs        # legacy Node receiver, NOT unified router
-run_agent.py              # Antigravity CLI runner
+.linear-agent-bridge/
+  agent-bridge.mjs      # canonical multi-agent local router
+  .trae/               # Trae session-start integration
+run_agent.py             # Antigravity CLI runner
 ```
 
 Each Worker has its own `wrangler.jsonc`, `src/index.ts`, and package configuration. The shared source is duplicated between Worker folders, so a fix in one does **not** automatically reach the others.
@@ -98,7 +99,7 @@ The bare OAuth callback should return a 400 for missing code/state. `/install` s
 
 ## Local service
 
-The intended unified Node bridge is called `agent-bridge.mjs` and listens on `127.0.0.1:8788`; it routes the Tunnel `Host` header to the appropriate runner. Antigravity uses a Python CLI runner, Trae uses `trae chat`, Gemini uses `gemini -p`, and the ChatGPT route saves a job for manual/external handling. **That unified source is currently absent from this repo**, so do not deploy the checked-in legacy bridge in its place without reviewing its behavior.
+The canonical local router is [`.linear-agent-bridge/agent-bridge.mjs`](.linear-agent-bridge/agent-bridge.mjs). It listens on `127.0.0.1:8788` and routes by Tunnel `Host` header. Antigravity launches `RUN_AGENT_PATH` with Python, Trae launches its configured CLI, Gemini supports headless mode or a Warp interactive launch, and ChatGPT saves the job for external handling. Configure `RUN_AGENT_PATH` to point to the actual deployed `run_agent.py` location; the repository keeps that Python file at its root.
 
 ## Documentation
 
