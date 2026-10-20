@@ -228,7 +228,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Python runner: ${PYTHON_BIN}`);
 });
 
-function startAntigravity(routedJob, filename, workspace) {
+function startAntigravity(job, filename, workspace) {
   const sessionId = extractAgentSessionId(job);
 
   if (!sessionId) {
@@ -256,7 +256,7 @@ function startAntigravity(routedJob, filename, workspace) {
   attachProcessLogs(agentProcess, "Antigravity");
 }
 
-function startChatGPT(routedJob, filename) {
+function startChatGPT(job, filename) {
   const sessionId = extractAgentSessionId(job);
 
   if (!sessionId) {
@@ -271,7 +271,7 @@ function startChatGPT(routedJob, filename) {
   console.log(`ChatGPT job file: ${filename}`);
 }
 
-function startTrae(routedJob, filename, workspace) {
+function startTrae(job, filename, workspace) {
   if (!TRAE_BIN) {
     console.error("TRAE_BIN is not configured. Job saved but Trae was not started.");
     return;
@@ -309,7 +309,7 @@ function startTrae(routedJob, filename, workspace) {
   attachProcessLogs(traeProcess, "Trae");
 }
 
-async function startGemini(routedJob, filename, workspace) {
+async function startGemini(job, filename, workspace) {
   if (!GEMINI_BIN) {
     console.error("GEMINI_BIN is not configured. Job saved but Gemini was not started.");
     return;
