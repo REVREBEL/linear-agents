@@ -147,8 +147,28 @@ const server = http.createServer(async (request, response) => {
       console.warn(`Unable to set local Git exclusion for task directory: ${error.message}`);
     }
     const filename = path.join(taskDir, `${safeJobId}.json`);
-    await fs.writeFile(filename, JSON.stringify({
+    const originalPrompt = extractPromptContext(job);
+    const scopeHeader = [
+      "Verified local routing context:",
+      `Repository root: ${route.repositoryRoot}`,
+      `Primary project scope: ${route.projectScope}`,
+      `Agent launch directory: ${route.launchDirectory}`,
+      `Local task file: ${filename}`,
+      "Respect the original issue's explicit scope, restrictions and repository-wide guidance.",
+      "",
+    ].join("\n");
+    const routedJob = {
       ...job,
+      payload: {
+        ...job.payload,
+        data: {
+          ...job.payload?.data,
+          promptContext: originalPrompt ? scopeHeader + originalPrompt : originalPrompt,
+        },
+      },
+    };
+    await fs.writeFile(filename, JSON.stringify({
+      ...routedJob,
       resolvedRouting: {
         repositoryRoot: route.repositoryRoot,
         projectScope: route.projectScope,
@@ -165,13 +185,13 @@ const server = http.createServer(async (request, response) => {
     console.log(`Project scope: ${route.projectScope}`);
 
     if (agent === "antigravity") {
-      startAntigravity(job, filename, workspace);
+      startAntigravity(routedJob, filename, workspace);
     } else if (agent === "chatgpt") {
-      startChatGPT(job, filename);
+      startChatGPT(routedJob, filename);
     } else if (agent === "trae") {
-      startTrae(job, filename, workspace);
+      startTrae(routedJob, filename, workspace);
     } else if (agent === "gemini") {
-      await startGemini(job, filename, workspace);
+      await startGemini(routedJob, filename, workspace);
     } else {
       console.log(`Unknown agent hostname: ${host}. Job saved but not executed.`);
     }
@@ -208,7 +228,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Python runner: ${PYTHON_BIN}`);
 });
 
-function startAntigravity(job, filename, workspace) {
+function startAntigravity(routedJob, filename, workspace) {
   const sessionId = extractAgentSessionId(job);
 
   if (!sessionId) {
@@ -236,7 +256,7 @@ function startAntigravity(job, filename, workspace) {
   attachProcessLogs(agentProcess, "Antigravity");
 }
 
-function startChatGPT(job, filename) {
+function startChatGPT(routedJob, filename) {
   const sessionId = extractAgentSessionId(job);
 
   if (!sessionId) {
@@ -251,7 +271,7 @@ function startChatGPT(job, filename) {
   console.log(`ChatGPT job file: ${filename}`);
 }
 
-function startTrae(job, filename, workspace) {
+function startTrae(routedJob, filename, workspace) {
   if (!TRAE_BIN) {
     console.error("TRAE_BIN is not configured. Job saved but Trae was not started.");
     return;
@@ -289,7 +309,7 @@ function startTrae(job, filename, workspace) {
   attachProcessLogs(traeProcess, "Trae");
 }
 
-async function startGemini(job, filename, workspace) {
+async function startGemini(routedJob, filename, workspace) {
   if (!GEMINI_BIN) {
     console.error("GEMINI_BIN is not configured. Job saved but Gemini was not started.");
     return;
