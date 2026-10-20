@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/bash /Users/garystringham/.linear-agent-bridge/.trae/linear-session-start.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

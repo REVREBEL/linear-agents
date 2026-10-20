@@ -1,0 +1,653 @@
+import http from "node:http";
+import fs from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import { spawn } from "node:child_process";
+import crypto from "node:crypto";
+
+const PORT = Number(process.env.BRIDGE_PORT || 8788);
+const HOST = process.env.BRIDGE_HOST || "127.0.0.1";
+
+const SHARED_SECRET = process.env.BRIDGE_SHARED_SECRET || "";
+const LINEAR_API_KEY = process.env.LINEAR_API_KEY || "";
+const LINEAR_ACCESS_TOKEN = process.env.LINEAR_ACCESS_TOKEN || "";
+
+const PROJECT_DIR = path.dirname(new URL(import.meta.url).pathname);
+const AGENT_ENV_FILE = process.env.AGENT_ENV_FILE || path.join(PROJECT_DIR, ".env");
+const PROJECTS_ROOT =
+  process.env.PROJECTS_ROOT || path.join(os.homedir(), "github-revrebel");
+const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs");
+const AGENT_JOB_DIRS = {
+  antigravity: path.join(JOBS_DIR, "antigravity"),
+  chatgpt: path.join(JOBS_DIR, "chatgpt"),
+  trae: path.join(JOBS_DIR, "trae"),
+  gemini: path.join(JOBS_DIR, "gemini"),
+  unknown: path.join(JOBS_DIR, "unknown"),
+};
+
+const PYTHON_BIN =
+  process.env.PYTHON_BIN || path.join(PROJECT_DIR, ".venv", "bin", "python");
+const RUN_AGENT_PATH =
+  process.env.RUN_AGENT_PATH || path.join(PROJECT_DIR, "run_agent.py");
+
+// Public hostnames that Cloudflare Tunnel forwards to this same local listener.
+const ANTIGRAVITY_HOST =
+  process.env.ANTIGRAVITY_HOST || "antigravity-agent.revrebel.io";
+const CHATGPT_HOST =
+  process.env.CHATGPT_HOST || "chatgpt-agent.revrebel.io";
+const TRAE_HOST =
+  process.env.TRAE_HOST || "trae-agent.revrebel.io";
+const GEMINI_HOST =
+  process.env.GEMINI_HOST || "gemini-agent.revrebel.io";
+
+// Workspaces.
+const AGENT_WORKSPACE = process.env.AGENT_WORKSPACE || PROJECT_DIR;
+
+const ANTIGRAVITY_WORKSPACE =
+  process.env.ANTIGRAVITY_WORKSPACE || AGENT_WORKSPACE;
+const CHATGPT_WORKSPACE =
+  process.env.CHATGPT_WORKSPACE || AGENT_WORKSPACE;
+
+const TRAE_BIN = process.env.TRAE_BIN || "";
+const TRAE_WORKSPACE =
+  process.env.TRAE_WORKSPACE || AGENT_WORKSPACE;
+const TRAE_ARGS_TEMPLATE =
+  process.env.TRAE_ARGS_TEMPLATE || "chat --reuse-window --maximize {{PROMPT}}";
+
+const GEMINI_BIN = process.env.GEMINI_BIN || "";
+const GEMINI_WORKSPACE =
+  process.env.GEMINI_WORKSPACE || AGENT_WORKSPACE;
+const GEMINI_LAUNCH_MODE = process.env.GEMINI_LAUNCH_MODE || "headless";
+const GEMINI_ARGS_TEMPLATE =
+  process.env.GEMINI_ARGS_TEMPLATE ||
+  "-p {{PROMPT}} --approval-mode auto_edit --skip-trust";
+
+if (!SHARED_SECRET) {
+  console.error("Missing BRIDGE_SHARED_SECRET environment variable.");
+  process.exit(1);
+}
+
+await Promise.all(
+  Object.values(AGENT_JOB_DIRS).map((directory) =>
+    fs.mkdir(directory, { recursive: true }),
+  ),
+);
+
+const server = http.createServer(async (request, response) => {
+  try {
+    const host = normalizeHost(request.headers.host);
+    const url = new URL(request.url || "/", `http://${host || "localhost"}`);
+
+    if (request.method === "GET" && url.pathname === "/health") {
+      return sendJson(response, 200, {
+        ok: true,
+        service: "local-linear-agent-router",
+        host,
+        port: PORT,
+        antigravityHost: ANTIGRAVITY_HOST,
+        chatgptHost: CHATGPT_HOST,
+        traeHost: TRAE_HOST,
+        geminiHost: GEMINI_HOST,
+        python: PYTHON_BIN,
+        antigravityWorkspace: ANTIGRAVITY_WORKSPACE,
+        chatgptWorkspace: CHATGPT_WORKSPACE,
+        traeBin: TRAE_BIN || null,
+        traeWorkspace: TRAE_WORKSPACE,
+        geminiBin: GEMINI_BIN || null,
+        geminiWorkspace: GEMINI_WORKSPACE,
+        projectsRoot: PROJECTS_ROOT,
+        jobsDir: JOBS_DIR,
+        hasBridgeSharedSecret: Boolean(SHARED_SECRET),
+        hasLinearApiKey: Boolean(LINEAR_API_KEY),
+        hasLinearAccessToken: Boolean(LINEAR_ACCESS_TOKEN),
+      });
+    }
+
+    if (request.method !== "POST" || url.pathname !== "/jobs") {
+      return sendJson(response, 404, {
+        ok: false,
+        error: "Not found",
+        host,
+        path: url.pathname,
+      });
+    }
+
+    if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
+      return sendJson(response, 401, { ok: false, error: "Unauthorized" });
+    }
+
+    const rawBody = await readBody(request);
+    const job = JSON.parse(rawBody);
+
+    const jobId =
+      request.headers["x-linear-webhook-id"] ??
+      `job-${Date.now()}-${crypto.randomUUID()}`;
+    const safeJobId = String(jobId).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const agent = agentForHost(host);
+    const filename = path.join(AGENT_JOB_DIRS[agent], `${safeJobId}.json`);
+
+    await fs.writeFile(filename, JSON.stringify(job, null, 2), "utf8");
+
+    const workspace = await resolveJobWorkspace(
+      job,
+      configuredWorkspaceForAgent(agent),
+    );
+
+    console.log("\nLinear job received");
+    console.log(`Host: ${host}`);
+    console.log(`Saved to: ${filename}`);
+    console.log(`Resolved workspace: ${workspace}`);
+
+    if (agent === "antigravity") {
+      startAntigravity(job, filename, workspace);
+    } else if (agent === "chatgpt") {
+      startChatGPT(job, filename);
+    } else if (agent === "trae") {
+      startTrae(job, filename, workspace);
+    } else if (agent === "gemini") {
+      await startGemini(job, filename, workspace);
+    } else {
+      console.log(`Unknown agent hostname: ${host}. Job saved but not executed.`);
+    }
+
+    return sendJson(response, 202, {
+      ok: true,
+      accepted: true,
+      jobId: safeJobId,
+      host,
+    });
+  } catch (error) {
+    console.error("Server Router Error:", error);
+    return sendJson(response, 500, {
+      ok: false,
+      error: error instanceof Error ? error.message : "Unexpected error",
+    });
+  }
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`Local Linear agent router listening on http://${HOST}:${PORT}`);
+  console.log(`Antigravity host: ${ANTIGRAVITY_HOST}`);
+  console.log(`ChatGPT host: ${CHATGPT_HOST}`);
+  console.log(`Trae host: ${TRAE_HOST}`);
+  console.log(`Gemini host: ${GEMINI_HOST}`);
+  console.log(`Antigravity workspace: ${ANTIGRAVITY_WORKSPACE}`);
+  console.log(`ChatGPT workspace: ${CHATGPT_WORKSPACE}`);
+  console.log(`Trae runner: ${TRAE_BIN || "not configured"}`);
+  console.log(`Trae workspace: ${TRAE_WORKSPACE}`);
+  console.log(`Gemini runner: ${GEMINI_BIN || "not configured"}`);
+  console.log(`Gemini workspace: ${GEMINI_WORKSPACE}`);
+  console.log(`Projects root: ${PROJECTS_ROOT}`);
+  console.log(`Jobs directory: ${JOBS_DIR}`);
+  console.log(`Python runner: ${PYTHON_BIN}`);
+});
+
+function startAntigravity(job, filename, workspace) {
+  const sessionId = extractAgentSessionId(job);
+
+  if (!sessionId) {
+    console.log("Antigravity skipped. Missing Linear agent session ID.");
+    return;
+  }
+
+  console.log(`Antigravity Agent Session verified (${sessionId}). Spawning local engine...`);
+
+  const agentProcess = spawn(
+    PYTHON_BIN,
+    [RUN_AGENT_PATH, sessionId, filename],
+    {
+      cwd: PROJECT_DIR,
+      env: {
+        ...process.env,
+        ANTIGRAVITY_WORKSPACE: workspace,
+        LINEAR_API_KEY,
+        LINEAR_ACCESS_TOKEN,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  attachProcessLogs(agentProcess, "Antigravity");
+}
+
+function startChatGPT(job, filename) {
+  const sessionId = extractAgentSessionId(job);
+
+  if (!sessionId) {
+    console.log("ChatGPT skipped. Missing Linear agent session ID.");
+    return;
+  }
+
+  // ChatGPT does not have a local executable here. The Worker has already saved
+  // the Linear job to disk via this bridge. Gary/ChatGPT can inspect the saved
+  // JSON file and call /complete from the task instructions when finished.
+  console.log(`ChatGPT Agent Session verified (${sessionId}). Job saved only.`);
+  console.log(`ChatGPT job file: ${filename}`);
+}
+
+function startTrae(job, filename, workspace) {
+  if (!TRAE_BIN) {
+    console.error("TRAE_BIN is not configured. Job saved but Trae was not started.");
+    return;
+  }
+
+  const promptContext = extractPromptContext(job);
+  if (!promptContext) {
+    console.error("Trae skipped. No promptContext found.");
+    return;
+  }
+
+  const args = buildGenericArgs(
+    TRAE_ARGS_TEMPLATE,
+    promptContext,
+    filename,
+    workspace,
+  );
+
+  console.log("Trae job accepted. Spawning Trae...");
+  console.log(`Trae binary: ${TRAE_BIN}`);
+  console.log(`Trae workspace: ${workspace}`);
+  console.log(`Trae args: ${args.map(maskArg).join(" ")}`);
+  console.log("Trae prompt transport: positional chat prompt");
+
+  const traeProcess = spawn(TRAE_BIN, args, {
+    cwd: workspace,
+    env: {
+      ...process.env,
+      LINEAR_API_KEY,
+      LINEAR_ACCESS_TOKEN,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  attachProcessLogs(traeProcess, "Trae");
+}
+
+async function startGemini(job, filename, workspace) {
+  if (!GEMINI_BIN) {
+    console.error("GEMINI_BIN is not configured. Job saved but Gemini was not started.");
+    return;
+  }
+
+  const promptContext = extractPromptContext(job);
+  if (!promptContext) {
+    console.error("Gemini skipped. No promptContext found.");
+    return;
+  }
+
+  if (GEMINI_LAUNCH_MODE === "warp") {
+    await startGeminiInWarp(promptContext, filename, workspace);
+    return;
+  }
+
+  const args = buildGenericArgs(
+    GEMINI_ARGS_TEMPLATE,
+    promptContext,
+    filename,
+    workspace,
+  );
+
+  console.log("Gemini job accepted. Spawning Gemini CLI...");
+  console.log(`Gemini binary: ${GEMINI_BIN}`);
+  console.log(`Gemini workspace: ${workspace}`);
+  console.log(`Gemini args: ${args.map(maskArg).join(" ")}`);
+
+  const geminiProcess = spawn(GEMINI_BIN, args, {
+    cwd: workspace,
+    env: {
+      ...process.env,
+      LINEAR_API_KEY,
+      LINEAR_ACCESS_TOKEN,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  attachProcessLogs(geminiProcess, "Gemini");
+}
+
+async function startGeminiInWarp(promptContext, filename, workspace) {
+  const jobStem = path.basename(filename, path.extname(filename));
+  const launchDir = path.join(AGENT_JOB_DIRS.gemini, "warp-launchers");
+  const tabConfigDir = path.join(os.homedir(), ".warp", "tab_configs");
+  const promptFile = path.join(launchDir, `${jobStem}.prompt.txt`);
+  const commandFile = path.join(launchDir, `${jobStem}.command`);
+  const tabConfigStem = `linear_gemini_${jobStem}`;
+  const tabConfigFile = path.join(tabConfigDir, `${tabConfigStem}.toml`);
+
+  await Promise.all([
+    fs.mkdir(launchDir, { recursive: true }),
+    fs.mkdir(tabConfigDir, { recursive: true }),
+  ]);
+  await fs.writeFile(promptFile, promptContext, { encoding: "utf8", mode: 0o600 });
+
+  const command = `#!/bin/zsh
+set -e
+export PATH=${shellQuote(process.env.PATH || "/usr/bin:/bin:/usr/sbin:/sbin")}
+export GOOGLE_CLOUD_PROJECT=${shellQuote(process.env.GOOGLE_CLOUD_PROJECT || "")}
+cd ${shellQuote(workspace)}
+if [[ ! -p ${shellQuote(AGENT_ENV_FILE)} ]]; then
+  print -u2 -- "Gemini launch stopped: 1Password environment mount is unavailable at ${AGENT_ENV_FILE}"
+  exit 1
+fi
+export BRIDGE_SHARED_SECRET="$(
+  source ${shellQuote(AGENT_ENV_FILE)}
+  print -rn -- "\${BRIDGE_SHARED_SECRET:-}"
+)"
+if [[ -z \${BRIDGE_SHARED_SECRET:-} ]]; then
+  print -u2 -- "Gemini launch stopped: BRIDGE_SHARED_SECRET is missing from the mounted environment"
+  exit 1
+fi
+gemini_prompt=$(<${shellQuote(promptFile)})
+exec ${shellQuote(GEMINI_BIN)} --prompt-interactive "$gemini_prompt" --approval-mode auto_edit --skip-trust
+`;
+
+  await fs.writeFile(commandFile, command, { encoding: "utf8", mode: 0o700 });
+
+  const tabConfig = `name = ${JSON.stringify(`Linear Gemini ${jobStem}`)}
+title = ${JSON.stringify(`Gemini: ${jobStem}`)}
+color = "blue"
+
+[[panes]]
+id = "gemini"
+type = "terminal"
+shell = "zsh"
+directory = ${JSON.stringify(workspace)}
+commands = [${JSON.stringify(commandFile)}]
+is_focused = true
+`;
+
+  await fs.writeFile(tabConfigFile, tabConfig, { encoding: "utf8", mode: 0o600 });
+  const warpUri = `warp://tab_config/${encodeURIComponent(tabConfigStem)}?new_window=true`;
+
+  console.log("Gemini job accepted. Opening interactive Gemini CLI in Warp...");
+  console.log(`Gemini binary: ${GEMINI_BIN}`);
+  console.log(`Gemini workspace: ${workspace}`);
+  console.log(`Gemini Warp launcher: ${commandFile}`);
+  console.log(`Gemini Warp tab config: ${tabConfigFile}`);
+
+  const warpProcess = spawn("/usr/bin/open", [warpUri], {
+    cwd: workspace,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  attachProcessLogs(warpProcess, "Gemini-Warp");
+}
+
+function configuredWorkspaceForAgent(agent) {
+  if (agent === "antigravity") return ANTIGRAVITY_WORKSPACE;
+  if (agent === "chatgpt") return CHATGPT_WORKSPACE;
+  if (agent === "trae") return TRAE_WORKSPACE;
+  if (agent === "gemini") return GEMINI_WORKSPACE;
+  return AGENT_WORKSPACE;
+}
+
+async function resolveJobWorkspace(job, fallbackWorkspace) {
+  const repositoryNames = extractRepositoryNames(job);
+
+  if (repositoryNames.length === 0) {
+    console.log(`Workspace resolver: no REVREBEL repository reference; using ${fallbackWorkspace}`);
+    return fallbackWorkspace;
+  }
+
+  let entries;
+  let projectsRoot;
+
+  try {
+    projectsRoot = await fs.realpath(PROJECTS_ROOT);
+    entries = await fs.readdir(projectsRoot, { withFileTypes: true });
+  } catch (error) {
+    console.error(
+      `Workspace resolver could not read ${PROJECTS_ROOT}: ${error.message}`,
+    );
+    return fallbackWorkspace;
+  }
+
+  const directories = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+
+  for (const repositoryName of repositoryNames) {
+    const exactMatches = directories.filter(
+      (directory) => directory.toLowerCase() === repositoryName.toLowerCase(),
+    );
+    const normalizedMatches = directories.filter(
+      (directory) =>
+        normalizeRepositoryName(directory) ===
+        normalizeRepositoryName(repositoryName),
+    );
+    const matches = exactMatches.length > 0 ? exactMatches : normalizedMatches;
+
+    if (matches.length !== 1) {
+      if (matches.length > 1) {
+        console.error(
+          `Workspace resolver found multiple matches for ${repositoryName}: ${matches.join(", ")}`,
+        );
+      }
+      continue;
+    }
+
+    const candidate = await fs.realpath(path.join(projectsRoot, matches[0]));
+    if (!candidate.startsWith(`${projectsRoot}${path.sep}`)) {
+      console.error(
+        `Workspace resolver rejected path outside projects root: ${candidate}`,
+      );
+      continue;
+    }
+
+    console.log(
+      `Workspace resolver matched REVREBEL/${repositoryName} to ${candidate}`,
+    );
+    return candidate;
+  }
+
+  console.error(
+    `Workspace resolver found no local checkout for ${repositoryNames.join(", ")}; using ${fallbackWorkspace}`,
+  );
+  return fallbackWorkspace;
+}
+
+function extractRepositoryNames(job) {
+  const issue = job?.payload?.original?.agentSession?.issue ?? {};
+  const sources = [
+    issue.description,
+    issue.title,
+    job?.payload?.data?.originalPromptContext,
+    job?.payload?.original?.promptContext,
+  ].filter((value) => typeof value === "string");
+  const names = [];
+  const seen = new Set();
+  const repositoryPattern = /\brevrebel\/([a-z0-9._-]+)/gi;
+
+  for (const source of sources) {
+    for (const match of source.matchAll(repositoryPattern)) {
+      const name = match[1].replace(/\.git$/i, "");
+      const key = name.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        names.push(name);
+      }
+    }
+  }
+
+  return names;
+}
+
+function normalizeRepositoryName(value) {
+  return String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function extractAgentSessionId(job) {
+  const original = job?.payload?.original ?? {};
+
+  return firstString([
+    job?.agentSessionId,
+    job?.payload?.data?.agentSessionId,
+    original?.data?.id,
+    original?.agentSession?.id,
+    original?.data?.agentSession?.id,
+    original?.agentSessionId,
+    original?.data?.agentSessionId,
+  ]);
+}
+
+function extractPromptContext(job) {
+  return firstString([
+    job?.payload?.data?.promptContext,
+    job?.payload?.original?.data?.promptContext,
+    job?.payload?.original?.promptContext,
+    job?.payload?.original?.data?.agentSession?.promptContext,
+  ]);
+}
+
+function firstString(candidates) {
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function buildGenericArgs(template, prompt, jobFile, workspace) {
+  const promptToken = "__AGENT_BRIDGE_PROMPT__";
+  const jobFileToken = "__AGENT_BRIDGE_JOB_FILE__";
+  const workspaceToken = "__AGENT_BRIDGE_WORKSPACE__";
+
+  const templated = template
+    .replaceAll("{{PROMPT}}", promptToken)
+    .replaceAll("{{JOB_FILE}}", jobFileToken)
+    .replaceAll("{{WORKSPACE}}", workspaceToken);
+
+  return shellLikeSplit(templated).map((arg) =>
+    arg
+      .replaceAll(promptToken, prompt)
+      .replaceAll(jobFileToken, jobFile)
+      .replaceAll(workspaceToken, workspace),
+  );
+}
+
+function shellLikeSplit(value) {
+  const args = [];
+  let current = "";
+  let quote = null;
+  let escaping = false;
+
+  for (const char of value) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaping = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current) {
+        args.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current) args.push(current);
+  return args;
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'\\''`)}'`;
+}
+
+function maskArg(arg) {
+  if (arg.length > 120) return `${arg.slice(0, 120)}...`;
+  return arg;
+}
+
+function attachProcessLogs(child, label) {
+  child.stdout.on("data", (data) => {
+    console.log(`[${label}-Out]: ${data.toString().trim()}`);
+  });
+
+  child.stderr.on("data", (data) => {
+    console.error(`[${label}-Err]: ${data.toString().trim()}`);
+  });
+
+  child.on("error", (error) => {
+    console.error(`[${label}-Spawn-Error]: ${error.message}`);
+  });
+
+  child.on("close", (code, signal) => {
+    console.log(`[${label}-Exit]: code=${code ?? "null"} signal=${signal ?? "none"}`);
+  });
+}
+
+function normalizeHost(hostHeader) {
+  return String(hostHeader || "").split(":")[0].toLowerCase();
+}
+
+function matchesHost(actualHost, expectedHost) {
+  return actualHost === expectedHost || actualHost.endsWith(`.${expectedHost}`);
+}
+
+function agentForHost(host) {
+  if (matchesHost(host, ANTIGRAVITY_HOST)) return "antigravity";
+  if (matchesHost(host, CHATGPT_HOST)) return "chatgpt";
+  if (matchesHost(host, TRAE_HOST)) return "trae";
+  if (matchesHost(host, GEMINI_HOST)) return "gemini";
+  return "unknown";
+}
+
+function readBody(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let totalBytes = 0;
+
+    request.on("data", (chunk) => {
+      totalBytes += chunk.length;
+
+      if (totalBytes > 1_000_000) {
+        reject(new Error("Body too large"));
+        request.destroy();
+        return;
+      }
+
+      chunks.push(chunk);
+    });
+
+    request.on("end", () => {
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+
+    request.on("error", reject);
+  });
+}
+
+function sendJson(response, status, body) {
+  response.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+  });
+
+  response.end(JSON.stringify(body, null, 2));
+}
