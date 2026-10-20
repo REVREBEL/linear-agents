@@ -147,3 +147,13 @@ linear-jobs/
 .linear-agent-bridge/trae-pending-prompt.txt
 .linear-agent-bridge/trae-consumed-prompts/
 .linear-agent-bridge/trae-hook-events.log
+
+# Central configuration and Terraform generated artifacts
+.env.*
+!.env.example
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/*.tfvars
+!**/*.tfvars.example
