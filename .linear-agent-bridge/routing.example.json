@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "projectsRoot": "/Users/garystringham/github-revrebel",
+  "initiatives": {
+    "74d63a61-a583-4059-812a-61243bbb9e41": {
+      "name": "Custom Booking Engine / Mew API",
+      "repository": "REVREBEL/urban-cowboy-booking-engine"
+    },
+    "a7f15d16-f380-40d1-9bc8-c20021feb486": {
+      "name": "Metrics",
+      "repository": "REVREBEL/Metrics-Core"
+    },
+    "9bc44802-73c3-4215-8a1b-25e382dc0075": {
+      "name": "GuestBridge",
+      "repository": "REPLACE_WITH_VERIFIED_REPOSITORY"
+    }
+  },
+  "projects": {
+    "f26c6891-8de9-4489-8f60-daf54fce2e91": {
+      "name": "Urban Cowboy Booking Engine",
+      "initiativeId": "74d63a61-a583-4059-812a-61243bbb9e41",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "6bbdbe08-8af9-42cd-8055-bf31be23057e": {
+      "name": "11 — Data Architecture Documentation",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": "apps/docs",
+      "launchFromScope": false
+    },
+    "72b2b203-2357-4521-bb94-29489376d7fe": {
+      "name": "10 — Mission Control, Auth & Permissions",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "ed77e4dc-29fb-4c55-806f-1de7c5c787fc": {
+      "name": "09 — Help Desk",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "f748ff3c-26dd-4bdc-b0cb-8544e7141370": {
+      "name": "08 — Threads & Collaboration",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "98b7b566-f15e-4409-955f-c98e9abf4492": {
+      "name": "07 — Playbook UI",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "986be891-4410-4fbe-921d-62b35f97c9c6": {
+      "name": "06 — BigQuery & DuckDB Data Integration",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "c9bd1ebd-be6d-45e9-b040-2b04802bbb5b": {
+      "name": "05 — Metrics Library & Data Governance",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "7c818f46-47db-4e13-a922-6c045cae447c": {
+      "name": "04 — Metrics Dashboard",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "6d123a63-3f7f-4ce1-a948-428851177889": {
+      "name": "03 — Broadcast UI",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "0b39264a-5753-416e-9ad8-b396b5e706e3": {
+      "name": "02 — Growth Plan UI",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "95c0aefb-27bf-4002-a763-12b397f37874": {
+      "name": "01 — Commercial Plan UI",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "bfdfe1d5-6f83-485d-8809-120125551bb6": {
+      "name": "00 — Metrics App Foundation",
+      "initiativeId": "a7f15d16-f380-40d1-9bc8-c20021feb486",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "973266ab-d2b1-46e5-acb1-ada55f36308c": {
+      "name": "GuestBridge — Analytics Dashboard",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "56a1b6da-e36d-4c4e-974f-b8ac7ea3cf84": {
+      "name": "GuestBridge — Admin Console",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "36a6c97d-51ba-482d-9b30-b2bc95238185": {
+      "name": "GuestBridge — Backend API / Integrations",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "89c065eb-6ac9-49d4-a8cc-1fffae8e9092": {
+      "name": "GuestBridge — Automation Rules Engine",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "9f583471-4413-471d-81a1-798cc7ac14e6": {
+      "name": "GuestBridge — Guest Profile / CRM Layer",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "fbdbe4a6-f7ca-4129-a9c7-608217267600": {
+      "name": "GuestBridge — Personalized Guide Generator",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "2745ab1c-d722-48b3-b55f-1f90b4e9a94c": {
+      "name": "GuestBridge — Experience Library",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "0863a539-5435-4e0c-a090-819b9e68f17b": {
+      "name": "GuestBridge — Guest Curator Journey",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "e21244d2-a38f-47ef-9b6c-64b423966d15": {
+      "name": "GuestBridge — Guest Portal",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "f98b91c8-bfe1-4197-9169-59ca6a74f34c": {
+      "name": "GuestBridge — Review Response Engine",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    },
+    "2c851011-5f41-47b8-adac-e4cba4044dd4": {
+      "name": "GuestBridge — Guest Messaging Center",
+      "initiativeId": "9bc44802-73c3-4215-8a1b-25e382dc0075",
+      "scope": ".",
+      "launchFromScope": false
+    }
+  }
+}
