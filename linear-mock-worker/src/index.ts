@@ -61,6 +61,10 @@ export default {
         return handleLinearWebhook(request, env, ctx);
       }
 
+      if (request.method === "POST" && url.pathname === "/mock-action") {
+        return handleMockAction(request, env);
+      }
+
       if (request.method === "POST" && url.pathname === "/complete") {
         return handleAgentComplete(request, env);
       }
@@ -439,6 +443,62 @@ async function handleLinearWebhook(
   );
 }
 
+
+// Operator-only Mock Agent actions. Authentication is shared with the
+// trusted bridge, while Linear writes use this app installation's OAuth token.
+async function handleMockAction(request: Request, env: Env): Promise<Response> {
+  if (!env.BRIDGE_SHARED_SECRET ||
+      request.headers.get("authorization") !== `Bearer ${env.BRIDGE_SHARED_SECRET}`) {
+    return jsonResponse({ ok: false, error: "Unauthorized" }, 401);
+  }
+  const body = await request.json() as Record<string, unknown>;
+  const issue = stringValue(body.issue);
+  const operation = stringValue(body.operation);
+  if (!issue || !["inspect", "submit"].includes(operation || "")) {
+    return jsonResponse({ ok: false, error: "Invalid issue or operation" }, 400);
+  }
+  const organizationId = stringValue(body.organizationId);
+  if (!organizationId) return jsonResponse({ ok: false, error: "organizationId required" }, 400);
+  const installation = await getInstallation(organizationId, env);
+  if (!installation) return jsonResponse({ ok: false, error: "No Mock app installation for workspace" }, 404);
+  const result = await linearGraphql<{
+    issue: null | { id: string; identifier: string; title: string; state: { id: string; name: string }; team: { states: { nodes: Array<{id: string; name: string; type: string}> } } };
+  }>(installation.accessToken,
+    `query MockAgentIssue($id:String!){issue(id:$id){id identifier title state{id name} team{states{nodes{id name type}}}}}`,
+    { id: issue });
+  if (!result.issue) return jsonResponse({ ok: false, error: "Issue not found" }, 404);
+  const item = result.issue;
+  const statuses = item.team.states.nodes.map(x => ({ id:x.id,name:x.name,type:x.type }));
+  if (operation === "inspect") {
+    return jsonResponse({ ok: true, issue: { id:item.id, identifier:item.identifier, title:item.title, status:item.state.name }, statuses });
+  }
+  const comment = stringValue(body.comment);
+  const statusId = stringValue(body.statusId);
+  if (!comment && !statusId) return jsonResponse({ok:false,error:"Comment or status required"},400);
+  if (comment && comment.length > 15000) return jsonResponse({ok:false,error:"Comment too long"},400);
+  if (statusId && !statuses.some(x=>x.id===statusId)) return jsonResponse({ok:false,error:"Invalid status for issue team"},400);
+  // Submit comment first and status second. Return partial success if the
+  // second write fails; do not silently retry and duplicate the comment.
+  let commentPosted = false;
+  if (comment) {
+    const result = await linearGraphql<{commentCreate:{success:boolean}}>(installation.accessToken,
+      `mutation MockComment($input:CommentCreateInput!){commentCreate(input:$input){success}}`,
+      {input:{issueId:item.id,body:comment}});
+    if (!result.commentCreate.success) return jsonResponse({ok:false,error:"Comment rejected"},502);
+    commentPosted = true;
+  }
+  if (statusId) {
+    try {
+      const result = await linearGraphql<{issueUpdate:{success:boolean}}>(installation.accessToken,
+        `mutation MockStatus($id:String!,$stateId:String!){issueUpdate(id:$id,input:{stateId:$stateId}){success}}`,
+        {id:item.id,stateId:statusId});
+      if (!result.issueUpdate.success) throw new Error("Status rejected");
+    } catch (error) {
+      return jsonResponse({ok:false,commentPosted,statusChanged:false,error:error instanceof Error?error.message:String(error)},502);
+    }
+  }
+  return jsonResponse({ok:true,commentPosted,statusChanged:Boolean(statusId),issue:item.identifier});
+}
 
 async function handleAgentComplete(
   request: Request,
