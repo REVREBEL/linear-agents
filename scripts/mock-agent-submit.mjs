@@ -9,12 +9,22 @@ const args = process.argv.slice(2);
 const opt = key => { const i = args.indexOf(key); return i < 0 ? undefined : args[i + 1]; };
 const jobPath = opt("--job");
 const job = jobPath ? JSON.parse(await fs.readFile(path.resolve(jobPath), "utf8")) : null;
-const issue = opt("--issue") || job?.issueMetadata?.id;
+const prompt = job?.payload?.data?.promptContext || "";
+const issueFromPrompt = prompt.match(/^Issue:\\s*([A-Z]+-\\d+)/m)?.[1] ||
+  prompt.match(/<issue\\b[^>]*identifier="([A-Z]+-\\d+)"/)?.[1] ||
+  prompt.match(/linear\\.app\\/[^/]+\\/issue\\/([A-Z]+-\\d+)/)?.[1];
+const issue = opt("--issue") || job?.issueMetadata?.id || job?.issueMetadata?.identifier ||
+  job?.issueId || job?.payload?.original?.agentSession?.issueId ||
+  job?.payload?.original?.agentSession?.issue?.identifier || issueFromPrompt;
 const organizationId = opt("--organization") || job?.organizationId || process.env.LINEAR_ORGANIZATION_ID;
 const secret = process.env.BRIDGE_SHARED_SECRET;
 const endpoint = process.env.MOCK_AGENT_URL || "https://linear-mock.revrebel.io/mock-action";
-if (!issue || !organizationId || !secret) {
-  console.error("Required: --job PATH (or --issue REV-123 --organization ORG_ID), plus BRIDGE_SHARED_SECRET environment variable.");
+const missing = [];
+if (!issue) missing.push("Linear issue ID: supply --issue REV-154 or use a job with issueMetadata/promptContext");
+if (!organizationId) missing.push("organization ID: supply --organization UUID or use a job with organizationId");
+if (!secret) missing.push("BRIDGE_SHARED_SECRET: missing from loaded environment");
+if (missing.length) {
+  console.error("Cannot submit Mock Agent update:\\n- " + missing.join("\\n- "));
   process.exit(2);
 }
 async function call(operation, extras = {}) {
