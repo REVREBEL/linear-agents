@@ -25,13 +25,13 @@
   "kv_namespaces": [
     {
       "binding": "LINEAR_DATA",
-      "id": "744a012bd4df4316b8cecfb886c3bc48",
+      "id": "CONFIGURED_FROM_ENV",
     }
   ],
   "vars": {
     "SERVICE_NAME": "linear-gemini-agent", 
-    "LINEAR_REDIRECT_URI": "https://linear-gemini.revrebel.io/oauth/callback",
+    "LINEAR_REDIRECT_URI": "https://linear-gemini.yourdomain.com/oauth/callback",
     "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
-    "BRIDGE_URL": "https://gemini-agent.revrebel.io/jobs"
+    "BRIDGE_URL": "https://gemini-agent.yourdomain.com/jobs"
   }
 }
