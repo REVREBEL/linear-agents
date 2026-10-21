@@ -57,9 +57,9 @@ if (!namespace) {
 }
 if (!namespace?.id || !/^[a-f0-9]{32}$/i.test(namespace.id)) throw new Error("Cloudflare returned an invalid KV ID");
 const original = readFileSync(envFile, "utf8");
-const matchesInFile = [...original.matchAll(new RegExp(`^\\s*(?:export\\s+)?${envKey}=.*$`, "gm"))];
+const matchesInFile = [...original.matchAll(new RegExp(`^[ \\t]*(?:export[ \\t]+)?${envKey}=.*$`, "gm"))];
 if (matchesInFile.length > 1) throw new Error(`Duplicate ${envKey} entries in .env; resolve manually`);
-if (matchesInFile.length && !new RegExp(`^\\s*(?:export\\s+)?${envKey}=\\s*(?:["']?\\s*["']?)$`).test(matchesInFile[0][0])) {
+if (matchesInFile.length && !new RegExp(`^[ \\t]*(?:export[ \\t]+)?${envKey}=\\s*(?:["']?\\s*["']?)$`).test(matchesInFile[0][0])) {
   throw new Error(`${envKey} has a value in .env; refusing to overwrite`);
 }
 const line = `${envKey}="${namespace.id}"`;
