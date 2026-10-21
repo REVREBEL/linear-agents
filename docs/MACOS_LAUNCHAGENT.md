@@ -37,9 +37,9 @@ The old `EnvironmentVariables` dictionary should not be carried forward after eq
 
 ## Node.js workspace dependencies
 
-The installer runs `npm ci` from the detected repository root, installing the shared npm workspaces using the committed `package-lock.json`. It checks for `node` and `npm` on `PATH`, and verifies the root Wrangler executable exists after installation. This requires access to the npm registry unless the dependencies are already cached. Installation failure stops setup **before** replacing the LaunchAgent plist. You do not need to run `npm install` separately for the standard macOS setup. `npm ci` does not deploy any Cloudflare Workers; deployments and Worker secrets remain separately managed.
+The installer checks whether the root workspace dependencies are already healthy using `npm ls --depth=0 --all` and the root Wrangler executable. If they are installed, it **skips** `npm ci`; otherwise it runs `npm ci` from the detected repository root using the committed `package-lock.json`. It checks for `node` and `npm` on `PATH` first. This requires access to the npm registry unless the dependencies are already cached. Installation failure stops setup **before** replacing the LaunchAgent plist. You do not need to run `npm install` separately for the standard macOS setup. `npm ci` does not deploy any Cloudflare Workers; deployments and Worker secrets remain separately managed.
 
-For local development outside the installer, `npm install` remains available to update dependencies, while `npm ci` reproduces the lockfile.
+For local development outside the installer, `npm install` remains available to update dependencies, while `npm ci` reproduces the lockfile. If you update `package-lock.json`, explicitly run `npm install` or `npm ci` to synchronize the existing dependency tree. npm's `ENOTEMPTY` during repeated `npm ci` cleanup is distinct from the LaunchAgent configuration; the installer avoids redundant reinstalls when `npm ls` reports a healthy tree.
 
 ## Python runner environment
 
