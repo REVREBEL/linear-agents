@@ -254,6 +254,7 @@ function startAntigravity(job, filename, workspace, jobKey) {
   const sessionId = extractAgentSessionId(job);
 
   if (!sessionId) {
+    void jobStore.transition(jobKey, "failed", { error: "Missing Linear agent session ID" }).catch(console.error);
     console.log("Antigravity skipped. Missing Linear agent session ID.");
     return;
   }
@@ -295,12 +296,14 @@ function startChatGPT(job, filename) {
 
 function startTrae(job, filename, workspace, jobKey) {
   if (!TRAE_BIN) {
+    void jobStore.transition(jobKey, "failed", { error: "TRAE_BIN not configured" }).catch(console.error);
     console.error("TRAE_BIN is not configured. Job saved but Trae was not started.");
     return;
   }
 
   const promptContext = extractPromptContext(job);
   if (!promptContext) {
+    void jobStore.transition(jobKey, "failed", { error: "Missing Trae promptContext" }).catch(console.error);
     console.error("Trae skipped. No promptContext found.");
     return;
   }
@@ -333,12 +336,14 @@ function startTrae(job, filename, workspace, jobKey) {
 
 async function startGemini(job, filename, workspace, jobKey) {
   if (!GEMINI_BIN) {
+    await jobStore.transition(jobKey, "failed", { error: "GEMINI_BIN not configured" });
     console.error("GEMINI_BIN is not configured. Job saved but Gemini was not started.");
     return;
   }
 
   const promptContext = extractPromptContext(job);
   if (!promptContext) {
+    await jobStore.transition(jobKey, "failed", { error: "Missing Gemini promptContext" });
     console.error("Gemini skipped. No promptContext found.");
     return;
   }
