@@ -449,9 +449,9 @@ fi
 # Warp starts a fresh interactive shell rather than inheriting launchd's environment.
 # Load the LINEAR_API_KEY from the trusted repo-level environment file, not
 # from a prompt, CLI argument, or persisted issue payload.
-linear_env_file=${shellQuote(process.env.LINEAR_AGENTS_ENV_FILE || path.resolve(PROJECT_DIR, "../.env"))}
+linear_env_file=${shellQuote(AGENT_ENV_FILE)}
 if [[ ! -f "$linear_env_file" ]]; then
-  print -u2 -- "Gemini launch stopped: repository environment file not found"
+  print -u2 -- "Gemini launch stopped: bridge environment file not found"
   exit 1
 fi
 export LINEAR_API_KEY="$(
@@ -459,7 +459,7 @@ export LINEAR_API_KEY="$(
   print -rn -- "\${LINEAR_API_KEY:-}"
 )"
 if [[ -z ${LINEAR_API_KEY:-} ]]; then
-  print -u2 -- "Gemini launch stopped: LINEAR_API_KEY not set in repository environment"
+  print -u2 -- "Gemini launch stopped: LINEAR_API_KEY not set in bridge environment"
   exit 1
 fi
 gemini_prompt=$(<${shellQuote(promptFile)})
