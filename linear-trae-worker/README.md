@@ -68,14 +68,14 @@ Keep **Agent session events** selected in Linear.
 Create a Cloudflare Tunnel hostname that points to the local receiver on your Mac, for example:
 
 ```text
-https://antigravity-agent.revrebel.io
+https://antigravity-agent.yourdomain.com
     → http://localhost:8788
 ```
 
 Then set this in `wrangler.jsonc`:
 
 ```json
-"ANTIGRAVITY_BRIDGE_URL": "https://antigravity-agent.revrebel.io/jobs"
+"ANTIGRAVITY_BRIDGE_URL": "https://antigravity-agent.yourdomain.com/jobs"
 ```
 
 ## 5. Add Worker secrets
