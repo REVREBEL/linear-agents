@@ -40,11 +40,24 @@ if [[ ! -f "$ROOT/package-lock.json" ]]; then
   echo "Missing root package-lock.json; cannot install shared npm dependencies." >&2
   exit 1
 fi
-echo "Installing shared npm workspace dependencies..."
-(
+# Reuse an already valid npm workspace install. npm ci removes node_modules first,
+# which can fail with ENOTEMPTY on repeated macOS installations.
+npm_ready=false
+if [[ -x "$ROOT/node_modules/.bin/wrangler" ]] && (
   cd "$ROOT"
-  npm ci
-)
+  npm ls --depth=0 --all >/dev/null 2>&1
+); then
+  npm_ready=true
+fi
+if [[ "$npm_ready" == true ]]; then
+  echo "Shared npm workspace dependencies already installed; skipping npm ci."
+else
+  echo "Installing shared npm workspace dependencies..."
+  (
+    cd "$ROOT"
+    npm ci
+  )
+fi
 if [[ ! -x "$ROOT/node_modules/.bin/wrangler" ]]; then
   echo "Wrangler was not installed at $ROOT/node_modules/.bin/wrangler" >&2
   exit 1
