@@ -32,9 +32,11 @@ try {
     headless: false,
     channel: "chrome",
     viewport: null,
+    chromiumSandbox: true,
   });
   const page = browser.pages()[0] ?? await browser.newPage();
   await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
+  console.log("Google Chrome selected (Playwright channel: chrome).");
   console.log("Opened ChatGPT Project:", url.href);
   console.log("Sign in if necessary, and MANUALLY start a new chat inside this project.");
   await rl.question("After checking the project and opening a new chat, press Return to continue (Ctrl+C to cancel): ");
@@ -43,12 +45,14 @@ try {
     try { return new URL(p.url()).hostname === "chatgpt.com"; }
     catch { return false; }
   });
-  const activePage = chatPages.at(-1) ?? page;
+  const activePage = chatPages.find(p => p === page) ?? chatPages.at(-1) ?? page;
   if (new URL(activePage.url()).hostname !== "chatgpt.com") {
     throw new Error("No ChatGPT tab found. Open a new chat in the test browser.");
   }
   console.log("Current destination:", activePage.url());
+  await activePage.bringToFront();
   console.log("Finding ChatGPT composer...");
+  console.log("Page title:", await activePage.title().catch(() => "(unavailable)"));
   // ChatGPT uses a contenteditable editor. Select a visible editable area.
   const choices = [
     activePage.locator('#prompt-textarea[contenteditable="true"]'),
@@ -57,7 +61,8 @@ try {
     activePage.locator('[contenteditable="true"]'),
   ];
   let composer;
-  for (const choice of choices) {
+  for (const [index, choice] of choices.entries()) {
+    console.log(`Composer candidate group ${index+1}: ${await choice.count()} matches`);
     const count = await choice.count();
     for (let i=0; i<count; i++) {
       const candidate = choice.nth(i);
@@ -70,6 +75,7 @@ try {
   }
   await composer.click();
   await composer.fill(prompt);
+  console.log("Editor received input, checking value...");
   const inserted = (await composer.innerText()).trim();
   if (inserted !== prompt) {
     throw new Error("Composer did not retain the prompt. Check the ChatGPT tab before retrying.");
