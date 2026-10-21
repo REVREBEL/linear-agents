@@ -195,6 +195,7 @@ const server = http.createServer(async (request, response) => {
         linearInitiativeId: route.initiativeId,
         chatgptProjectUrl: route.chatgptProjectUrl || null,
         chatgptConversationMode: route.chatgptConversationMode || null,
+        chatgptAutoSend: route.chatgptAutoSend === true,
       },
     }, null, 2), { mode: 0o600 });
 
@@ -215,7 +216,7 @@ const server = http.createServer(async (request, response) => {
       if (!route.chatgptProjectUrl) {
         await jobStore.transition(jobKey, "failed", { error: "No chatgpt.projectUrl in Linear project mapping" });
         console.error("ChatGPT handoff stopped: project mapping has no chatgpt.projectUrl");
-      } else if (process.env.CHATGPT_HANDOFF_MODE === "supervised-playwright") {
+      } else if (process.env.CHATGPT_HANDOFF_MODE === "supervised-playwright" || route.chatgptAutoSend === true) {
         const promptContext = extractPromptContext(routedJob);
         if (!promptContext) {
           await jobStore.transition(jobKey, "failed", { error: "Missing ChatGPT promptContext" });
@@ -224,10 +225,21 @@ const server = http.createServer(async (request, response) => {
           // This supervised test requires an attached terminal, and must not consume the daemon stdin.
           // Queue a ready-to-run handoff command as a local file instead of launching UI automation from launchd.
           const handoffFile = filename + ".chatgpt-handoff.json";
-          await fs.writeFile(handoffFile, JSON.stringify({ projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, prompt: promptContext, jobFile: filename }, null, 2), { mode: 0o600 });
-          await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: "Supervised Playwright handoff ready; run manually" });
-          console.log(`ChatGPT Playwright handoff ready: ${handoffFile}`);
-          console.log(`Run: node ${script} --handoff-file ${handoffFile}`);
+          await fs.writeFile(handoffFile, JSON.stringify({ projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, autoSend: route.chatgptAutoSend === true, prompt: promptContext, jobFile: filename }, null, 2), { mode: 0o600 });
+          if (route.chatgptAutoSend === true) {
+            await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: "Automatic Playwright submission launched; response processing not implemented" });
+            const child = spawn(process.execPath, [script, "--handoff-file", handoffFile, "--auto-send"], {
+              cwd: path.resolve(PROJECT_DIR, ".."), env: process.env, stdio: ["ignore", "pipe", "pipe"],
+            });
+            child.stdout?.on("data", chunk => console.log("[ChatGPT handoff] " + String(chunk).trimEnd()));
+            child.stderr?.on("data", chunk => console.error("[ChatGPT handoff] " + String(chunk).trimEnd()));
+            child.on("error", error => console.error("Automatic ChatGPT browser could not start:", error));
+            child.on("exit", code => console.log("Automatic ChatGPT handoff exited:", code));
+          } else {
+            await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: "Supervised Playwright handoff ready; run manually" });
+            console.log(`ChatGPT Playwright handoff ready: ${handoffFile}`);
+            console.log(`Run: node ${script} --handoff-file ${handoffFile}`);
+          }
         }
       } else {
         await jobStore.transition(jobKey, "awaiting_external", { note: "ChatGPT task saved; set CHATGPT_HANDOFF_MODE=supervised-playwright to prepare browser handoff" });
@@ -552,6 +564,9 @@ async function resolveJobRoute(job) {
   const scopeKey = String(projectId).replace(/[^a-zA-Z0-9_-]/g, "_");
   const chatgptProjectUrl = project.chatgpt?.projectUrl;
   const chatgptConversationMode = project.chatgpt?.conversationMode || "new-per-issue";
+  const chatgptAutoSend = project.chatgpt?.autoSend === true;
+  if (project.chatgpt?.autoSend !== undefined && typeof project.chatgpt.autoSend !== "boolean") return { ok: false, error: "chatgpt.autoSend must be boolean" };
+  if (chatgptAutoSend && chatgptConversationMode !== "reuse-existing") return { ok: false, error: "chatgpt.autoSend requires reuse-existing conversation mode" };
   if (chatgptProjectUrl !== undefined) {
     try {
       const destination = new URL(chatgptProjectUrl);
@@ -568,7 +583,7 @@ async function resolveJobRoute(job) {
       return { ok: false, error: `Invalid chatgpt.projectUrl for Linear project ${projectId}` };
     }
   }
-  return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId, chatgptProjectUrl, chatgptConversationMode };
+  return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId, chatgptProjectUrl, chatgptConversationMode, chatgptAutoSend };
 }
 
 function extractAgentSessionId(job) {
