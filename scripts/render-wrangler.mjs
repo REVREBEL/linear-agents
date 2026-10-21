@@ -8,7 +8,7 @@ const key=agent.toUpperCase(), domain=process.env.DOMAIN;
 const id=process.env[`${key}_KV_NAMESPACE_ID`];
 if (!domain || !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(domain)) throw Error("DOMAIN must be a valid configured domain");
 if (!id || !/^[a-f0-9]{32}$/i.test(id)) throw Error(`Missing or invalid ${key}_KV_NAMESPACE_ID in .env`);
-const folder=path.resolve(`linear-${agent}-worker`);
+const folder=path.join(process.env.REPO_ROOT || process.cwd(), `linear-${agent}-worker`);
 let config=readFileSync(path.join(folder,"wrangler.jsonc"),"utf8");
 const replacements=[
   [/"id"\s*:\s*"[^"]+"/, `"id": "${id}"`],
