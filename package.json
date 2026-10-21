@@ -14,6 +14,7 @@
     "dev": "node scripts/workspace-command.mjs dev",
     "deploy": "node scripts/workspace-command.mjs deploy",
     "setup": "node scripts/workspace-command.mjs install",
+    "setup:auto-launch": "bash scripts/macos/install-launchagent.sh",
     "terraform": "bash scripts/with-env.sh terraform",
     "terraform:init": "bash scripts/with-env.sh terraform init",
     "terraform:validate": "bash scripts/with-env.sh terraform validate",
