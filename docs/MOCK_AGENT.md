@@ -12,7 +12,7 @@ A fifth, **isolated** Linear app for exercising the assignment -> local queue ->
 
 ## Inspect a received job
 
-Mock webhooks go to `~/.linear-agents/linear-agent-bridge/linear-jobs/mock`. The bridge also places scoped jobs in the repository's `.linear-agent/projects/<Linear-project-UUID>/inbox/` folder. Find the file path in the bridge log. Then:
+Mock delivery state is stored under `~/.linear-agents/linear-agent-bridge/linear-jobs/job-state`; unroutable Mock requests are saved under `linear-jobs/mock`. Successfully routed jobs are stored in the target repository's `.linear-agent/projects/<Linear-project-UUID>/inbox/` folder. Find the file path in the bridge log. Then:
 
 ```bash
 cd ~/.linear-agents
@@ -30,6 +30,6 @@ npm run mock:agent -- comment --job "/absolute/path/to/scoped-job.json" --messag
 npm run mock:agent -- status --job "/absolute/path/to/scoped-job.json" --to completed
 ```
 
-The CLI uses `LINEAR_API_KEY` (or `LINEAR_ACCESS_TOKEN`) in your process environment and asks for explicit `YES` approval before each write. Use `--yes` only for controlled test automation. Status names are resolved against the issue team's actual workflow; missing or ambiguous statuses fail safely. Configure the key securely before running. Do not use `--yes` on non-test issues.
+The CLI loads `LINEAR_API_KEY` from your ignored root `.env` via `scripts/with-env.sh` and asks for explicit `YES` approval before each write. Use `--yes` only for controlled test automation. Status names are resolved against the issue team's actual workflow; missing or ambiguous statuses fail safely. Configure the key securely before running. Do not use `--yes` on non-test issues.
 
 **Important:** This scaffold does not yet dispatch from the new Linear app until its Worker is deployed, tunnel host mapped, and Linear app installed; it does not verify your Cloudflare configuration or the live webhook payload. The existing bridge requires a Linear project plus exactly one mapped initiative and repository, so put the test issue in a mapped project.
