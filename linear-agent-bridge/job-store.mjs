@@ -69,6 +69,19 @@ export function createJobStore(root) {
       }
       return interrupted;
     },
+    async findBySessionId(sessionId) {
+      const entries = await fs.readdir(ledger, { withFileTypes: true });
+      for (const item of entries) {
+        if (!item.isDirectory()) continue;
+        try {
+          const record = await read(path.join(ledger, item.name));
+          if (record.agentSessionId === sessionId) return record;
+        } catch (error) {
+          if (error.code !== "ENOENT") console.warn("Unreadable ledger entry:", error.message);
+        }
+      }
+      return null;
+    },
     async get(key) { return read(entryPath(key)); },
   };
 }
