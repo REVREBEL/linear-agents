@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "test": "node --test linear-agent-bridge/*.test.mjs",
-    "types": "node scripts/workspace-command.mjs types all",
+    "types": "node scripts/workspace-command.mjs types",
     "dev": "node scripts/workspace-command.mjs dev",
     "deploy": "node scripts/workspace-command.mjs deploy",
     "setup": "node scripts/workspace-command.mjs install",
