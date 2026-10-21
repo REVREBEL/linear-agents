@@ -20,7 +20,11 @@
       "name": "Urban Cowboy Booking Engine",
       "initiativeId": "74d63a61-a583-4059-812a-61243bbb9e41",
       "scope": ".",
-      "launchFromScope": false
+      "launchFromScope": false,
+      "chatgpt": {
+        "projectUrl": "https://chatgpt.com/g/g-p-REPLACE_WITH_YOUR_CHATGPT_PROJECT_ID",
+        "conversationMode": "new-per-issue"
+      }
     },
     "6bbdbe08-8af9-42cd-8055-bf31be23057e": {
       "name": "11 — Data Architecture Documentation",
