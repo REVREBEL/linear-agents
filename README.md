@@ -153,12 +153,12 @@ Example organization · [yourdomain.com](https://yourdomain.com)
 
 ## npm agent commands
 
-The root npm scripts support `antigravity`, `chatgpt`, `gemini`, `trae`, `mock`, or `all`:
+The root npm scripts support `antigravity`, `chatgpt`, `gemini`, `trae`, `mock`, or `all`. **Setup always installs the shared dependency tree for all workspaces**, even when an individual agent is selected, because workspace-scoped installs conflict with the root `allowScripts` policy:
 
 ```bash
 npm ci                               # install all five workspaces from lockfile
-npm run setup -- mock                # install one agent's workspace dependencies
-npm run setup -- all                 # install all agent workspace dependencies
+npm run setup -- mock                # install shared dependencies at repo root
+npm run setup -- all                 # same root install (all workspaces)
 npm run dev -- mock                  # run one agent's Wrangler development server
 npm run deploy -- mock               # deploy one Worker
 npm run deploy -- all                # deploy all five Workers, sequentially
