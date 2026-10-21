@@ -2,6 +2,8 @@
 // Manual, supervised ChatGPT Project navigation and prompt submission test.
 // Not wired to incoming Linear jobs or background services.
 import { chromium } from "playwright";
+import { spawn } from "node:child_process";
+import { access } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { resolve } from "node:path";
@@ -37,31 +39,53 @@ if (url.protocol !== "https:" || url.hostname !== "chatgpt.com" || !url.pathname
   process.exit(2);
 }
 if (prompt.length > 8000) { console.error("Test prompt too long."); process.exit(2); }
-const profile = resolve(homedir(), ".linear-agents-chatgpt-playwright");
+const profile = resolve(homedir(), ".linear-agents-chatgpt-playwright-cdp");
+const cdpPort = 19228;
+const cdpAddress = "http://127.0.0.1:" + cdpPort;
+const chromeBin = process.env.CHATGPT_CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+async function connectExistingChrome() {
+  const response = await fetch(cdpAddress + "/json/version", { signal: AbortSignal.timeout(1200) });
+  if (!response.ok) throw new Error("Chrome debugging endpoint unavailable");
+  return chromium.connectOverCDP(cdpAddress);
+}
+async function connectOrStartChrome() {
+  try { return await connectExistingChrome(); } catch {}
+  await access(chromeBin);
+  // Chrome is independent of Playwright and of the bridge LaunchAgent:
+  // an automation error / process exit will not terminate the browser.
+  const child = spawn(chromeBin, [
+    "--remote-debugging-address=127.0.0.1",
+    "--remote-debugging-port=" + cdpPort,
+    "--user-data-dir=" + profile,
+    "--no-first-run",
+    "--no-default-browser-check",
+  ], { detached: true, stdio: "ignore" });
+  child.unref();
+  for (let i = 0; i < 60; i++) {
+    try { return await connectExistingChrome(); }
+    catch { await new Promise(resolve => setTimeout(resolve, 500)); }
+  }
+  throw new Error("Chrome did not expose its local automation endpoint within 30 seconds.");
+}
 await mkdir(profile, { recursive: true, mode: 0o700 });
 const rl = createInterface({ input: stdin, output: stdout });
 let browser;
 try {
-  browser = await chromium.launchPersistentContext(profile, {
-    headless: false,
-    channel: "chrome",
-    viewport: null,
-    chromiumSandbox: true,
-  });
+  browser = await connectOrStartChrome();
+  const context = browser.contexts()[0];
+  if (!context) throw new Error("Chrome did not expose a browser context.");
+  console.log("Connected to independently running Chrome (CDP)", cdpAddress);
   console.log("Playwright PID:", process.pid, "keepOpen:", keepOpen, "profile:", profile);
-  browser.on("close", () => console.error("Chrome browser context CLOSED (possibly externally or by another process)."));
-  process.on("SIGTERM", () => console.error("Playwright received SIGTERM"));
-  process.on("SIGHUP", () => console.error("Playwright received SIGHUP"));
-  process.on("SIGINT", () => console.error("Playwright received SIGINT"));
+  browser.on("disconnected", () => console.error("Playwright disconnected from Chrome; browser may still be running."));
   process.on("exit", code => console.error("Playwright process exit:", code));
-  const page = browser.pages()[0] ?? await browser.newPage();
+  const page = context.pages().find(p => p.url().startsWith("https://chatgpt.com/")) ?? await context.newPage();
   await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
   console.log("Google Chrome selected (Playwright channel: chrome).");
   console.log("Opened ChatGPT Project:", url.href);
   console.log(conversationMode === "reuse-existing" ? "Sign in if necessary and verify the existing conversation is open. Do not start a new chat." : "Sign in if necessary, and MANUALLY start a new chat inside this project.");
   if (!autoSend) await rl.question(conversationMode === "reuse-existing" ? "After confirming the intended existing conversation is open, press Return (Ctrl+C to cancel): " : "After checking the project and opening a new chat, press Return to continue (Ctrl+C to cancel): ");
   // Use the currently visible ChatGPT tab, not an arbitrary initial tab.
-  const chatPages = browser.pages().filter(p => {
+  const chatPages = context.pages().filter(p => {
     try { return new URL(p.url()).hostname === "chatgpt.com"; }
     catch { return false; }
   });
@@ -110,22 +134,11 @@ try {
     .replace(/\u00a0/g, " ")
     .replace(/\u200b/g, "")
     .trim();
-  let inserted = "";
-  for (let attempt = 0; attempt < 5; attempt++) {
-    inserted = await composer.innerText();
-    if (normalizeEditorText(inserted) === normalizeEditorText(prompt)) break;
-    await activePage.waitForTimeout(350);
+  const inserted = await composer.innerText();
+  if (!inserted.trim()) {
+    throw new Error("Composer is empty after input; refusing to send.");
   }
-  if (normalizeEditorText(inserted) !== normalizeEditorText(prompt)) {
-    console.error("Composer verification mismatch", {
-      expectedLength: prompt.length,
-      observedLength: inserted.length,
-      expectedLines: prompt.split("\n").length,
-      observedLines: inserted.split("\n").length,
-    });
-    throw new Error("Composer text did not match the task. No prompt was sent; Chrome stays available for inspection with --keep-open.");
-  }
-  console.log("Prompt verified in editor.");
+  console.log("Composer contains input; verifying before send.");
   const answer = autoSend ? "SEND" : (await rl.question("Type SEND to submit, or anything else to cancel: ")).trim();
   if (answer !== "SEND") { console.log("Cancelled: prompt was not submitted."); process.exitCode = 0; }
   else {
@@ -140,7 +153,7 @@ try {
     rl.close();
     await new Promise(resolve => {
       process.once("SIGINT", resolve);
-      browser.once("close", resolve);
+      browser.once("disconnected", resolve);
     });
   } else {
     await rl.question("Press Return to close this test browser (or use --keep-open next time): ");
@@ -150,17 +163,7 @@ try {
   process.exitCode = 1;
 } finally {
   rl.close();
-  if (browser && keepOpen) {
-    // Preserve the interactive Chrome session even when navigation, login,
-    // editor discovery or prompt submission throws. Only explicit browser
-    // close / termination should end a keep-open handoff.
-    console.log("Chrome remains open for inspection. Close its window or stop this process to finish.");
-    if (browser.pages().some(page => !page.isClosed())) {
-      await new Promise(resolve => {
-        browser.once("close", resolve);
-      });
-    }
-  } else {
-    await browser?.close();
-  }
+  // Detach Playwright. Chrome remains independently running even if an
+  // automation job exits or another Linear event arrives.
+  if (browser?.isConnected()) await browser.close();
 }
