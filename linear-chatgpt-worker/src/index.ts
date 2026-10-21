@@ -340,35 +340,56 @@ async function handleLinearWebhook(
   completionUrl.pathname = "/complete";
   completionUrl.search = "";
 
-  // Enrich the signed session with stable Linear IDs; do not infer paths from issue prose.
+  // Resolve the issue from the signed event, including the nested data variant.
+  // A standalone Linear project is valid; an issue with no project is not
+  // routable without an explicitly configured alternative mapping.
   let routing: { projectId: string; projectName: string; initiativeIds: string[] } | undefined;
-  if (agentSessionId) {
-    const issueId = stringValue(getNested(payload, "agentSession", "issueId")) ||
-      stringValue(getNested(payload, "agentSession", "issue", "id"));
-    if (issueId) {
+  const issueId = stringValue(getNested(payload, "agentSession", "issueId")) ||
+    stringValue(getNested(payload, "agentSession", "issue", "id")) ||
+    stringValue(getNested(payload, "data", "agentSession", "issueId")) ||
+    stringValue(getNested(payload, "data", "agentSession", "issue", "id"));
+  let routingFailure = issueId ? "Linear issue has no project" : "Agent event lacks structured issueId";
+  if (issueId) {
+    try {
+      const result = await linearGraphql<{
+        issue: null | { identifier: string; project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
+      }>(installation.accessToken,
+        `query BridgeIssueRouting($issueId: String!) {
+          issue(id: $issueId) {
+            identifier
+            project { id name initiatives { nodes { id name } } }
+          }
+        }`, { issueId });
+      if (result.issue?.project) {
+        routing = {
+          projectId: result.issue.project.id,
+          projectName: result.issue.project.name,
+          initiativeIds: result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
+        };
+      } else {
+        routingFailure = result.issue
+          ? `Linear issue ${result.issue.identifier} has no project; assign it to a mapped Linear project`
+          : `Linear issue ${issueId} not found`;
+      }
+    } catch (error) {
+      routingFailure = `Linear issue routing lookup failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+  if (!routing) {
+    console.error("ChatGPT dispatch blocked before bridge: missing project routing", {
+      webhookId, agentSessionId, issueId: issueId || null, routingFailure,
+    });
+    if (agentSessionId) {
       try {
-        const result = await linearGraphql<{
-          issue: { project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
-        }>(installation.accessToken,
-          `query BridgeIssueRouting($issueId: String!) {
-            issue(id: $issueId) {
-              project { id name initiatives { nodes { id name } } }
-            }
-          }`, { issueId });
-        if (result.issue?.project) {
-          routing = {
-            projectId: result.issue.project.id,
-            projectName: result.issue.project.name,
-            initiativeIds: result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
-          };
-        }
-      } catch (error) {
-        console.error("Unable to enrich routing metadata", {
-          agentSessionId,
-          error: error instanceof Error ? error.message : String(error),
+        await createAgentActivity(installation.accessToken, agentSessionId, {
+          type: "error",
+          body: routingFailure + ". No local job was dispatched.",
         });
+      } catch (error) {
+        console.error("Unable to report routing failure", { agentSessionId, error: String(error) });
       }
     }
+    return jsonResponse({ ok: false, accepted: false, error: routingFailure }, 422);
   }
 
   const bridgeJob = {
