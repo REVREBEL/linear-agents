@@ -8,7 +8,7 @@ A fifth, **isolated** Linear app for exercising the assignment -> local queue ->
 2. Run `npm run setup:kv -- mock` to create or reuse a dedicated Mock KV namespace and write `MOCK_KV_NAMESPACE_ID` into the ignored root `.env`. Do not share it with another agent.
 3. Configure `linear-mock.yourdomain.com` for OAuth and webhook traffic and `mock-agent.yourdomain.com` to forward to the local bridge's existing `/jobs` listener through your tunnel. Verify routing and security before enabling.
 4. Add `MOCK_LINEAR_CLIENT_ID`, `MOCK_LINEAR_CLIENT_SECRET`, `MOCK_LINEAR_WEBHOOK_SECRET`, and `MOCK_HOST=mock-agent.yourdomain.com` to your local ignored root `.env`. Configure the Worker secrets including `BRIDGE_SHARED_SECRET`.
-5. The Mock Worker is included in the npm workspaces. After completing KV, DNS, OAuth, tunnel and secret setup, use `npm run deploy -- mock` and `bash scripts/with-env.sh worker mock sync-secrets`. Avoid `deploy -- all` until every Worker is configured.
+5. The Mock Worker is included in the npm workspaces. After completing KV, DNS, OAuth, tunnel and secret setup, use `npm run deploy -- mock`, which also synchronizes the four secrets from the ignored root `.env`. Avoid `deploy -- all` until every Worker is configured.
 
 ## Install the agent in Linear
 
@@ -59,3 +59,7 @@ npm run deploy -- mock
 ```
 
 `setup:kv` uses Cloudflare's API to find the existing namespace named `LINEAR_MOCK_DATA`; if absent, it creates it. The script updates the existing empty `MOCK_KV_NAMESPACE_ID=` line in the ignored `.env` or appends that key if missing. Existing nonempty IDs are checked against Cloudflare and are never overwritten; conflicting or duplicate namespaces fail safely. Run `npm run setup:kv -- all` to provision all five. This creates KV namespaces only; it does not deploy a Worker, configure DNS, synchronize secrets, or install the app in Linear.
+
+## Runtime variables versus secrets
+
+`npm run deploy -- mock` publishes the four non-secret Worker `vars` from the rendered configuration: `BRIDGE_URL`, `LINEAR_REDIRECT_URI`, `LINEAR_SCOPES`, and `SERVICE_NAME`. After a successful Wrangler deployment, it now also publishes `BRIDGE_SHARED_SECRET`, `LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`, and `LINEAR_WEBHOOK_SECRET` as encrypted Cloudflare Worker secrets. All five agents use this flow. The command checks that all four source secrets are set before deploying; a failed secret upload returns an error. For secrets-only updates, run `bash scripts/with-env.sh worker mock sync-secrets`.
