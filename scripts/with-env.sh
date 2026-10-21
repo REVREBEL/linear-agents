@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Central environment entrypoint for Terraform and the four Linear Workers.
+# Central environment entrypoint for Terraform and the five Linear Workers.
 
 set -euo pipefail
 
@@ -20,7 +20,7 @@ set +a
 
 usage() {
   echo "Usage: scripts/with-env.sh terraform <terraform args...>" >&2
-  echo "       scripts/with-env.sh worker <antigravity|trae|chatgpt|gemini> <dev|deploy|sync-secrets|types>" >&2
+  echo "       scripts/with-env.sh worker <antigravity|trae|chatgpt|gemini|mock> <dev|deploy|sync-secrets|types>" >&2
   echo "       scripts/with-env.sh bridge <node args...>" >&2
   echo "       scripts/with-env.sh linear-projects" >&2
   exit 2
@@ -70,6 +70,7 @@ case "${1:-}" in
       trae) worker_dir="${REPO_ROOT}/linear-trae-worker"; prefix="TRAE" ;;
       chatgpt) worker_dir="${REPO_ROOT}/linear-chatgpt-worker"; prefix="CHATGPT" ;;
       gemini) worker_dir="${REPO_ROOT}/linear-gemini-worker"; prefix="GEMINI" ;;
+      mock) worker_dir="${REPO_ROOT}/linear-mock-worker"; prefix="MOCK" ;;
       *) usage ;;
     esac
     cd "${worker_dir}"
