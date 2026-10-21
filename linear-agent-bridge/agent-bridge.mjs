@@ -109,30 +109,27 @@ const server = http.createServer(async (request, response) => {
       });
     }
 
-    if (request.method === "POST" && url.pathname === "/job-complete") {
+    if (request.method === "POST" && url.pathname === "/issue-completed") {
       if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized" });
       }
       const body = JSON.parse(await readBody(request));
-      if (typeof body.agentSessionId !== "string" || !/^[a-f0-9-]{36}$/i.test(body.agentSessionId)) {
-        return sendJson(response, 400, { ok: false, error: "Invalid agentSessionId" });
+      const issueId = body?.issueId;
+      if (typeof issueId !== "string" || !/^[a-f0-9-]{36}$/i.test(issueId)) {
+        return sendJson(response, 400, { ok: false, error: "Invalid issueId" });
       }
-      if (body.status !== "completed") {
-        return sendJson(response, 200, { ok: true, cleaned: false, reason: "Only successful completion clears the inbox" });
+      const records = await jobStore.findByIssueId(issueId);
+      let cleaned = 0;
+      for (const record of records) {
+        const file = record.taskFile;
+        if (typeof file !== "string" || !file.endsWith(".json") ||
+            !file.includes(`${path.sep}.linear-agent${path.sep}projects${path.sep}`) ||
+            !file.includes(`${path.sep}inbox${path.sep}`)) continue;
+        await fs.unlink(file).catch(error => { if (error.code !== "ENOENT") throw error; });
+        await jobStore.transition(record.key, record.state, { inboxClearedAt: new Date().toISOString() });
+        cleaned++;
       }
-      const record = await jobStore.findBySessionId(body.agentSessionId);
-      if (!record) return sendJson(response, 404, { ok: false, error: "Agent session not found" });
-      const file = record.taskFile;
-      if (typeof file !== "string" || !file.endsWith(".json") ||
-          !file.includes(`${path.sep}.linear-agent${path.sep}projects${path.sep}`) ||
-          !file.includes(`${path.sep}inbox${path.sep}`)) {
-        return sendJson(response, 409, { ok: false, error: "No verified inbox file for session" });
-      }
-      await jobStore.transition(record.key, "completed", { completedAt: new Date().toISOString() });
-      await fs.unlink(file).catch((error) => {
-        if (error.code !== "ENOENT") throw error;
-      });
-      return sendJson(response, 200, { ok: true, cleaned: true, agentSessionId: body.agentSessionId });
+      return sendJson(response, 200, { ok: true, issueId, cleaned });
     }
 
     if (request.method !== "POST" || url.pathname !== "/jobs") {
@@ -226,7 +223,7 @@ const server = http.createServer(async (request, response) => {
       },
     }, null, 2), { mode: 0o600 });
 
-    await jobStore.transition(jobKey, "queued", { taskFile: filename, repositoryRoot: route.repositoryRoot, workspace, agentSessionId: job.agentSessionId || job.payload?.data?.agentSessionId });
+    await jobStore.transition(jobKey, "queued", { taskFile: filename, repositoryRoot: route.repositoryRoot, workspace, agentSessionId: job.agentSessionId || job.payload?.data?.agentSessionId, issueId: job.issueMetadata?.id || job.issueId || null });
     console.log("\nLinear job received");
     console.log(`Host: ${host}`);
     console.log(`Saved to: ${filename}`);
