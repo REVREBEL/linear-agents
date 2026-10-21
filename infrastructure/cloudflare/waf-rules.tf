@@ -16,7 +16,7 @@ resource "cloudflare_ruleset" "linear_webhook_waf" {
       description = "Block non-POST or untrusted source IPs on Linear webhook endpoints"
       action      = "block"
       enabled     = true
-      expression  = "(http.host in {\\"linear-antigravity.${var.cloudflare_domain}\\" \\"linear-trae.${var.cloudflare_domain}\\" \\"linear-gemini.${var.cloudflare_domain}\\" \\"linear-chatgpt.${var.cloudflare_domain}\\"} and http.request.uri.path eq \\"/webhook\\" and (http.request.method ne \\"POST\\" or not ip.src in $linear_webhooks))"
+      expression  = "(http.host in {\"linear-antigravity.${var.cloudflare_domain}\" \"linear-trae.${var.cloudflare_domain}\" \"linear-gemini.${var.cloudflare_domain}\" \"linear-chatgpt.${var.cloudflare_domain}\"} and http.request.uri.path eq \"/webhook\" and (http.request.method ne \"POST\" or not ip.src in $linear_webhooks))"
     }
   ]
 
