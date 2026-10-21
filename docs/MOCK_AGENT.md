@@ -8,7 +8,7 @@ A fifth, **isolated** Linear app for exercising the assignment -> local queue ->
 2. Create a **new** Cloudflare KV namespace; set its ID in `linear-mock-worker/wrangler.jsonc` (do not reuse another agent's KV namespace).
 3. Configure `linear-mock.yourdomain.com` for OAuth and webhook traffic and `mock-agent.yourdomain.com` to forward to the local bridge's existing `/jobs` listener through your tunnel. Verify routing and security before enabling.
 4. Add `MOCK_LINEAR_CLIENT_ID`, `MOCK_LINEAR_CLIENT_SECRET`, `MOCK_LINEAR_WEBHOOK_SECRET`, and `MOCK_HOST=mock-agent.yourdomain.com` to your local ignored root `.env`. Configure the Worker secrets including `BRIDGE_SHARED_SECRET`.
-5. This Worker intentionally is **not included in the existing root workspaces** or global deploy scripts. Run `npx wrangler deploy --config linear-mock-worker/wrangler.jsonc` only after completing KV, DNS, OAuth, tunnel and secret setup.
+5. The Mock Worker is included in the npm workspaces. After completing KV, DNS, OAuth, tunnel and secret setup, use `npm run deploy -- mock` and `bash scripts/with-env.sh worker mock sync-secrets`. Avoid `deploy -- all` until every Worker is configured.
 
 ## Inspect a received job
 
