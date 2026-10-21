@@ -15,7 +15,7 @@
     "deploy": "node scripts/workspace-command.mjs deploy"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260701.0",
+    "@cloudflare/workers-types": "^5.0.0",
     "typescript": "^5.8.3",
     "wrangler": "^4.24.3"
   }
