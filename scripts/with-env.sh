@@ -22,6 +22,7 @@ usage() {
   echo "Usage: scripts/with-env.sh terraform <terraform args...>" >&2
   echo "       scripts/with-env.sh worker <antigravity|trae|chatgpt|gemini> <dev|deploy|sync-secrets|types>" >&2
   echo "       scripts/with-env.sh bridge <node args...>" >&2
+  echo "       scripts/with-env.sh linear-projects" >&2
   exit 2
 }
 require() {
@@ -33,6 +34,11 @@ export TF_VAR_cloudflare_zone_id="${CLOUDFLARE_ZONE_ID:-}"
 export TF_VAR_cloudflare_domain="${DOMAIN:-}"
 
 case "${1:-}" in
+  linear-projects)
+    require LINEAR_API_KEY
+    cd "${REPO_ROOT}"
+    exec node "${REPO_ROOT}/scripts/linear-projects.mjs"
+    ;;
   terraform)
     shift
     cd "${REPO_ROOT}/infrastructure/cloudflare"
