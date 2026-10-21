@@ -11,13 +11,13 @@
   "kv_namespaces": [
     {
       "binding": "LINEAR_DATA",
-      "id": "CONFIGURED_FROM_ENV",
+      "id": "${ANTIGRAVITY_KV_NAMESPACE_ID}",
     }
   ],
   "vars": {
-    "SERVICE_NAME": "linear-antigravity-agent", 
-    "LINEAR_REDIRECT_URI": "https://linear-antigravity.yourdomain.com/oauth/callback",
+    "SERVICE_NAME": "linear-${ANTIGRAVITY_PREFIX}-agent", 
+    "LINEAR_REDIRECT_URI": "https://linear-${ANTIGRAVITY_PREFIX}.${DOMAIN}/oauth/callback",
     "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
-    "BRIDGE_URL": "https://antigravity-agent.yourdomain.com/jobs"
+    "BRIDGE_URL": "https://${ANTIGRAVITY_PREFIX}-agent.${DOMAIN}/jobs"
   }
 }
