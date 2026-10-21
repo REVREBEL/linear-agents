@@ -36,6 +36,10 @@ The old `EnvironmentVariables` dictionary should not be carried forward after eq
 
 ## Load or reload
 
+The installer prints ready-to-run `launchctl` commands with the **actual** domain-derived service label and plist path. Copy those commands from the installation output after reviewing the generated plist. The installer does not execute them automatically. Stop active agent jobs before restarting the bridge.
+
+For reference, the following uses `DOMAIN=example.com`:
+
 ```bash
 SERVICE="gui/$(id -u)/io.revrebel.agent-bridge"
 PLIST="$HOME/Library/LaunchAgents/io.revrebel.agent-bridge.plist"
