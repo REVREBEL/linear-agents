@@ -39,7 +39,7 @@ try {
   console.log("\nMock Agent session:", sessionId);
   console.log("Issue:", issue);
   console.log("Job:", file);
-  console.log("\n1) Completed (requests inbox cleanup)");
+  console.log("\n1) Completed (ends agent session; keeps inbox until issue is Done)");
   console.log("2) Failed (retains inbox for investigation)");
   console.log("0) Cancel");
   const selection = (await rl.question("End session as [1/2/0]: ")).trim();
@@ -50,7 +50,7 @@ try {
     const notes = (await rl.question("Optional final session note (Enter to skip): ")).trim();
     console.log("\nSession outcome:", status);
     if (notes) console.log("Note:", notes);
-    console.log(status === "completed" ? "Inbox: cleanup requested" : "Inbox: retained");
+    console.log("Inbox: retained until the Linear issue is completed");
     const confirmation = await rl.question("Type YES to notify Linear and end this session: ");
     if (confirmation !== "YES") console.log("Cancelled. No changes submitted.");
     else {
@@ -67,7 +67,7 @@ try {
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok !== true) throw new Error("Completion rejected (HTTP " + response.status + "): " + JSON.stringify(result));
       console.log("Linear session reported as " + status + ".");
-      if (status === "completed") console.log("Inbox cleanup requested; verify removal if needed.");
+      if (status === "completed") console.log("Inbox is retained until the Linear issue is moved to a completed status.");
     }
   }
 } finally { rl.close(); }
