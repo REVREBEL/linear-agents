@@ -412,6 +412,10 @@ async function handleLinearWebhook(
 
   const bridgeJob = {
     routing,
+    issueId: stringValue(getNested(payload, "agentSession", "issueId")) ||
+      stringValue(getNested(payload, "agentSession", "issue", "id")) ||
+      stringValue(getNested(payload, "data", "agentSession", "issueId")) ||
+      stringValue(getNested(payload, "data", "agentSession", "issue", "id")),
     source: "linear",
     sessionAction: isAgentFollowup ? "prompted" : "created",
     receivedAt: new Date().toISOString(),
