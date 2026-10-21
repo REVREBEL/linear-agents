@@ -11,13 +11,13 @@
   "kv_namespaces": [
     {
       "binding": "LINEAR_DATA",
-      "id": "REPLACE_WITH_MOCK_KV_NAMESPACE_ID"
+      "id": "CONFIGURED_FROM_ENV"
     }
   ],
   "vars": {
     "SERVICE_NAME": "linear-mock-agent",
-    "LINEAR_REDIRECT_URI": "https://linear-mock.revrebel.io/oauth/callback",
+    "LINEAR_REDIRECT_URI": "https://linear-mock.yourdomain.com/oauth/callback",
     "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
-    "BRIDGE_URL": "https://mock-agent.revrebel.io/jobs"
+    "BRIDGE_URL": "https://mock-agent.yourdomain.com/jobs"
   }
 }
