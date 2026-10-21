@@ -45,13 +45,13 @@ All local credentials and Cloudflare resource IDs are configured through one roo
 Linear (AgentSessionEvent)
   |  signed webhook
   v
-linear-<agent>.revrebel.io          Cloudflare Worker
+linear-<agent>.yourdomain.com          Cloudflare Worker
   |  OAuth token in LINEAR_DATA KV
   |  acknowledge Linear via agentActivityCreate ("thought")
   |  append session-specific /complete command
   |  POST /jobs with shared bearer authentication
   v
-<agent>-agent.revrebel.io           Cloudflare Tunnel
+<agent>-agent.yourdomain.com           Cloudflare Tunnel
   |
   v
 127.0.0.1:8788                     Local bridge
@@ -59,16 +59,16 @@ linear-<agent>.revrebel.io          Cloudflare Worker
   v
 Antigravity / Trae / Gemini CLI / ChatGPT file handoff
   |
-  +--> POST https://linear-<agent>.revrebel.io/complete
+  +--> POST https://linear-<agent>.yourdomain.com/complete
        Worker issues final "response" or "error" Agent Activity
 ```
 
 | Agent | Worker directory | Worker hostname | Tunnel hostname |
 |---|---|---|---|
-| Antigravity | `linear-antigravity-worker/` | `linear-antigravity.revrebel.io` | `antigravity-agent.revrebel.io` |
-| Trae | `linear-trae-worker/` | `linear-trae.revrebel.io` | `trae-agent.revrebel.io` |
-| Gemini CLI | `linear-gemini-worker/` | `linear-gemini.revrebel.io` | `gemini-agent.revrebel.io` |
-| ChatGPT | `linear-chatgpt-worker/` | `linear-chatgpt.revrebel.io` | `chatgpt-agent.revrebel.io` |
+| Antigravity | `linear-antigravity-worker/` | `linear-antigravity.yourdomain.com` | `antigravity-agent.yourdomain.com` |
+| Trae | `linear-trae-worker/` | `linear-trae.yourdomain.com` | `trae-agent.yourdomain.com` |
+| Gemini CLI | `linear-gemini-worker/` | `linear-gemini.yourdomain.com` | `gemini-agent.yourdomain.com` |
+| ChatGPT | `linear-chatgpt-worker/` | `linear-chatgpt.yourdomain.com` | `chatgpt-agent.yourdomain.com` |
 
 ## Repository
 
@@ -90,21 +90,21 @@ Each Worker retains its own `wrangler.jsonc`, `src/index.ts`, and workspace `pac
 
 ## Setup overview
 
-1. Create a distinct Linear OAuth app for each agent, with an exact callback of `https://linear-<agent>.revrebel.io/oauth/callback`, webhook `https://linear-<agent>.revrebel.io/webhook`, Agent session events enabled, and `actor=app` scopes `read,write,app:assignable,app:mentionable`.
+1. Create a distinct Linear OAuth app for each agent, with an exact callback of `https://linear-<agent>.yourdomain.com/oauth/callback`, webhook `https://linear-<agent>.yourdomain.com/webhook`, Agent session events enabled, and `actor=app` scopes `read,write,app:assignable,app:mentionable`.
 2. Set a unique Cloudflare Worker custom domain for each app. Do **not** route Worker hostnames to Tunnel.
 3. Configure a Worker KV namespace bound as **`LINEAR_DATA`** in every Worker. The physical namespace ID can differ for each agent.
 4. Configure `SERVICE_NAME`, `LINEAR_REDIRECT_URI`, `LINEAR_SCOPES` and `BRIDGE_URL` in its `wrangler.jsonc`.
 5. Set Worker secrets `LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`, `LINEAR_WEBHOOK_SECRET`, `BRIDGE_SHARED_SECRET`. Never commit their values.
-6. Configure Tunnel hostname `<agent>-agent.revrebel.io` to the Mac listener on `http://127.0.0.1:8788`. Ensure the actual deployed bridge routes by hostname.
-7. From the repository root, run `npm ci` and deploy the selected Worker using `bash scripts/with-env.sh worker <agent> deploy`, then open `https://linear-<agent>.revrebel.io/install` to complete OAuth.
+6. Configure Tunnel hostname `<agent>-agent.yourdomain.com` to the Mac listener on `http://127.0.0.1:8788`. Ensure the actual deployed bridge routes by hostname.
+7. From the repository root, run `npm ci` and deploy the selected Worker using `bash scripts/with-env.sh worker <agent> deploy`, then open `https://linear-<agent>.yourdomain.com/install` to complete OAuth.
 8. Delegate a non-destructive test issue, verify initial Agent Activity, local delivery, agent acknowledgment and authenticated completion.
 
 Example checks (substitute the correct agent):
 
 ```bash
-curl -i https://linear-trae.revrebel.io/health
-curl -i https://linear-trae.revrebel.io/install
-curl -i https://linear-trae.revrebel.io/oauth/callback
+curl -i https://linear-trae.yourdomain.com/health
+curl -i https://linear-trae.yourdomain.com/install
+curl -i https://linear-trae.yourdomain.com/oauth/callback
 cd linear-trae-worker && npx wrangler tail
 ```
 
@@ -149,4 +149,4 @@ See **[Architecture & Operations](docs/AGENT_BRIDGE_ARCHITECTURE_AND_OPERATIONS.
 
 ---
 
-REVREBEL · [revrebel.io](https://revrebel.io)
+Example organization · [yourdomain.com](https://yourdomain.com)
