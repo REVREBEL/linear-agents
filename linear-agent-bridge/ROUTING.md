@@ -56,7 +56,7 @@ A standalone project without a Linear initiative can be configured directly:
 }
 ```
 
-Replace the repository placeholder with the verified checkout name under `projectsRoot`. The bridge still rejects missing project IDs, unknown repositories, conflicting initiative mappings, and paths outside the repository root. For ChatGPT `new-per-issue`, `chatgpt.projectUrl` must be the base `/g/g-p-...` Project URL, with no `/c/...` conversation suffix. Editing the ignored `routing.json` does not require restarting the bridge.
+Replace the repository placeholder with the verified checkout name under `projectsRoot`. The bridge still rejects missing project IDs, unknown repositories, conflicting initiative mappings, and paths outside the repository root. For ChatGPT `new-per-issue`, `chatgpt.projectUrl` must be the base `/g/g-p-...` Project URL. For persistent conversation context, use `chatgpt.conversationMode: "reuse-existing"` with the full `/g/g-p-.../c/...` URL of the conversation to continue. Editing the ignored `routing.json` does not require restarting the bridge.
 
 `launchFromScope: false` intentionally starts the agent at the **repository root** for Git/workspace trust and consistent CLI project memory. The task prompt still identifies the relevant app subfolder. Set `true` **only** if an agent's trusted session is specifically established at that subfolder.
 
@@ -92,3 +92,18 @@ The central bridge still owns job dispatch and the existing `/complete` session 
 6. Check error cases: unmapped project, missing initiative, missing repository, invalid scope, and duplicate event.
 
 **Do not assume that changes committed to GitHub have automatically updated the live Mac process or the deployed Cloudflare Workers.**
+
+### Persistent ChatGPT conversation per project
+
+For a project whose entire discussion should remain in the same conversation:
+
+```json
+{
+  "chatgpt": {
+    "projectUrl": "https://chatgpt.com/g/g-p-YOUR-PROJECT/c/YOUR-CONVERSATION",
+    "conversationMode": "reuse-existing"
+  }
+}
+```
+
+The bridge validates the existing conversation URL and writes the mode into supervised Playwright handoff files. Playwright opens that conversation and asks you to confirm it before submitting a prompt; **it does not open a new chat** in `reuse-existing` mode. The handoff is still supervised and not an automatic, unattended agent runner. The conversation must remain accessible to the browser's signed-in account. Project-level files/instructions are not a substitute for a prior conversation's complete history.
