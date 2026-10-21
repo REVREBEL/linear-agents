@@ -10,9 +10,9 @@ const opt = key => { const i = args.indexOf(key); return i < 0 ? undefined : arg
 const jobPath = opt("--job");
 const job = jobPath ? JSON.parse(await fs.readFile(path.resolve(jobPath), "utf8")) : null;
 const prompt = job?.payload?.data?.promptContext || "";
-const issueFromPrompt = prompt.match(/^Issue:\\s*([A-Z]+-\\d+)/m)?.[1] ||
-  prompt.match(/<issue\\b[^>]*identifier="([A-Z]+-\\d+)"/)?.[1] ||
-  prompt.match(/linear\\.app\\/[^/]+\\/issue\\/([A-Z]+-\\d+)/)?.[1];
+const issueFromPrompt = prompt.match(/^Issue:\s*([A-Z]+-\d+)/m)?.[1] ||
+  prompt.match(/<issue\b[^>]*identifier="([A-Z]+-\d+)"/)?.[1] ||
+  prompt.match(/linear\.app\/[^/]+\/issue\/([A-Z]+-\d+)/)?.[1];
 const issue = opt("--issue") || job?.issueMetadata?.id || job?.issueMetadata?.identifier ||
   job?.issueId || job?.payload?.original?.agentSession?.issueId ||
   job?.payload?.original?.agentSession?.issue?.identifier || issueFromPrompt;
