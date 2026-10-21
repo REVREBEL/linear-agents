@@ -121,9 +121,21 @@ try {
     await rl.question("Press Return to close this test browser (or use --keep-open next time): ");
   }
 } catch (error) {
-  console.error("Playwright test failed:", error.message);
+  console.error("Playwright handoff failed:", error.message);
   process.exitCode = 1;
 } finally {
   rl.close();
-  await browser?.close();
+  if (browser && keepOpen) {
+    // Preserve the interactive Chrome session even when navigation, login,
+    // editor discovery or prompt submission throws. Only explicit browser
+    // close / termination should end a keep-open handoff.
+    console.log("Chrome remains open for inspection. Close its window or stop this process to finish.");
+    if (browser.pages().some(page => !page.isClosed())) {
+      await new Promise(resolve => {
+        browser.once("close", resolve);
+      });
+    }
+  } else {
+    await browser?.close();
+  }
 }
