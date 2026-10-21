@@ -30,6 +30,32 @@ LABEL="$reversed.agent-bridge"
 TARGET="$HOME/Library/LaunchAgents/$LABEL.plist"
 if [[ ! -f "$TEMPLATE" ]]; then echo "Missing $TEMPLATE" >&2; exit 1; fi
 if [[ "$ROOT" == *"__REPO_ROOT__"* ]]; then echo "Unsupported checkout directory name" >&2; exit 1; fi
+# The Python runner lives beside agent-bridge.mjs, not in any routed project.
+# Create its venv on first install; refresh declared packages on later installs.
+BRIDGE_DIR="$ROOT/linear-agent-bridge"
+VENV="$BRIDGE_DIR/.venv"
+if [[ -n "${PYTHON_BIN:-}" && "$PYTHON_BIN" != "$VENV/bin/python" ]]; then
+  echo "PYTHON_BIN points to $PYTHON_BIN instead of $VENV/bin/python." >&2
+  echo "Remove PYTHON_BIN from .env to use the automatically managed bridge venv." >&2
+  exit 1
+fi
+if [[ ! -x "$VENV/bin/python" ]]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "Python 3 is required to create $VENV" >&2
+    exit 1
+  fi
+  echo "Creating Python virtual environment: $VENV"
+  python3 -m venv "$VENV"
+fi
+if ! "$VENV/bin/python" -c 'import sys; assert sys.version_info >= (3, 10), "Python 3.10 or newer is required"' ; then
+  echo "Python 3.10 or newer is required for the bridge runner" >&2
+  exit 1
+fi
+echo "Installing Python bridge dependencies..."
+"$VENV/bin/python" -m pip install -r "$BRIDGE_DIR/requirements.txt"
+"$VENV/bin/python" -c 'import requests'
+echo "Python environment ready: $VENV"
+
 mkdir -p "$(dirname "$TARGET")"
 TEMP="$(mktemp)"
 trap 'rm -f "$TEMP"' EXIT
