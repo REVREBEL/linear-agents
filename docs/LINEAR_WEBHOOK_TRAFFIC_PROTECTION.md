@@ -8,19 +8,19 @@ This document records the separate Cloudflare WAF hardening work order for the L
 
 | Worker hostname | Route | Result |
 | --- | --- | --- |
-| `linear-antigravity.revrebel.io` | `POST /webhook` | Intended protected endpoint |
-| `linear-trae.revrebel.io` | `POST /webhook` | Intended protected endpoint |
-| `linear-chatgpt.revrebel.io` | `POST /webhook` | Intended protected endpoint |
-| `linear-gemini.revrebel.io` | `POST /webhook` | Intended protected endpoint |
+| `linear-antigravity.yourdomain.com` | `POST /webhook` | Intended protected endpoint |
+| `linear-trae.yourdomain.com` | `POST /webhook` | Intended protected endpoint |
+| `linear-chatgpt.yourdomain.com` | `POST /webhook` | Intended protected endpoint |
+| `linear-gemini.yourdomain.com` | `POST /webhook` | Intended protected endpoint |
 
-The rule matches future `*.revrebel.io` hostnames containing `linear` as well, not just the four above. Review whether that broad match is acceptable before adding other public Linear-named services.
+The rule matches future `*.yourdomain.com` hostnames containing `linear` as well, not just the four above. Review whether that broad match is acceptable before adding other public Linear-named services.
 
 ### WAF expression
 
 Intended zone-level Cloudflare WAF custom rule, action **Block**:
 
 ```text
-ends_with(http.host, ".revrebel.io")
+ends_with(http.host, ".yourdomain.com")
 and http.host contains "linear"
 and http.request.uri.path eq "/webhook"
 and (
@@ -92,7 +92,7 @@ Current code: signature verification of raw body via `Linear-Signature` HMAC-SHA
 ### Cloudflare dashboard verification checklist
 
 1. Under the Cloudflare account's **Lists**, confirm an IP list named exactly `linear_webhooks` exists and contains all 15 currently published addresses.
-2. For the `revrebel.io` zone, inspect **Security → WAF → Custom rules** (UI names may vary). Confirm an **enabled** rule with the expression above and **Block** action.
+2. For the `yourdomain.com` zone, inspect **Security → WAF → Custom rules** (UI names may vary). Confirm an **enabled** rule with the expression above and **Block** action.
 3. Confirm no preceding Skip/Allow rule bypasses the intended protection and no separate custom hostname accidentally matches.
 4. Inspect all four production Worker settings and routes. Confirm `workers.dev` and preview URL exposure are disabled in deployment, not just Wrangler files.
 5. Verify that a request to `/webhook` from an unlisted IP is blocked at WAF. Do not expose production webhook secrets for testing.
