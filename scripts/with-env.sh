@@ -36,6 +36,12 @@ case "${1:-}" in
   terraform)
     shift
     cd "${REPO_ROOT}/infrastructure/cloudflare"
+    if ! command -v terraform >/dev/null 2>&1; then
+      echo "Terraform CLI is not installed or is not on PATH." >&2
+      echo "On macOS, install it with: brew tap hashicorp/tap && brew install hashicorp/tap/terraform" >&2
+      echo "Then verify with: terraform version" >&2
+      exit 127
+    fi
     exec terraform "$@"
     ;;
   bridge)
