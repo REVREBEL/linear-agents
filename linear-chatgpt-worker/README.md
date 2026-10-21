@@ -68,14 +68,14 @@ Keep **Agent session events** selected in Linear.
 Create a Cloudflare Tunnel hostname that points to the local receiver on your Mac, for example:
 
 ```text
-https://ChatGPT-agent.revrebel.io
+https://ChatGPT-agent.yourdomain.com
     → http://localhost:8788
 ```
 
 Then set this in `wrangler.jsonc`:
 
 ```json
-"CHATGPT_BRIDGE_URL": "https://ChatGPT-agent.revrebel.io/jobs"
+"CHATGPT_BRIDGE_URL": "https://ChatGPT-agent.yourdomain.com/jobs"
 ```
 
 ## 5. Add Worker secrets
