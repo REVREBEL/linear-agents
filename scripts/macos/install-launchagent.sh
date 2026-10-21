@@ -30,6 +30,27 @@ LABEL="$reversed.agent-bridge"
 TARGET="$HOME/Library/LaunchAgents/$LABEL.plist"
 if [[ ! -f "$TEMPLATE" ]]; then echo "Missing $TEMPLATE" >&2; exit 1; fi
 if [[ "$ROOT" == *"__REPO_ROOT__"* ]]; then echo "Unsupported checkout directory name" >&2; exit 1; fi
+# Install the shared npm workspace toolchain before changing the LaunchAgent.
+# This does not deploy Workers or restart the existing service.
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "Node.js and npm are required. Ensure both are available via PATH in .env." >&2
+  exit 1
+fi
+if [[ ! -f "$ROOT/package-lock.json" ]]; then
+  echo "Missing root package-lock.json; cannot install shared npm dependencies." >&2
+  exit 1
+fi
+echo "Installing shared npm workspace dependencies..."
+(
+  cd "$ROOT"
+  npm ci
+)
+if [[ ! -x "$ROOT/node_modules/.bin/wrangler" ]]; then
+  echo "Wrangler was not installed at $ROOT/node_modules/.bin/wrangler" >&2
+  exit 1
+fi
+echo "Node.js dependencies ready."
+
 # The Python runner lives beside agent-bridge.mjs, not in any routed project.
 # Create its venv on first install; refresh declared packages on later installs.
 BRIDGE_DIR="$ROOT/linear-agent-bridge"
