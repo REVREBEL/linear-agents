@@ -528,7 +528,13 @@ async function resolveJobRoute(job) {
   const scopeKey = String(projectId).replace(/[^a-zA-Z0-9_-]/g, "_");
   const chatgptProjectUrl = project.chatgpt?.projectUrl;
   if (chatgptProjectUrl !== undefined) {
-    if (typeof chatgptProjectUrl !== "string" || !/^https:\\/\\/chatgpt\\.com\\/g\\/g-p-[a-zA-Z0-9-]+(?:\\/.*)?$/.test(chatgptProjectUrl)) {
+    try {
+      const destination = new URL(chatgptProjectUrl);
+      if (destination.protocol !== "https:" || destination.hostname !== "chatgpt.com" ||
+          !destination.pathname.startsWith("/g/g-p-") || destination.pathname.includes("/c/")) {
+        return { ok: false, error: `Invalid chatgpt.projectUrl for Linear project ${projectId}` };
+      }
+    } catch {
       return { ok: false, error: `Invalid chatgpt.projectUrl for Linear project ${projectId}` };
     }
   }
