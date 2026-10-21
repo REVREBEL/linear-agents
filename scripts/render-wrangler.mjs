@@ -28,12 +28,11 @@ for (const [pattern,replacement] of replacements) {
 }
 if (process.env[`${key}_WEBHOOK_URL`] && process.env[`${key}_WEBHOOK_URL`] !== webhookUrl) throw Error(`${key}_WEBHOOK_URL must match prefix-derived ${webhookUrl}`);
 if (process.env[`${key}_HOST`] && process.env[`${key}_HOST`] !== host) throw Error(`${key}_HOST must match prefix-derived ${host}`);
-// Attach the OAuth/webhook Worker hostname as a Cloudflare Custom Domain.
-// The separate <prefix>-agent hostname belongs to the Tunnel, never this Worker.
-const customDomain = `linear-${prefix}.${domain}`;
-if (config.includes('"routes"')) {
-  throw new Error("Template already defines routes; review explicitly before deployment");
+// Resolve the tracked template's Worker Custom Domain.
+// The agent bridge Tunnel hostname is intentionally different.
+const routePattern = /("pattern"\\s*:\\s*")[^"]+(")/;
+if (!routePattern.test(config) || !/"custom_domain"\\s*:\\s*true/.test(config)) {
+  throw new Error("Expected a templated Worker Custom Domain route in wrangler.jsonc");
 }
-if (!config.includes('"main"')) throw new Error("Wrangler template is missing main");
-config = config.replace('"main"', `"routes": [{ "pattern": "${customDomain}", "custom_domain": true }],\n  "main"`);
+config = config.replace(routePattern, `$1linear-${prefix}.${domain}$2`);
 writeFileSync(output,config,{mode:0o600,flag:"wx"});
