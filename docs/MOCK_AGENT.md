@@ -63,3 +63,7 @@ npm run deploy -- mock
 ## Runtime variables versus secrets
 
 `npm run deploy -- mock` publishes the four non-secret Worker `vars` from the rendered configuration: `BRIDGE_URL`, `LINEAR_REDIRECT_URI`, `LINEAR_SCOPES`, and `SERVICE_NAME`. After a successful Wrangler deployment, it now also publishes `BRIDGE_SHARED_SECRET`, `LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`, and `LINEAR_WEBHOOK_SECRET` as encrypted Cloudflare Worker secrets. All five agents use this flow. The command checks that all four source secrets are set before deploying; a failed secret upload returns an error. For secrets-only updates, run `bash scripts/with-env.sh worker mock sync-secrets`.
+
+## Automatic Worker Custom Domain
+
+During `npm run deploy -- mock`, the private Wrangler configuration now includes a Cloudflare Custom Domain route for `linear-mock.yourdomain.com`. The generator derives this from `MOCK_PREFIX` and `DOMAIN` and uses `custom_domain: true`. The same behavior applies to all five Workers. The bridge/Tunnel hostname `mock-agent.yourdomain.com` is **not** attached as a Worker route. You must configure the Tunnel separately. A conflicting DNS CNAME on the Worker hostname must be removed before Cloudflare can attach it; do not delete a CNAME on the bridge hostname. Worker custom-domain creation requires the relevant Cloudflare permissions and zone ownership. This route is reconciled on each deployment, not only the first.
