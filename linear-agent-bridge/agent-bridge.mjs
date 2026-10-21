@@ -43,23 +43,20 @@ const TRAE_HOST =
 const GEMINI_HOST =
   process.env.GEMINI_HOST || "gemini-agent.revrebel.io";
 
-// Workspaces.
-const AGENT_WORKSPACE = process.env.AGENT_WORKSPACE || PROJECT_DIR;
-
-const ANTIGRAVITY_WORKSPACE =
-  process.env.ANTIGRAVITY_WORKSPACE || AGENT_WORKSPACE;
-const CHATGPT_WORKSPACE =
-  process.env.CHATGPT_WORKSPACE || AGENT_WORKSPACE;
+// Legacy agent workspace overrides referred to an older checkout location.
+// All actual jobs now launch from resolveJobRoute(), using routing.json.
+// Report the running bridge directory here, not stale workspace variables.
+const AGENT_WORKSPACE = PROJECT_DIR;
+const ANTIGRAVITY_WORKSPACE = PROJECT_DIR;
+const CHATGPT_WORKSPACE = PROJECT_DIR;
 
 const TRAE_BIN = process.env.TRAE_BIN || "";
-const TRAE_WORKSPACE =
-  process.env.TRAE_WORKSPACE || AGENT_WORKSPACE;
+const TRAE_WORKSPACE = PROJECT_DIR;
 const TRAE_ARGS_TEMPLATE =
   process.env.TRAE_ARGS_TEMPLATE || "chat --reuse-window --maximize {{PROMPT}}";
 
 const GEMINI_BIN = process.env.GEMINI_BIN || "";
-const GEMINI_WORKSPACE =
-  process.env.GEMINI_WORKSPACE || AGENT_WORKSPACE;
+const GEMINI_WORKSPACE = PROJECT_DIR;
 const GEMINI_LAUNCH_MODE = process.env.GEMINI_LAUNCH_MODE || "headless";
 const GEMINI_ARGS_TEMPLATE =
   process.env.GEMINI_ARGS_TEMPLATE ||
