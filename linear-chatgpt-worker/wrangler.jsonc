@@ -12,13 +12,13 @@
   "kv_namespaces": [
     {
       "binding": "LINEAR_DATA",
-      "id": "CONFIGURED_FROM_ENV",
+      "id": "${CHATGPT_KV_NAMESPACE_ID}",
     },
   ],
   "vars": {
-    "SERVICE_NAME": "linear-chatgpt-agent",
-    "LINEAR_REDIRECT_URI": "https://linear-chatgpt.yourdomain.com/oauth/callback",
+    "SERVICE_NAME": "linear-${CHATGPT_PREFIX}-agent",
+    "LINEAR_REDIRECT_URI": "https://linear-${CHATGPT_PREFIX}.${DOMAIN}/oauth/callback",
     "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
-    "BRIDGE_URL": "https://chatgpt-agent.yourdomain.com/jobs"
+    "BRIDGE_URL": "https://${CHATGPT_PREFIX}-agent.${DOMAIN}/jobs"
   },
 }
