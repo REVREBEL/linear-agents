@@ -6,16 +6,22 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { resolve } from "node:path";
 import { homedir } from "node:os";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 
 function usage() {
-  console.error('Usage: npm run chatgpt:playwright -- --project-url "https://chatgpt.com/g/..." --prompt "test message"');
+  console.error('Usage: npm run chatgpt:playwright -- --project-url "https://chatgpt.com/g/..." --prompt "test message" [--keep-open] OR --handoff-file /path/to/handoff.json');
   process.exit(2);
 }
 const args = process.argv.slice(2);
 function value(flag) { const index = args.indexOf(flag); return index < 0 ? undefined : args[index+1]; }
-const projectUrl = value("--project-url");
-const prompt = value("--prompt");
+const handoffFile = value("--handoff-file");
+let projectUrl = value("--project-url");
+let prompt = value("--prompt");
+if (handoffFile) {
+  const handoff = JSON.parse(await readFile(resolve(handoffFile), "utf8"));
+  projectUrl = handoff.projectUrl;
+  prompt = handoff.prompt;
+}
 const keepOpen = args.includes("--keep-open");
 if (!projectUrl || !prompt || args.includes("--help")) usage();
 const url = new URL(projectUrl);
