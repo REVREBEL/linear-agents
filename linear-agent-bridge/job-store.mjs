@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 // mkdir is atomic for competing requests to the same delivery on one host.
 export function createJobStore(root) {
   const ledger = path.join(root, "job-state");
+  const pendingWrites = new Map();
   const entryPath = (key) => path.join(ledger, crypto.createHash("sha256").update(key).digest("hex"));
   async function write(entry, record) {
     const temp = path.join(entry, `state.${crypto.randomUUID()}.tmp`);
@@ -35,11 +36,18 @@ export function createJobStore(root) {
       return { created: true, record };
     },
     async transition(key, state, updates = {}) {
-      const entry = entryPath(key);
-      const current = await read(entry);
-      const record = { ...current, ...updates, state, updatedAt: new Date().toISOString() };
-      await write(entry, record);
-      return record;
+      // Serialize transitions per delivery to avoid close/spawn and crash races.
+      const previous = pendingWrites.get(key) || Promise.resolve();
+      const current = previous.catch(() => {}).then(async () => {
+        const entry = entryPath(key);
+        const record = { ...await read(entry), ...updates, state, updatedAt: new Date().toISOString() };
+        await write(entry, record);
+        return record;
+      });
+      pendingWrites.set(key, current);
+      try { return await current; } finally {
+        if (pendingWrites.get(key) === current) pendingWrites.delete(key);
+      }
     },
     async reconcile() {
       await fs.mkdir(ledger, { recursive: true, mode: 0o700 });
