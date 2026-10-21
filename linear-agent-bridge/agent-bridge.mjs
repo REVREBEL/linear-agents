@@ -165,16 +165,7 @@ const server = http.createServer(async (request, response) => {
       console.warn(`Unable to set local Git exclusion for task directory: ${error.message}`);
     }
     const filename = path.join(taskDir, `${safeJobId}.json`);
-    const originalPrompt = extractPromptContext(job);
-    const scopeHeader = [
-      "Verified local routing context:",
-      `Repository root: ${route.repositoryRoot}`,
-      `Primary project scope: ${route.projectScope}`,
-      `Agent launch directory: ${route.launchDirectory}`,
-      `Local task file: ${filename}`,
-      "Respect the original issue's explicit scope, restrictions and repository-wide guidance.",
-      "",
-    ].join("\n");
+    const directTask = extractDirectTask(extractPromptContext(job));
     // Persist and dispatch one canonical prompt. The raw Linear webhook embeds
     // the same issue in agentSession.issue and promptContext; keeping it
     // duplicates instructions and unnecessarily expands downstream context.
@@ -188,7 +179,7 @@ const server = http.createServer(async (request, response) => {
       completionUrl: job.completionUrl,
       payload: {
         data: {
-          promptContext: originalPrompt ? scopeHeader + originalPrompt : undefined,
+          promptContext: directTask,
           agentSessionId: job.agentSessionId ?? job.payload?.data?.agentSessionId,
           completionUrl: job.completionUrl ?? job.payload?.data?.completionUrl,
         },
@@ -627,6 +618,28 @@ function extractAgentSessionId(job) {
     original?.agentSessionId,
     original?.data?.agentSessionId,
   ]);
+}
+
+function extractDirectTask(prompt) {
+  if (!prompt) return undefined;
+  // Linear's promptContext already contains the issue's instruction. For
+  // created issue sessions, discard generated project summaries, synced
+  // comment banners, agent guidance, and redundant wrapper text. Do not
+  // filter the issue description itself: its safety/scope rules are task data.
+  const issue = prompt.match(/<issue\\b[^>]*identifier="([^"]+)"[^>]*>([\\s\\S]*?)<\\/issue>/);
+  if (!issue) return prompt;
+  const title = issue[2].match(/<title>([\\s\\S]*?)<\\/title>/)?.[1]?.trim();
+  const description = issue[2].match(/<description>([\\s\\S]*?)<\\/description>/)?.[1]?.trim();
+  if (!title || !description) return prompt;
+  const request = prompt.match(/<user-request>([\\s\\S]*?)<\\/user-request>/)?.[1]?.trim();
+  const isGenericRequest = request && /^Work on \\[?[A-Z]+-\\d+/i.test(request);
+  return [
+    `Issue: ${issue[1]}`,
+    `Title: ${title}`,
+    "",
+    description,
+    ...(request && !isGenericRequest ? ["", "Request:", request] : []),
+  ].join("\\n");
 }
 
 function extractPromptContext(job) {
