@@ -178,3 +178,9 @@ npm run types            # all five Workers
 ```
 
 The newly scaffolded Mock Worker does not have a committed generated declaration yet. Run `npm run types -- mock` locally after setting the Mock Worker's KV namespace ID in its Wrangler configuration. The Worker TypeScript configurations include `worker-configuration.d.ts` automatically. For static typechecking, run `npx tsc --noEmit -p linear-mock-worker/tsconfig.json` (or substitute another worker). Generated declaration files may contain runtime-specific configuration metadata, so review generated file changes before committing them.
+
+## Private Worker deployment values
+
+The tracked `wrangler.jsonc` files contain generic example URLs and an invalid placeholder KV ID. Put `DOMAIN=yourdomain.com` and `<AGENT>_KV_NAMESPACE_ID` (for each enabled agent) in the git-ignored root `.env`. The `npm run types -- mock`, `npm run dev -- mock`, and `npm run deploy -- mock` commands automatically load that file and render an untracked temporary Wrangler config, including `LINEAR_REDIRECT_URI`, `BRIDGE_URL`, and the `LINEAR_DATA` KV ID. Config files are removed when each command exits. Use `bash scripts/with-env.sh worker mock sync-secrets` to set OAuth/secrets separately.
+
+Generated `worker-configuration.d.ts` files are deliberately ignored and must be regenerated locally after pulling or updating Wrangler configuration. They may contain domain-specific runtime metadata and should not be committed. Old deployment details present in earlier Git history are not erased by these changes.
