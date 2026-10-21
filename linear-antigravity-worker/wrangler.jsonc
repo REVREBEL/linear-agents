@@ -11,13 +11,13 @@
   "kv_namespaces": [
     {
       "binding": "LINEAR_DATA",
-      "id": "ab6e185720b34329ada2391bbecf14c9",
+      "id": "CONFIGURED_FROM_ENV",
     }
   ],
   "vars": {
     "SERVICE_NAME": "linear-antigravity-agent", 
-    "LINEAR_REDIRECT_URI": "https://linear-antigravity.revrebel.io/oauth/callback",
+    "LINEAR_REDIRECT_URI": "https://linear-antigravity.yourdomain.com/oauth/callback",
     "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
-    "BRIDGE_URL": "https://antigravity-agent.revrebel.io/jobs"
+    "BRIDGE_URL": "https://antigravity-agent.yourdomain.com/jobs"
   }
 }
