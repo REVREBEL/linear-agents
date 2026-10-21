@@ -5,7 +5,7 @@ A fifth, **isolated** Linear app for exercising the assignment -> local queue ->
 ## Linear and Cloudflare setup (manual)
 
 1. Create a new Linear OAuth agent app for Mock Agent with the same OAuth permissions and webhook configuration as the existing Antigravity agent.
-2. Create a **new** Cloudflare KV namespace; set `MOCK_KV_NAMESPACE_ID` in the ignored root `.env` (do not reuse another agent's KV namespace).
+2. Run `npm run setup:kv -- mock` to create or reuse a dedicated Mock KV namespace and write `MOCK_KV_NAMESPACE_ID` into the ignored root `.env`. Do not share it with another agent.
 3. Configure `linear-mock.yourdomain.com` for OAuth and webhook traffic and `mock-agent.yourdomain.com` to forward to the local bridge's existing `/jobs` listener through your tunnel. Verify routing and security before enabling.
 4. Add `MOCK_LINEAR_CLIENT_ID`, `MOCK_LINEAR_CLIENT_SECRET`, `MOCK_LINEAR_WEBHOOK_SECRET`, and `MOCK_HOST=mock-agent.yourdomain.com` to your local ignored root `.env`. Configure the Worker secrets including `BRIDGE_SHARED_SECRET`.
 5. The Mock Worker is included in the npm workspaces. After completing KV, DNS, OAuth, tunnel and secret setup, use `npm run deploy -- mock` and `bash scripts/with-env.sh worker mock sync-secrets`. Avoid `deploy -- all` until every Worker is configured.
@@ -47,3 +47,15 @@ The CLI loads `LINEAR_API_KEY` from your ignored root `.env` via `scripts/with-e
 ## Private Worker configuration
 
 Put `DOMAIN=yourdomain.com` and `MOCK_KV_NAMESPACE_ID=<namespace ID>` in the ignored root `.env`. The committed `wrangler.jsonc` contains explicit `${MOCK_KV_NAMESPACE_ID}`, `${MOCK_PREFIX}`, and `${DOMAIN}` template strings. Wrangler itself does not expand them; the npm wrapper renders them into a temporary config before running Wrangler. Do not run raw `wrangler deploy` against the tracked template. `npm run types -- mock` and `npm run deploy -- mock` load `.env`, write an untracked temporary Wrangler configuration, use it, and delete it after completion. The OAuth redirect and bridge URLs are derived from `DOMAIN`, not committed. The same process applies to all five agents.
+
+## Automating KV namespace setup
+
+Configure `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (KV namespace read/write permission), and `MOCK_PREFIX=mock` in the ignored root `.env`. Then run:
+
+```bash
+npm run setup:kv -- mock
+npm run types -- mock
+npm run deploy -- mock
+```
+
+`setup:kv` uses Cloudflare's API to find the existing namespace named `LINEAR_MOCK_DATA`; if absent, it creates it. The script updates the existing empty `MOCK_KV_NAMESPACE_ID=` line in the ignored `.env` or appends that key if missing. Existing nonempty IDs are checked against Cloudflare and are never overwritten; conflicting or duplicate namespaces fail safely. Run `npm run setup:kv -- all` to provision all five. This creates KV namespaces only; it does not deploy a Worker, configure DNS, synchronize secrets, or install the app in Linear.
