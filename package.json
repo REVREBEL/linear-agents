@@ -27,7 +27,10 @@
     "chatgpt:playwright": "node scripts/chatgpt-playwright/handoff-test.mjs",
     "mock:agent": "bash scripts/with-env.sh mock-agent",
     "setup:kv": "node scripts/workspace-command.mjs kv",
-    "restart:bridge":"zsh scripts/restart-bridge.sh",
+    "bridge:load": "./scripts/bridge.sh load",
+    "bridge:unload": "./scripts/bridge.sh unload",
+    "bridge:restart": "./scripts/bridge.sh restart",
+    "bridge:status": "./scripts/bridge.sh status",
     "log:messages": "npx wrangler tail linear-mock-agent --format pretty"
   },
   "devDependencies": {
