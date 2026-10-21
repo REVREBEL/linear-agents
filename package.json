@@ -18,7 +18,8 @@
     "terraform:init": "bash scripts/with-env.sh terraform init",
     "terraform:validate": "bash scripts/with-env.sh terraform validate",
     "terraform:plan": "bash scripts/with-env.sh terraform plan",
-    "terraform:fmt": "bash scripts/with-env.sh terraform fmt -check"
+    "terraform:fmt": "bash scripts/with-env.sh terraform fmt -check",
+    "linear:projects": "bash scripts/with-env.sh linear-projects"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260701.0",
