@@ -25,7 +25,8 @@
     "terraform:get-ids": "bash scripts/get-terraform-ids.sh",
     "linear:projects": "bash scripts/with-env.sh linear-projects",
     "chatgpt:playwright": "node scripts/chatgpt-playwright/handoff-test.mjs",
-    "mock:agent": "bash scripts/with-env.sh mock-agent"
+    "mock:agent": "bash scripts/with-env.sh mock-agent",
+    "setup:kv": "node scripts/workspace-command.mjs kv"
   },
   "devDependencies": {
     "typescript": "^5.8.3",
