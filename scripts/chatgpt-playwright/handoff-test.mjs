@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Manual, supervised ChatGPT Project navigation and prompt submission test.
-// Not wired to incoming Linear jobs or background services.
+// ChatGPT conversation handoff via a persistent, independently launched Chrome.
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
@@ -129,11 +128,6 @@ try {
   // ProseMirror/contenteditable editors may represent line breaks and spaces
   // differently from the original plain-text prompt. Do not send if content
   // is genuinely missing, but avoid a false mismatch on normalized whitespace.
-  const normalizeEditorText = value => value
-    .replace(/\r\n?/g, "\n")
-    .replace(/\u00a0/g, " ")
-    .replace(/\u200b/g, "")
-    .trim();
   const inserted = await composer.innerText();
   if (!inserted.trim()) {
     throw new Error("Composer is empty after input; refusing to send.");
@@ -146,18 +140,8 @@ try {
     console.log("Submission attempted in:", activePage.url());
     console.log("Check that the message appears in the intended project chat.");
   }
-  if (autoSend && !keepOpen) {
-    console.log("Automatic prompt submission attempted; response monitoring and Linear callback are not implemented.");
-  } else if (keepOpen) {
-    console.log("Keeping Chrome open while this process runs. Press Ctrl+C to close the test session.");
-    rl.close();
-    await new Promise(resolve => {
-      process.once("SIGINT", resolve);
-      browser.once("disconnected", resolve);
-    });
-  } else {
-    await rl.question("Press Return to close this test browser (or use --keep-open next time): ");
-  }
+  console.log("Automation handoff finished. Chrome remains open independently.");
+
 } catch (error) {
   console.error("Playwright handoff failed:", error.message);
   process.exitCode = 1;
