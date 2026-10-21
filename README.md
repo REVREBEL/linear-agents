@@ -2,6 +2,23 @@
 
 For a login-started local bridge, use the [macOS LaunchAgent setup guide](docs/MACOS_LAUNCHAGENT.md) and [validated plist template](scripts/macos/agent-bridge.plist.example). Run `bash scripts/macos/install-launchagent.sh` after configuring the root `.env`. This installs the plist without restarting the running bridge.
 
+## Node.js dependencies and npm workspaces
+
+The four Cloudflare Workers are npm workspaces managed from the repository root. Run **one** installation from the root rather than `npm install` in each Worker folder. The root `package-lock.json` is the canonical lockfile, and dependencies are installed in root `node_modules/`.
+
+```bash
+npm ci
+npm test                           # local job-store tests
+npm run types                      # Wrangler types for all four Workers
+npm run dev -- gemini              # develop one Worker
+npm run deploy -- antigravity      # deploy one Worker
+npm run deploy -- all              # deploy all four, sequentially
+```
+
+To target a single Workspace directly, npm also supports `npm run dev --workspace=linear-trae-worker` (and the corresponding `deploy`/`types` scripts). `npm run dev -- all` is intentionally disallowed because a Wrangler dev server remains running. `npm ci` sets up the shared toolchain for all four; no per-agent dependency installation is needed. A Worker can be deployed independently, and each retains its own `wrangler.jsonc`, KV binding, and OAuth secrets.
+
+For local development with the root `.env`, continue to use `bash scripts/with-env.sh worker <agent> dev`. For production, `bash scripts/with-env.sh worker <agent> deploy` and `... sync-secrets` remain supported. The wrapper now uses `node_modules/.bin/wrangler` from the root, so install dependencies first. **Do not use `npm run deploy` as a substitute for syncing secrets or configuring Cloudflare credentials.** The Python bridge environment remains separate in `linear-agent-bridge/.venv/`.
+
 ## Local environment and Terraform
 
 All local credentials and Cloudflare resource IDs are configured through one root [`.env.example`](.env.example). Copy it to an ignored `.env`. Use [`scripts/with-env.sh`](scripts/with-env.sh) to load that file for Terraform, local Worker development, production Worker secret uploads and manual bridge launches. No per-Agent `.dev.vars.example` or `.tfvars` file is required. See the [Cloudflare setup guide](infrastructure/cloudflare/README.md) before importing existing security resources; do not run Terraform apply until the deployed WAF ruleset and list are reconciled.
@@ -66,7 +83,7 @@ linear-chatgpt-worker/
 run_agent.py             # Antigravity CLI runner
 ```
 
-Each Worker has its own `wrangler.jsonc`, `src/index.ts`, and package configuration. The shared source is duplicated between Worker folders, so a fix in one does **not** automatically reach the others.
+Each Worker retains its own `wrangler.jsonc`, `src/index.ts`, and workspace `package.json`, while npm dependencies and the lockfile are shared at the root. The shared source is duplicated between Worker folders, so a fix in one does **not** automatically reach the others.
 
 ## Setup overview
 
@@ -76,7 +93,7 @@ Each Worker has its own `wrangler.jsonc`, `src/index.ts`, and package configurat
 4. Configure `SERVICE_NAME`, `LINEAR_REDIRECT_URI`, `LINEAR_SCOPES` and `BRIDGE_URL` in its `wrangler.jsonc`.
 5. Set Worker secrets `LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`, `LINEAR_WEBHOOK_SECRET`, `BRIDGE_SHARED_SECRET`. Never commit their values.
 6. Configure Tunnel hostname `<agent>-agent.revrebel.io` to the Mac listener on `http://127.0.0.1:8788`. Ensure the actual deployed bridge routes by hostname.
-7. From the target Worker directory, run `npm install` and `npx wrangler deploy`, then open `https://linear-<agent>.revrebel.io/install` to complete OAuth.
+7. From the repository root, run `npm ci` and deploy the selected Worker using `bash scripts/with-env.sh worker <agent> deploy`, then open `https://linear-<agent>.revrebel.io/install` to complete OAuth.
 8. Delegate a non-destructive test issue, verify initial Agent Activity, local delivery, agent acknowledgment and authenticated completion.
 
 Example checks (substitute the correct agent):
