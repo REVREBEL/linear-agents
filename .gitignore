@@ -164,3 +164,6 @@ scripts/chatgpt-playwright/package-lock.json
 
 # Generated Wrangler configs containing private deployment values
 **/wrangler.local.*.jsonc
+
+# Regenerated Wrangler declarations contain deployment-specific values
+**/worker-configuration.d.ts
