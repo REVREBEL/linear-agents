@@ -26,13 +26,13 @@
   "kv_namespaces": [
     {
       "binding": "LINEAR_DATA",
-      "id": "ac66956f443c4c388cca895758672ed7"
+      "id": "CONFIGURED_FROM_ENV"
     }
   ],
   "vars": {
     "SERVICE_NAME": "linear-trae-agent",
-    "LINEAR_REDIRECT_URI": "https://linear-trae.revrebel.io/oauth/callback",
+    "LINEAR_REDIRECT_URI": "https://linear-trae.yourdomain.com/oauth/callback",
     "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
-    "BRIDGE_URL": "https://trae-agent.revrebel.io/jobs"
+    "BRIDGE_URL": "https://trae-agent.yourdomain.com/jobs"
   }
 }
