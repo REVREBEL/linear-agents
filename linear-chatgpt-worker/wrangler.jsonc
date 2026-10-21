@@ -1,6 +1,6 @@
 /** @format */
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "linear-chatgpt-agent",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-01",
