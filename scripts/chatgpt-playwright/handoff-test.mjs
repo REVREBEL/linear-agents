@@ -75,10 +75,16 @@ await mkdir(profile, { recursive: true, mode: 0o700 });
 const rl = createInterface({ input: stdin, output: stdout });
 let browser;
 try {
-  browser = await connectOrStartChrome();
-  const context = browser.contexts()[0];
+  // Headless tests use Playwright's native browser lifecycle. Never launch
+  // the macOS Chrome application or connect to a potentially visible CDP browser.
+  browser = headless
+    ? await chromium.launch({ headless: true, channel: "chromium" })
+    : await connectOrStartChrome();
+  const context = headless
+    ? await browser.newContext({ storageState: undefined })
+    : browser.contexts()[0];
   if (!context) throw new Error("Chrome did not expose a browser context.");
-  console.log("Connected to independently running Chrome (CDP)", cdpAddress);
+  console.log(headless ? "Launched native headless Chromium" : "Connected to independently running Chrome (CDP)", headless ? "" : cdpAddress);
   console.log("Playwright PID:", process.pid, "keepOpen:", keepOpen, "profile:", profile);
   browser.on("disconnected", () => console.error("Playwright disconnected from Chrome; browser may still be running."));
   process.on("exit", code => console.error("Playwright process exit:", code));
@@ -153,7 +159,7 @@ try {
   process.exitCode = 1;
 } finally {
   rl.close();
-  // Detach Playwright. Chrome remains independently running even if an
+  // Headless Chromium is disposed after the test. Visible Chrome remains\n  // independently running even if an
   // automation job exits or another Linear event arrives.
   if (browser?.isConnected()) await browser.close();
 }
