@@ -586,11 +586,15 @@ async function resolveJobRoute(job) {
   if (chatgptProjectUrl !== undefined) {
     try {
       const destination = new URL(chatgptProjectUrl);
-      const projectPath = /^\\/g\\/g-p-[^/]+(?:\\/)?$/;
-      const conversationPath = /^\\/g\\/g-p-[^/]+\\/c\\/[^/]+\\/?$/;
+      const segments = destination.pathname.split("/").filter(Boolean);
+      const isProjectPath = segments.length === 2 &&
+        segments[0] === "g" && segments[1].startsWith("g-p-");
+      const isConversationPath = segments.length === 4 &&
+        segments[0] === "g" && segments[1].startsWith("g-p-") &&
+        segments[2] === "c" && Boolean(segments[3]);
       const validPath = chatgptConversationMode === "reuse-existing"
-        ? conversationPath.test(destination.pathname)
-        : chatgptConversationMode === "new-per-issue" && projectPath.test(destination.pathname);
+        ? isConversationPath
+        : chatgptConversationMode === "new-per-issue" && isProjectPath;
       if (destination.protocol !== "https:" || destination.hostname !== "chatgpt.com" ||
           destination.search || destination.hash || !validPath) {
         return { ok: false, error: `Invalid chatgpt.projectUrl or conversationMode for Linear project ${projectId}` };
