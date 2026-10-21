@@ -340,14 +340,6 @@ async function handleLinearWebhook(
   completionUrl.pathname = "/complete";
   completionUrl.search = "";
 
-  const promptWithCompletion = agentSessionId
-    ? appendCompletionInstruction(
-      promptContext,
-      completionUrl.toString(),
-      agentSessionId,
-    )
-    : promptContext;
-
   // Fetch authoritative issue metadata for the routed job. PR and review
   // evidence must be read from GitHub/Linear when they actually exist.
   let routing: { projectId: string; projectName: string; initiativeIds: string[] } | undefined;
@@ -400,7 +392,7 @@ async function handleLinearWebhook(
     completionUrl: completionUrl.toString(),
     payload: {
       data: {
-        promptContext: promptWithCompletion,
+        promptContext,
         agentSessionId,
         completionUrl: completionUrl.toString(),
       },
@@ -534,44 +526,6 @@ async function handleAgentComplete(
     activityType,
   });
 }
-
-function appendCompletionInstruction(
-  promptContext: string,
-  completionUrl: string,
-  agentSessionId: string,
-): string {
-  const completionPayload = JSON.stringify({
-    agentSessionId,
-    status: "completed",
-  });
-
-  const failurePayload = JSON.stringify({
-    agentSessionId,
-    status: "failed",
-  });
-
-  return `${promptContext}
-
----
-
-Linear Agent Session Completion
-
-When the task is complete, call this webhook once so Linear does not time out the agent session. This completion webhook is only for Linear session status. Add detailed work notes, comments, branches, PR links, and implementation details directly in Linear as usual.
-
-curl -X POST "${completionUrl}" \\
-  -H "Authorization: Bearer $BRIDGE_SHARED_SECRET" \\
-  -H "Content-Type: application/json" \\
-  -d '${completionPayload}'
-
-If the task fails and cannot continue, call the same webhook with:
-
-curl -X POST "${completionUrl}" \\
-  -H "Authorization: Bearer $BRIDGE_SHARED_SECRET" \\
-  -H "Content-Type: application/json" \\
-  -d '${failurePayload}'
-`;
-}
-
 
 async function forwardToMacBridge(
   bridgeJob: Record<string, unknown>,
