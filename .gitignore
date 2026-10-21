@@ -167,3 +167,4 @@ scripts/chatgpt-playwright/package-lock.json
 
 # Regenerated Wrangler declarations contain deployment-specific values
 **/worker-configuration.d.ts
+linear-mock-worker/worker-configuration.d.ts
