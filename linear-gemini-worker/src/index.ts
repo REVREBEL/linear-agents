@@ -501,6 +501,27 @@ async function handleAgentComplete(
     },
   );
 
+  if (activityType === "response") {
+    // Remove local inbox JSON only after Linear acknowledged completion.
+    // A cleanup outage must not cause a second Linear completion activity.
+    try {
+      const callback = new URL(env.BRIDGE_URL);
+      callback.pathname = "/job-complete";
+      callback.search = "";
+      const cleaned = await fetch(callback.toString(), {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${env.BRIDGE_SHARED_SECRET}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ agentSessionId, status: "completed" }),
+      });
+      if (!cleaned.ok) console.warn("Bridge inbox cleanup unsuccessful", { agentSessionId, status: cleaned.status });
+    } catch (error) {
+      console.warn("Bridge inbox cleanup unavailable", { agentSessionId, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   console.log("Linear Agent Session completion activity sent", {
     agentSessionId,
     organizationId,
