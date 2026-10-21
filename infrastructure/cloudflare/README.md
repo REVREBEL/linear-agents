@@ -29,7 +29,38 @@ bash scripts/with-env.sh terraform fmt
 bash scripts/with-env.sh terraform validate
 ```
 
-**Stop here before importing.** `linear-ips.tf` currently declares the existing account-level IP list but has no item contents. The `waf-rules.tf` file deliberately contains only notes, not a partial WAF ruleset that could overwrite your other rules. After we can inspect the live Cloudflare resources, we will reconcile the full list/ruleset declarations and import both into Terraform state. **Do not run `terraform apply` yet.**
+The list and its 15 webhook IPs are now fully declared by Terraform. The IP snapshot comes from Linear's official `ips` feed; do not add `codingSessionIps` (those serve a different purpose). Check https://linear.app/.well-known/appspecific/app.linear.ips.json before updating/applying.
+
+The WAF ruleset is also declared, but **opted out by default** (`manage_linear_webhook_waf = false`). A zone's custom WAF ruleset is an authoritative ordered array. Creating one without discovering the existing ruleset or importing *all* existing rules can conflict with or replace unrelated security policy. **Never enable the toggle until you have confirmed there is no existing zone entrypoint custom ruleset**, or have imported it and added its existing rules to the resource configuration.
+
+## First-time provisioning (no existing list or WAF custom ruleset)
+
+1. Verify in Cloudflare that the account has **no list named `linear_webhooks`** and the zone has **no existing `http_request_firewall_custom` entrypoint ruleset**. Otherwise, stop and reconcile/import existing resources instead of creating duplicates.
+2. Confirm `DOMAIN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`, and `CLOUDFLARE_API_TOKEN` in root `.env`. Token needs Account Filter Lists Edit/Read and Zone WAF Write.
+3. Start with the list only:
+
+```bash
+bash scripts/with-env.sh terraform init
+bash scripts/with-env.sh terraform fmt -check
+bash scripts/with-env.sh terraform validate
+bash scripts/with-env.sh terraform plan
+# Review that only the IP list is created, then:
+bash scripts/with-env.sh terraform apply
+```
+
+4. Only after confirming no existing custom ruleset, opt into the WAF:
+
+```bash
+TF_VAR_manage_linear_webhook_waf=true bash scripts/with-env.sh terraform plan
+# Review the exact ruleset and changes; only then:
+TF_VAR_manage_linear_webhook_waf=true bash scripts/with-env.sh terraform apply
+```
+
+**Important:** The `TF_VAR_manage_linear_webhook_waf=true` override must also be provided on subsequent Terraform runs. Omitting it after applying would plan **destruction** of the managed WAF ruleset. Persist it in your trusted local `.env` as `TF_VAR_manage_linear_webhook_waf=true` once provisioning is approved.
+
+Never apply a plan that removes other rules or changes their order. Review the Cloudflare dashboard after applying, and confirm a permitted Linear webhook succeeds. The WAF rule applies only to `POST /webhook` on the four configured Worker hostnames; it blocks all other methods or unlisted source IPs there. It does **not** block unrelated probing of other paths such as `/oauth/callback/v1/models`.
+
+If existing resources are discovered, use Terraform import with the correct resource addresses and reconcile all list items and rules before applying. A pre-existing custom ruleset is **not** safely imported by merely adding its ID; first model its full rules array and ordering. Do not use `apply` for the WAF until `plan` shows no unexpected deletions.
 
 Terraform's provider reads `CLOUDFLARE_API_TOKEN` from the environment. Account and zone resource IDs are not confidential, but keep your access token in `.env`.
 
@@ -67,14 +98,3 @@ bash scripts/with-env.sh bridge
 
 This does **not** alter a macOS LaunchAgent already starting the live bridge from another directory. A LaunchAgent will only inherit this central `.env` if you change its startup command to load it or configure those environment variables explicitly. Do not change or restart your running bridge during the Terraform import preparation.
 
-## Next step: importing existing resources
-
-Once values are filled in, we will first read the live list and WAF ruleset and create matching Terraform configuration. Then:
-
-1. `terraform import cloudflare_list.linear_webhooks "ACCOUNT_ID/LIST_ID"`.
-2. Declare the **complete existing** WAF custom ruleset, including unrelated rules and their order, before importing it.
-3. Import the ruleset with the exact ID and resource address.
-4. Run `terraform plan` and confirm **no unexpected changes**.
-5. Only then consider any `apply`.
-
-See [Linear webhook traffic protection](../../docs/LINEAR_WEBHOOK_TRAFFIC_PROTECTION.md) for the intended IP list, WAF expression, and the existing Cloudflare access limitations.
