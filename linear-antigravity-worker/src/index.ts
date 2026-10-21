@@ -250,9 +250,15 @@ async function handleLinearWebhook(
     );
   }
 
-  const promptContext = extractPromptContext(payload);
-  const agentSessionId = extractAgentSessionId(payload);
   const action = stringValue(payload.action);
+  const isAgentFollowup = (request.headers.get("linear-event") || stringValue(payload.type)) === "AgentSessionEvent" &&
+    action === "prompted";
+  const followupBody = stringValue(getNested(payload, "agentActivity", "content", "body")) ||
+    stringValue(getNested(payload, "data", "agentActivity", "content", "body"));
+  // Follow-up events carry the new instruction in agentActivity rather than
+  // promptContext. Dispatch only that instruction, not the whole issue again.
+  const promptContext = isAgentFollowup ? followupBody : extractPromptContext(payload);
+  const agentSessionId = extractAgentSessionId(payload);
 
   // Linear expects an Agent Activity within 10 seconds for a newly created
   // Agent Session. A normal HTTP 200/202 from the webhook or local bridge is
@@ -374,6 +380,7 @@ async function handleLinearWebhook(
   const bridgeJob = {
     routing,
     source: "linear",
+    sessionAction: isAgentFollowup ? "prompted" : "created",
     receivedAt: new Date().toISOString(),
     organizationId: installation.organizationId,
     agentSessionId,
