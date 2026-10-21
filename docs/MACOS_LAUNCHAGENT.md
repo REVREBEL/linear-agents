@@ -4,9 +4,9 @@ The `<reverse-DOMAIN>.agent-bridge` LaunchAgent starts the local Linear bridge a
 
 ## Template placeholders
 
-[`scripts/macos/agent-bridge.plist.example`](../scripts/macos/agent-bridge.plist.example) is a valid XML property list **template**. Its `__REPO_ROOT__` and `__LAUNCHAGENT_LABEL__` tokens is not a macOS or `launchd` variable: it is a replacement marker consumed by [`scripts/macos/install-launchagent.sh`](../scripts/macos/install-launchagent.sh). Do **not** copy the unrendered template into `~/Library/LaunchAgents`.
+[`scripts/macos/agent-bridge.plist.example`](../scripts/macos/agent-bridge.plist.example) is a valid XML property list **template**. Its `__REPO_ROOT__` and `__LAUNCHAGENT_LABEL__` tokens are not macOS or `launchd` variables: they are replacement markers consumed by [`scripts/macos/install-launchagent.sh`](../scripts/macos/install-launchagent.sh). Do **not** copy the unrendered template into `~/Library/LaunchAgents`.
 
-The installer reads `DOMAIN` from the trusted root `.env`, reverses its DNS labels (for example, `example.com` becomes `com.example.agent-bridge`), and uses that value for both the service label and plist filename. It discovers the absolute repo location, expands the template markers, checks the XML with `plutil -lint`, backs up any existing plist, and writes a valid plist to `~/Library/LaunchAgents/<reverse-DOMAIN>.agent-bridge.plist`. It does **not** restart the service.
+The installer reads `DOMAIN` from the trusted root `.env`, reverses its DNS labels (for example, `example.com` becomes `com.example.agent-bridge`), and uses that value for both the service label and plist filename. It discovers the absolute repo location, expands the template markers, checks the XML with `plutil -lint`, backs up any existing plist, and writes a valid plist to `~/Library/LaunchAgents/<reverse-DOMAIN>.agent-bridge.plist`. It does **not** restart the service. Before writing the plist, it also sets up the bridge-local Python virtual environment and installs its declared requirements.
 
 The template uses:
 
@@ -25,14 +25,21 @@ cd /path/to/linear-agents
 cp .env.example .env  # only if you have not already created .env
 # Fill in .env, including BRIDGE_SHARED_SECRET, PROJECTS_ROOT and executable paths.
 bash scripts/macos/install-launchagent.sh
-ls ~/Library/LaunchAgents/*agent-bridge.plist\n# Inspect the generated plist that matches your DOMAIN.
+ls ~/Library/LaunchAgents/*agent-bridge.plist
+# Inspect the generated plist that matches your DOMAIN.
 ```
 
 The bridge wrapper exports `REPO_ROOT` and sources the trusted local `.env`. In particular, confirm `ROUTING_CONFIG_FILE` points to the actual routing JSON. The central example still requires configuring that file and all mandatory secret values.
 
-**Migration from an existing install:** If your previous service has a different label, installing the new plist does **not** unload or replace the old service. Unload and remove the old plist only after recording its settings and verifying the replacement, to avoid two bridges competing for port 8788.  stop active agent jobs first. The installer backs up your current plist but writes a replacement that launches the bridge from the **current Git checkout**, not an older `~/.linear-agent-bridge` copy. Before loading the replacement, verify the required Node.js executable, Python environment, Antigravity runner, Gemini and Trae binaries, routing file, and the root `.env` file all work from this checkout.
+**Migration from an existing install:** If your previous service has a different label, installing the new plist does **not** unload or replace the old service. Unload and remove the old plist only after recording its settings and verifying the replacement, to avoid two bridges competing for port 8788. Stop active agent jobs first. The installer backs up your current plist but writes a replacement that launches the bridge from the **current Git checkout**, not an older `~/.linear-agent-bridge` copy. Before loading the replacement, verify the required Node.js executable, Python environment, Antigravity runner, Gemini and Trae binaries, routing file, and the root `.env` file all work from this checkout.
 
 The old `EnvironmentVariables` dictionary should not be carried forward after equivalent values are set in `.env`. Do not put API tokens or the bridge shared secret in the plist.
+
+## Python runner environment
+
+The installer automatically creates `linear-agent-bridge/.venv` using `python3 -m venv` and installs dependencies from `linear-agent-bridge/requirements.txt` (currently `requests`). It reuses an existing environment and refreshes requirements on subsequent runs. Python **3.10 or newer** is required. The runtime already defaults to `linear-agent-bridge/.venv/bin/python` and `linear-agent-bridge/run_agent.py`, so neither `PYTHON_BIN` nor `RUN_AGENT_PATH` is needed in `.env`. If a prior `.env` still contains an old `PYTHON_BIN` override, remove it before running the installer. The installer refuses conflicting overrides rather than silently using the wrong Python executable.
+
+The installer requires network access to install any missing Python packages; failure stops installation before replacing the plist. It does not move or remove an older `~/.linear-agent-bridge/.venv`.
 
 ## Load or reload
 
