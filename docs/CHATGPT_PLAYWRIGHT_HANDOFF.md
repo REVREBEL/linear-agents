@@ -30,3 +30,15 @@ This does not read or scrape response contents, provide guaranteed conversation 
 ## Clean up
 
 Quit the test browser normally. Delete `~/.linear-agents-chatgpt-playwright` manually if you want to remove the dedicated login/profile. The profile is not inside the Git repository.
+
+## Linear bridge mapping (supervised only)
+
+In your **local** ignored `linear-agent-bridge/routing.json`, configure `projects[LINEAR_PROJECT_UUID].chatgpt.projectUrl` with a ChatGPT Project base URL. The bridge checks that the URL is a `https://chatgpt.com/g/g-p-...` project URL. Do not include a `/c/...` existing conversation suffix if you want a new chat.
+
+Set `CHATGPT_HANDOFF_MODE=supervised-playwright` in the root `.env` and restart the bridge **only when no jobs are active**. This mode does **not** automatically send messages or open Chrome from launchd. On a valid Linear ChatGPT job, the bridge writes a private `*.chatgpt-handoff.json` alongside the existing job JSON and records `awaiting_external` in the ledger. Find the path in the bridge logs. Then run:
+
+```bash
+npm run chatgpt:playwright -- --handoff-file "/absolute/path/to/job.json.chatgpt-handoff.json" --keep-open
+```
+
+The supervised controller opens the mapped Project, waits for you to select a new conversation, fills the prompt, and requests `SEND`. Existing conversation targeting, unattended/browser background job dispatch, response capture, and completion callbacks are **not** implemented. The successful Playwright test does not establish these capabilities. The bridge's existing initiative/repository routing requirements still apply; standalone projects without a mapped initiative may be rejected before ChatGPT handoff.
