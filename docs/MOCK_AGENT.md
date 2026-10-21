@@ -10,6 +10,12 @@ A fifth, **isolated** Linear app for exercising the assignment -> local queue ->
 4. Add `MOCK_LINEAR_CLIENT_ID`, `MOCK_LINEAR_CLIENT_SECRET`, `MOCK_LINEAR_WEBHOOK_SECRET`, and `MOCK_HOST=mock-agent.yourdomain.com` to your local ignored root `.env`. Configure the Worker secrets including `BRIDGE_SHARED_SECRET`.
 5. The Mock Worker is included in the npm workspaces. After completing KV, DNS, OAuth, tunnel and secret setup, use `npm run deploy -- mock` and `bash scripts/with-env.sh worker mock sync-secrets`. Avoid `deploy -- all` until every Worker is configured.
 
+## Install the agent in Linear
+
+The install endpoint is `https://linear-mock.yourdomain.com/install`, not `https://mock-agent.yourdomain.com`. The former is the Cloudflare Worker; the latter is the tunnel forwarding `/jobs` to the local bridge. Configure and deploy the Worker, attach its custom domain in Cloudflare, synchronize Worker secrets, then visit `/install` to authorize the Linear OAuth app. Check `/health` on the Worker first.
+
+Cloudflare Error 1014 (CNAME Cross-User Banned) concerns DNS or hostname association, not IP allowlisting. Check the tunnel hostname's CNAME target and account association.
+
 ## Inspect a received job
 
 Mock delivery state is stored under `~/.linear-agents/linear-agent-bridge/linear-jobs/job-state`; unroutable Mock requests are saved under `linear-jobs/mock`. Successfully routed jobs are stored in the target repository's `.linear-agent/projects/<Linear-project-UUID>/inbox/` folder. Find the file path in the bridge log. Then:
