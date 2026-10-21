@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // Select one or all Worker workspaces using one shared root dependency installation.
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
 const agents = ["antigravity", "chatgpt", "gemini", "trae", "mock"];
 const [command, requestedArg, ...extra] = process.argv.slice(2);
 const requested = requestedArg || (command === "types" ? "all" : undefined);
@@ -24,6 +27,6 @@ if (command === "install") {
   process.exit(result.status ?? 1);
 }
 for (const agent of (requested === "all" ? agents : [requested])) {
-  const result = spawnSync("npm", ["run", command, "--workspace", `linear-${agent}-worker`, "--", ...extra], { stdio: "inherit", shell: process.platform === "win32" });
+  const result = spawnSync("bash", [path.join(root,"scripts/with-env.sh"), "worker", agent, command, ...extra], { cwd:root, stdio:"inherit" });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
