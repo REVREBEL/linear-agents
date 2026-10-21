@@ -102,9 +102,28 @@ try {
   await composer.click();
   await composer.fill(prompt);
   console.log("Editor received input, checking value...");
-  const inserted = (await composer.innerText()).trim();
-  if (inserted !== prompt) {
-    throw new Error("Composer did not retain the prompt. Check the ChatGPT tab before retrying.");
+  // ProseMirror/contenteditable editors may represent line breaks and spaces
+  // differently from the original plain-text prompt. Do not send if content
+  // is genuinely missing, but avoid a false mismatch on normalized whitespace.
+  const normalizeEditorText = value => value
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/\u200b/g, "")
+    .trim();
+  let inserted = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    inserted = await composer.innerText();
+    if (normalizeEditorText(inserted) === normalizeEditorText(prompt)) break;
+    await activePage.waitForTimeout(350);
+  }
+  if (normalizeEditorText(inserted) !== normalizeEditorText(prompt)) {
+    console.error("Composer verification mismatch", {
+      expectedLength: prompt.length,
+      observedLength: inserted.length,
+      expectedLines: prompt.split("\n").length,
+      observedLines: inserted.split("\n").length,
+    });
+    throw new Error("Composer text did not match the task. No prompt was sent; Chrome stays available for inspection with --keep-open.");
   }
   console.log("Prompt verified in editor.");
   const answer = autoSend ? "SEND" : (await rl.question("Type SEND to submit, or anything else to cancel: ")).trim();
