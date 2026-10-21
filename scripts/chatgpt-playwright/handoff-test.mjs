@@ -18,15 +18,18 @@ const handoffFile = value("--handoff-file");
 let projectUrl = value("--project-url");
 let prompt = value("--prompt");
 let conversationMode = value("--conversation-mode");
+let autoSend = args.includes("--auto-send");
 if (handoffFile) {
   const handoff = JSON.parse(await readFile(resolve(handoffFile), "utf8"));
   projectUrl = handoff.projectUrl;
   prompt = handoff.prompt;
   conversationMode = handoff.conversationMode || conversationMode;
+  autoSend = autoSend || handoff.autoSend === true;
 }
 const keepOpen = args.includes("--keep-open");
 conversationMode ||= (new URL(projectUrl || "https://chatgpt.com").pathname.includes("/c/") ? "reuse-existing" : "new-per-issue");
 if (!["reuse-existing", "new-per-issue"].includes(conversationMode)) usage();
+if (autoSend && conversationMode !== "reuse-existing") throw Error("--auto-send requires reuse-existing to prevent sending to an unverified new chat");
 if (!projectUrl || !prompt || args.includes("--help")) usage();
 const url = new URL(projectUrl);
 if (url.protocol !== "https:" || url.hostname !== "chatgpt.com" || !url.pathname.startsWith("/g/g-p-")) {
@@ -50,7 +53,7 @@ try {
   console.log("Google Chrome selected (Playwright channel: chrome).");
   console.log("Opened ChatGPT Project:", url.href);
   console.log(conversationMode === "reuse-existing" ? "Sign in if necessary and verify the existing conversation is open. Do not start a new chat." : "Sign in if necessary, and MANUALLY start a new chat inside this project.");
-  await rl.question(conversationMode === "reuse-existing" ? "After confirming the intended existing conversation is open, press Return (Ctrl+C to cancel): " : "After checking the project and opening a new chat, press Return to continue (Ctrl+C to cancel): ");
+  if (!autoSend) await rl.question(conversationMode === "reuse-existing" ? "After confirming the intended existing conversation is open, press Return (Ctrl+C to cancel): " : "After checking the project and opening a new chat, press Return to continue (Ctrl+C to cancel): ");
   // Use the currently visible ChatGPT tab, not an arbitrary initial tab.
   const chatPages = browser.pages().filter(p => {
     try { return new URL(p.url()).hostname === "chatgpt.com"; }
@@ -61,6 +64,7 @@ try {
     throw new Error("No ChatGPT tab found. Open a new chat in the test browser.");
   }
   console.log("Current destination:", activePage.url());
+  if (autoSend && new URL(activePage.url()).pathname !== url.pathname) throw Error("Refusing automatic send: existing conversation URL does not match configured target");
   await activePage.bringToFront();
   console.log("Finding ChatGPT composer...");
   console.log("Page title:", await activePage.title().catch(() => "(unavailable)"));
@@ -91,15 +95,17 @@ try {
   if (inserted !== prompt) {
     throw new Error("Composer did not retain the prompt. Check the ChatGPT tab before retrying.");
   }
-  console.log("Prompt verified in editor, NOT sent. Confirm the destination and text in the visible browser.");
-  const answer = (await rl.question("Type SEND to submit, or anything else to cancel: ")).trim();
+  console.log("Prompt verified in editor.");
+  const answer = autoSend ? "SEND" : (await rl.question("Type SEND to submit, or anything else to cancel: ")).trim();
   if (answer !== "SEND") { console.log("Cancelled: prompt was not submitted."); process.exitCode = 0; }
   else {
     await composer.press("Enter");
     console.log("Submission attempted in:", activePage.url());
     console.log("Check that the message appears in the intended project chat.");
   }
-  if (keepOpen) {
+  if (autoSend && !keepOpen) {
+    console.log("Automatic prompt submission attempted; response monitoring and Linear callback are not implemented.");
+  } else if (keepOpen) {
     console.log("Keeping Chrome open while this process runs. Press Ctrl+C to close the test session.");
     rl.close();
     await new Promise(resolve => {
