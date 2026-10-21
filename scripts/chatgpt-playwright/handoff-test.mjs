@@ -16,6 +16,7 @@ const args = process.argv.slice(2);
 function value(flag) { const index = args.indexOf(flag); return index < 0 ? undefined : args[index+1]; }
 const projectUrl = value("--project-url");
 const prompt = value("--prompt");
+const keepOpen = args.includes("--keep-open");
 if (!projectUrl || !prompt || args.includes("--help")) usage();
 const url = new URL(projectUrl);
 if (url.protocol !== "https:" || url.hostname !== "chatgpt.com" || !url.pathname.startsWith("/g/g-p-")) {
@@ -88,7 +89,16 @@ try {
     console.log("Submission attempted in:", activePage.url());
     console.log("Check that the message appears in the intended project chat.");
   }
-  await rl.question("Press Return to close this test browser: ");
+  if (keepOpen) {
+    console.log("Keeping Chrome open while this process runs. Press Ctrl+C to close the test session.");
+    rl.close();
+    await new Promise(resolve => {
+      process.once("SIGINT", resolve);
+      browser.once("close", resolve);
+    });
+  } else {
+    await rl.question("Press Return to close this test browser (or use --keep-open next time): ");
+  }
 } catch (error) {
   console.error("Playwright test failed:", error.message);
   process.exitCode = 1;
