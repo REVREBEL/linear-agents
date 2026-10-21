@@ -81,8 +81,7 @@ case "${1:-}" in
     fi
     # Keep domain, OAuth endpoints and KV IDs in the untracked .env.
     # Generate a short-lived Wrangler config beside its source entrypoint.
-    temp_config="$(mktemp "${worker_dir}/wrangler.local.XXXXXXXX.jsonc")"
-    rm -f -- "${temp_config}"
+    temp_config="${worker_dir}/wrangler.local.$.$RANDOM.jsonc"
     cleanup_config() { rm -f -- "${temp_config}"; }
     trap cleanup_config EXIT
     node "${REPO_ROOT}/scripts/render-wrangler.mjs" "${agent}" "${temp_config}"
