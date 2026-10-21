@@ -252,7 +252,7 @@ const server = http.createServer(async (request, response) => {
           await fs.writeFile(handoffFile, JSON.stringify({ projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, autoSend: route.chatgptAutoSend === true, prompt: promptContext, jobFile: filename }, null, 2), { mode: 0o600 });
           if (route.chatgptAutoSend === true) {
             await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: "Automatic Playwright submission launched; response processing not implemented" });
-            const child = spawn(process.execPath, [script, "--handoff-file", handoffFile, "--auto-send"], {
+            const child = spawn(process.execPath, [script, "--handoff-file", handoffFile, "--auto-send", "--keep-open"], {
               cwd: path.resolve(PROJECT_DIR, ".."), env: process.env, stdio: ["ignore", "pipe", "pipe"],
             });
             child.stdout?.on("data", chunk => console.log("[ChatGPT handoff] " + String(chunk).trimEnd()));
