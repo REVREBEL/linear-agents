@@ -389,11 +389,9 @@ async function handleLinearWebhook(
     payload: {
       data: {
         promptContext: promptWithCompletion,
-        originalPromptContext: promptContext,
         agentSessionId,
         completionUrl: completionUrl.toString(),
       },
-      original: payload,
     },
   };
 
