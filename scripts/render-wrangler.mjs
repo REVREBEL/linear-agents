@@ -28,4 +28,14 @@ for (const [pattern,replacement] of replacements) {
 }
 if (process.env[`${key}_WEBHOOK_URL`] && process.env[`${key}_WEBHOOK_URL`] !== webhookUrl) throw Error(`${key}_WEBHOOK_URL must match prefix-derived ${webhookUrl}`);
 if (process.env[`${key}_HOST`] && process.env[`${key}_HOST`] !== host) throw Error(`${key}_HOST must match prefix-derived ${host}`);
+// Attach the OAuth/webhook Worker hostname as a Cloudflare Custom Domain.
+// The separate <prefix>-agent hostname belongs to the Tunnel, never this Worker.
+const customDomain = `linear-${prefix}.${domain}`;
+if (!/"routes"\\s*:/.test(config)) {
+  config = config.replace(/(\\{\\s*["']?\\$schema["']?\\s*:\\s*"[^"]+"\\s*,)/,
+    `$1\\n  "routes": [{ "pattern": "${customDomain}", "custom_domain": true }],`);
+} else {
+  throw new Error("Template already defines routes; review explicitly before deployment");
+}
+if (!config.includes(`"pattern": "${customDomain}"`)) throw new Error("Unable to attach Worker custom domain");
 writeFileSync(output,config,{mode:0o600,flag:"wx"});
