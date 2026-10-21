@@ -348,27 +348,38 @@ async function handleLinearWebhook(
     )
     : promptContext;
 
-  // Enrich the signed session with stable Linear IDs; do not infer paths from issue prose.
+  // Fetch authoritative issue metadata for the routed job. PR and review
+  // evidence must be read from GitHub/Linear when they actually exist.
   let routing: { projectId: string; projectName: string; initiativeIds: string[] } | undefined;
+  let issueMetadata: { id: string; identifier: string; status: string | null; projectId: string | null } | undefined;
   if (agentSessionId) {
     const issueId = stringValue(getNested(payload, "agentSession", "issueId")) ||
       stringValue(getNested(payload, "agentSession", "issue", "id"));
     if (issueId) {
       try {
         const result = await linearGraphql<{
-          issue: { project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
+          issue: { id: string; identifier: string; state: null | { name: string }; project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
         }>(installation.accessToken,
           `query BridgeIssueRouting($issueId: String!) {
             issue(id: $issueId) {
+              id identifier state { name }
               project { id name initiatives { nodes { id name } } }
             }
           }`, { issueId });
-        if (result.issue?.project) {
-          routing = {
-            projectId: result.issue.project.id,
-            projectName: result.issue.project.name,
-            initiativeIds: result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
+        if (result.issue) {
+          issueMetadata = {
+            id: result.issue.id,
+            identifier: result.issue.identifier,
+            status: result.issue.state?.name || null,
+            projectId: result.issue.project?.id || null,
           };
+          if (result.issue.project) {
+            routing = {
+              projectId: result.issue.project.id,
+              projectName: result.issue.project.name,
+              initiativeIds: result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
+            };
+          }
         }
       } catch (error) {
         console.error("Unable to enrich routing metadata", {
@@ -381,6 +392,7 @@ async function handleLinearWebhook(
 
   const bridgeJob = {
     routing,
+    issueMetadata,
     source: "linear",
     receivedAt: new Date().toISOString(),
     organizationId: installation.organizationId,
