@@ -162,7 +162,8 @@ npm run setup -- all                 # install all agent workspace dependencies
 npm run dev -- mock                  # run one agent's Wrangler development server
 npm run deploy -- mock               # deploy one Worker
 npm run deploy -- all                # deploy all five Workers, sequentially
-npm run types                        # typecheck/generate Wrangler types for all five
+npm run types                        # generate Wrangler types for all five
+npm run types -- mock                # generate Wrangler types for Mock only
 ```
 
-For a single agent's Wrangler types use `node scripts/workspace-command.mjs types mock` or `npm run types --workspace=linear-mock-worker`. The all-agent `dev` command is intentionally unsupported because each Wrangler development server stays running; start separate terminals for each agent instead. Deploying `all` requires all five Worker configurations, KV namespace IDs, domains, and secrets to be ready. `deploy` does not create DNS/KV or synchronize secrets. To sync secrets with root `.env`, use `bash scripts/with-env.sh worker mock sync-secrets` or substitute another agent name.
+For a single agent's Wrangler types use `npm run types -- mock` or `npm run types --workspace=linear-mock-worker`. The all-agent `dev` command is intentionally unsupported because each Wrangler development server stays running; start separate terminals for each agent instead. Deploying `all` requires all five Worker configurations, KV namespace IDs, domains, and secrets to be ready. `deploy` does not create DNS/KV or synchronize secrets. To sync secrets with root `.env`, use `bash scripts/with-env.sh worker mock sync-secrets` or substitute another agent name.
