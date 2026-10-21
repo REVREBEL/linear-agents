@@ -1,6 +1,6 @@
 ## macOS LaunchAgent
 
-For a login-started local bridge, use the [macOS LaunchAgent setup guide](docs/MACOS_LAUNCHAGENT.md) and [validated plist template](scripts/macos/io.revrebel.agent-bridge.plist.example). Run `bash scripts/macos/install-launchagent.sh` after configuring the root `.env`. This installs the plist without restarting the running bridge.
+For a login-started local bridge, use the [macOS LaunchAgent setup guide](docs/MACOS_LAUNCHAGENT.md) and [validated plist template](scripts/macos/agent-bridge.plist.example). Run `bash scripts/macos/install-launchagent.sh` after configuring the root `.env`. This installs the plist without restarting the running bridge.
 
 ## Local environment and Terraform
 
