@@ -17,12 +17,16 @@ function value(flag) { const index = args.indexOf(flag); return index < 0 ? unde
 const handoffFile = value("--handoff-file");
 let projectUrl = value("--project-url");
 let prompt = value("--prompt");
+let conversationMode = value("--conversation-mode");
 if (handoffFile) {
   const handoff = JSON.parse(await readFile(resolve(handoffFile), "utf8"));
   projectUrl = handoff.projectUrl;
   prompt = handoff.prompt;
+  conversationMode = handoff.conversationMode || conversationMode;
 }
 const keepOpen = args.includes("--keep-open");
+conversationMode ||= (new URL(projectUrl || "https://chatgpt.com").pathname.includes("/c/") ? "reuse-existing" : "new-per-issue");
+if (!["reuse-existing", "new-per-issue"].includes(conversationMode)) usage();
 if (!projectUrl || !prompt || args.includes("--help")) usage();
 const url = new URL(projectUrl);
 if (url.protocol !== "https:" || url.hostname !== "chatgpt.com" || !url.pathname.startsWith("/g/g-p-")) {
@@ -45,8 +49,8 @@ try {
   await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
   console.log("Google Chrome selected (Playwright channel: chrome).");
   console.log("Opened ChatGPT Project:", url.href);
-  console.log("Sign in if necessary, and MANUALLY start a new chat inside this project.");
-  await rl.question("After checking the project and opening a new chat, press Return to continue (Ctrl+C to cancel): ");
+  console.log(conversationMode === "reuse-existing" ? "Sign in if necessary and verify the existing conversation is open. Do not start a new chat." : "Sign in if necessary, and MANUALLY start a new chat inside this project.");
+  await rl.question(conversationMode === "reuse-existing" ? "After confirming the intended existing conversation is open, press Return (Ctrl+C to cancel): " : "After checking the project and opening a new chat, press Return to continue (Ctrl+C to cancel): ");
   // Use the currently visible ChatGPT tab, not an arbitrary initial tab.
   const chatPages = browser.pages().filter(p => {
     try { return new URL(p.url()).hostname === "chatgpt.com"; }
@@ -78,7 +82,7 @@ try {
     if (composer) break;
   }
   if (!composer) {
-    throw new Error("Could not find a visible ChatGPT text composer. Ensure you are signed in and opened a new project chat.");
+    throw new Error("Could not find a visible ChatGPT text composer. Ensure you are signed in and the intended project conversation is open.");
   }
   await composer.click();
   await composer.fill(prompt);
