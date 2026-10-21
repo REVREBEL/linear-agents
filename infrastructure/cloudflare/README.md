@@ -33,6 +33,8 @@ The list and its 15 webhook IPs are now fully declared by Terraform. The IP snap
 
 The WAF ruleset is also declared, but **opted out by default** (`manage_linear_webhook_waf = false`). A zone's custom WAF ruleset is an authoritative ordered array. Creating one without discovering the existing ruleset or importing *all* existing rules can conflict with or replace unrelated security policy. **Never enable the toggle until you have confirmed there is no existing zone entrypoint custom ruleset**, or have imported it and added its existing rules to the resource configuration.
 
+`npm run terraform:plan` saves an executable plan to `infrastructure/cloudflare/linear.tfplan`. `npm run terraform:apply-plan` applies **that exact saved plan** without recalculating changes. The file is ignored by Git (`*.tfplan`) and can contain sensitive configuration values. Keep it local and do not share it. Re-run `terraform:plan` after changing config, state, or variables and review the new plan before applying. Terraform may reject an outdated saved plan if the state has changed. The explicit WAF opt-in applies when **generating** the plan; the saved plan carries the setting during apply.
+
 ## First-time provisioning (no existing list or WAF custom ruleset)
 
 1. Verify in Cloudflare that the account has **no list named `linear_webhooks`** and the zone has **no existing `http_request_firewall_custom` entrypoint ruleset**. Otherwise, stop and reconcile/import existing resources instead of creating duplicates.
@@ -43,17 +45,17 @@ The WAF ruleset is also declared, but **opted out by default** (`manage_linear_w
 bash scripts/with-env.sh terraform init
 bash scripts/with-env.sh terraform fmt -check
 bash scripts/with-env.sh terraform validate
-bash scripts/with-env.sh terraform plan
+npm run terraform:plan
 # Review that only the IP list is created, then:
-bash scripts/with-env.sh terraform apply
+npm run terraform:apply-plan
 ```
 
 4. Only after confirming no existing custom ruleset, opt into the WAF:
 
 ```bash
-TF_VAR_manage_linear_webhook_waf=true bash scripts/with-env.sh terraform plan
+TF_VAR_manage_linear_webhook_waf=true npm run terraform:plan
 # Review the exact ruleset and changes; only then:
-TF_VAR_manage_linear_webhook_waf=true bash scripts/with-env.sh terraform apply
+TF_VAR_manage_linear_webhook_waf=true npm run terraform:apply-plan
 ```
 
 **Important:** The `TF_VAR_manage_linear_webhook_waf=true` override must also be provided on subsequent Terraform runs. Omitting it after applying would plan **destruction** of the managed WAF ruleset. Persist it in your trusted local `.env` as `TF_VAR_manage_linear_webhook_waf=true` once provisioning is approved.
