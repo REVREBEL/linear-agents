@@ -34,6 +34,12 @@ export TF_VAR_cloudflare_zone_id="${CLOUDFLARE_ZONE_ID:-}"
 export TF_VAR_cloudflare_domain="${DOMAIN:-}"
 
 case "${1:-}" in
+  mock-agent)
+    shift
+    require LINEAR_API_KEY
+    cd "${REPO_ROOT}"
+    exec node "${REPO_ROOT}/scripts/mock-agent.mjs" "$@"
+    ;;
   linear-projects)
     require LINEAR_API_KEY
     cd "${REPO_ROOT}"
