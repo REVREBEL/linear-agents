@@ -18,7 +18,7 @@ if (!["inspect","status","comment"].includes(action) || (!jobPath && !issueInput
 let job;
 if(jobPath) job=JSON.parse(await fs.readFile(path.resolve(jobPath),"utf8"));
 const origin=job?.payload?.original??{};
-const issue=issueInput || origin?.agentSession?.issueId || origin?.agentSession?.issue?.id || origin?.data?.issueId || origin?.data?.issue?.id;
+const issue=issueInput || job?.issueMetadata?.id || job?.issueId || origin?.agentSession?.issueId || origin?.agentSession?.issue?.id || origin?.data?.issueId || origin?.data?.issue?.id;
 if(!issue) throw new Error("Issue ID missing from job. Supply --issue ID explicitly.");
 const apiKey=process.env.LINEAR_API_KEY || process.env.LINEAR_ACCESS_TOKEN;
 async function graphql(query,variables={}) {
