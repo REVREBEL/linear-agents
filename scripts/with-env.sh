@@ -79,27 +79,27 @@ case "${1:-}" in
       echo "Wrangler is not installed. Run npm ci from ${REPO_ROOT} first." >&2
       exit 1
     fi
-    wrangler_cmd=("${wrangler_bin}")
+    # Keep domain, OAuth endpoints and KV IDs in the untracked .env.
+    # Generate a short-lived Wrangler config beside its source entrypoint.
+    temp_config="$(mktemp "${worker_dir}/wrangler.local.XXXXXXXX.jsonc")"
+    rm -f -- "${temp_config}"
+    cleanup_config() { rm -f -- "${temp_config}"; }
+    trap cleanup_config EXIT
+    node "${REPO_ROOT}/scripts/render-wrangler.mjs" "${agent}" "${temp_config}"
+    wrangler_cmd=("${wrangler_bin}" --config "${temp_config}")
     case "${action}" in
-      types) exec "${wrangler_cmd[@]}" types "$@" ;;
+      types) "${wrangler_bin}" types --config "${temp_config}" "$@" ;;
       sync-secrets)
         require BRIDGE_SHARED_SECRET
         for key in LINEAR_CLIENT_ID LINEAR_CLIENT_SECRET LINEAR_WEBHOOK_SECRET; do
           sourced_key="${prefix}_${key}"
           require "${sourced_key}"
-          printf '%s' "${!sourced_key}" | "${wrangler_cmd[@]}" secret put "${key}" "$@"
+          printf '%s' "${!sourced_key}" | "${wrangler_bin}" secret put "${key}" --config "${temp_config}" "$@"
         done
-        printf '%s' "${BRIDGE_SHARED_SECRET}" | "${wrangler_cmd[@]}" secret put BRIDGE_SHARED_SECRET "$@"
-        echo "Synced four secrets to ${agent}. Verify the active Cloudflare account/Worker."
+        printf '%s' "${BRIDGE_SHARED_SECRET}" | "${wrangler_bin}" secret put BRIDGE_SHARED_SECRET --config "${temp_config}" "$@"
         ;;
-      deploy)
-      
-        # Wrangler deploy does not import secrets from the root .env. Run sync-secrets after deploy.
-        exec "${wrangler_cmd[@]}" deploy "$@"
-        ;;
+      deploy) "${wrangler_bin}" deploy --config "${temp_config}" "$@" ;;
       dev)
-        # Wrangler dev reads .dev.vars in this worker directory.
-        # Only create it temporarily, without overwriting a user-owned file.
         if [[ -e .dev.vars ]]; then
           echo "Refusing to overwrite pre-existing ${worker_dir}/.dev.vars" >&2
           exit 1
@@ -107,16 +107,15 @@ case "${1:-}" in
         require BRIDGE_SHARED_SECRET
         umask 077
         : > .dev.vars
-        cleanup() { rm -f -- .dev.vars; }
+        cleanup() { rm -f -- .dev.vars; cleanup_config; }
         trap cleanup EXIT INT TERM
         for key in LINEAR_CLIENT_ID LINEAR_CLIENT_SECRET LINEAR_WEBHOOK_SECRET; do
           sourced_key="${prefix}_${key}"
           require "${sourced_key}"
-          # JSON string values are valid dotenv double-quoted values.
           KEY="${key}" VALUE="${!sourced_key}" python3 -c 'import json,os; print(os.environ["KEY"]+"="+json.dumps(os.environ["VALUE"]))' >> .dev.vars
         done
         KEY=BRIDGE_SHARED_SECRET VALUE="${BRIDGE_SHARED_SECRET}" python3 -c 'import json,os; print(os.environ["KEY"]+"="+json.dumps(os.environ["VALUE"]))' >> .dev.vars
-        "${wrangler_cmd[@]}" dev "$@"
+        "${wrangler_bin}" dev --config "${temp_config}" "$@"
         ;;
       *) usage ;;
     esac
