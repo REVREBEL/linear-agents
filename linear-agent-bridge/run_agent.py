@@ -10,10 +10,10 @@ import requests
 
 
 LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql"
-AGY_BIN = os.path.expanduser(
-    os.getenv("AGY_BIN", "~/.local/bin/agy")
+ANTIGRAVITY_BIN = os.path.expanduser(
+    os.getenv("ANTIGRAVITY_BIN", "~/.local/bin/agy")
 )
-AGY_PRINT_TIMEOUT = os.getenv("AGY_PRINT_TIMEOUT", "30m")
+ANTIGRAVITY_PRINT_TIMEOUT = os.getenv("ANTIGRAVITY_PRINT_TIMEOUT", "30m")
 ANTIGRAVITY_WORKSPACE = os.path.abspath(
     os.path.expanduser(
         os.getenv("ANTIGRAVITY_WORKSPACE", os.getcwd())
@@ -134,8 +134,8 @@ def load_prompt(json_file_path: str) -> str:
 
 async def run_antigravity(prompt: str) -> str:
     """Run one Antigravity CLI turn using cached local authentication."""
-    if not os.path.isfile(AGY_BIN) or not os.access(AGY_BIN, os.X_OK):
-        raise FileNotFoundError(f"Antigravity CLI is not executable: {AGY_BIN}")
+    if not os.path.isfile(ANTIGRAVITY_BIN) or not os.access(ANTIGRAVITY_BIN, os.X_OK):
+        raise FileNotFoundError(f"Antigravity CLI is not executable: {ANTIGRAVITY_BIN}")
 
     if not os.path.isdir(ANTIGRAVITY_WORKSPACE):
         raise NotADirectoryError(
@@ -143,13 +143,13 @@ async def run_antigravity(prompt: str) -> str:
         )
 
     command = [
-        AGY_BIN,
+        ANTIGRAVITY_BIN,
         "--input-format",
         "stream-json",
         "--output-format",
         "stream-json",
         "--print-timeout",
-        AGY_PRINT_TIMEOUT,
+        ANTIGRAVITY_PRINT_TIMEOUT,
         "--sandbox",
     ]
     input_message = json.dumps(
