@@ -19,7 +19,7 @@ A completion callback tells Linear that the **session** finished. It does **not*
                              |
                   POST /webhook (signed)
                              |
-          linear-<agent>.revrebel.io  [Worker]
+          linear-<agent>.yourdomain.com  [Worker]
                 |                  |
          KV: LINEAR_DATA     Linear GraphQL:
          OAuth install       agentActivityCreate
@@ -30,7 +30,7 @@ A completion callback tells Linear that the **session** finished. It does **not*
                 |
          POST BRIDGE_URL (/jobs) with Bearer secret
                 |
-        <agent>-agent.revrebel.io [Cloudflare Tunnel]
+        <agent>-agent.yourdomain.com [Cloudflare Tunnel]
                 |
               127.0.0.1:8788
                 |
@@ -43,16 +43,16 @@ A completion callback tells Linear that the **session** finished. It does **not*
             final Agent Activity
 ```
 
-The Cloudflare custom-domain host (`linear-*.revrebel.io`) must point at the Worker, **not** the Tunnel. The Tunnel host (`*-agent.revrebel.io`) points at the local service.
+The Cloudflare custom-domain host (`linear-*.yourdomain.com`) must point at the Worker, **not** the Tunnel. The Tunnel host (`*-agent.yourdomain.com`) points at the local service.
 
 ## Agent deployment matrix
 
 | App | Worker name | Public Worker | Tunnel job endpoint |
 |---|---|---|---|
-| Antigravity | `linear-antigravity-agent` | `https://linear-antigravity.revrebel.io` | `https://antigravity-agent.revrebel.io/jobs` |
-| Trae | `linear-trae-agent` | `https://linear-trae.revrebel.io` | `https://trae-agent.revrebel.io/jobs` |
-| Gemini CLI | `linear-gemini-agent` | `https://linear-gemini.revrebel.io` | `https://gemini-agent.revrebel.io/jobs` |
-| ChatGPT | `linear-chatgpt-agent` | `https://linear-chatgpt.revrebel.io` | `https://chatgpt-agent.revrebel.io/jobs` |
+| Antigravity | `linear-antigravity-agent` | `https://linear-antigravity.yourdomain.com` | `https://antigravity-agent.yourdomain.com/jobs` |
+| Trae | `linear-trae-agent` | `https://linear-trae.yourdomain.com` | `https://trae-agent.yourdomain.com/jobs` |
+| Gemini CLI | `linear-gemini-agent` | `https://linear-gemini.yourdomain.com` | `https://gemini-agent.yourdomain.com/jobs` |
+| ChatGPT | `linear-chatgpt-agent` | `https://linear-chatgpt.yourdomain.com` | `https://chatgpt-agent.yourdomain.com/jobs` |
 
 Each Worker has a distinct KV namespace ID, but the binding key is always `LINEAR_DATA`. Workers currently duplicate exactly the same `src/index.ts` source, so fixes must be synchronized manually.
 
@@ -103,14 +103,14 @@ X-Linear-Webhook-Id: <delivery-id>
 
 The Worker forwards a JSON envelope including `organizationId`, `agentSessionId`, `completionUrl`, `payload.data.promptContext` (amended), and `payload.original` (original Linear event). The local bridge should validate authorization **before** persisting or dispatching a job, return quickly, and make execution errors observable.
 
-The committed unified router selects the runtime using the hostname: `antigravity-agent.revrebel.io`, `trae-agent.revrebel.io`, `gemini-agent.revrebel.io`, or `chatgpt-agent.revrebel.io`. Its LaunchAgent configuration and execution must still be validated against the live Mac; the router itself is committed.
+The committed unified router selects the runtime using the hostname: `antigravity-agent.yourdomain.com`, `trae-agent.yourdomain.com`, `gemini-agent.yourdomain.com`, or `chatgpt-agent.yourdomain.com`. Its LaunchAgent configuration and execution must still be validated against the live Mac; the router itself is committed.
 
 On a local macOS LaunchAgent use an explicit Python venv binary, CLI executable paths and repository workspaces. Validate the `GEMINI_BIN`, `TRAE_BIN`, their arguments, authentication and whether the command blocks or merely opens an IDE session. A successful process spawn is not proof that the work completed.
 
 ## Completion contract
 
 ```bash
-curl -X POST "https://linear-trae.revrebel.io/complete" \
+curl -X POST "https://linear-trae.yourdomain.com/complete" \
   -H "Authorization: Bearer $BRIDGE_SHARED_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"agentSessionId":"ACTUAL_SESSION_ID","status":"completed"}'
@@ -132,9 +132,9 @@ Each `linear-*/wrangler.jsonc` uses:
 "kv_namespaces": [{ "binding": "LINEAR_DATA", "id": "AGENT_SPECIFIC_NAMESPACE_ID" }],
 "vars": {
   "SERVICE_NAME": "linear-trae-agent",
-  "LINEAR_REDIRECT_URI": "https://linear-trae.revrebel.io/oauth/callback",
+  "LINEAR_REDIRECT_URI": "https://linear-trae.yourdomain.com/oauth/callback",
   "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
-  "BRIDGE_URL": "https://trae-agent.revrebel.io/jobs"
+  "BRIDGE_URL": "https://trae-agent.yourdomain.com/jobs"
 }
 ```
 
@@ -155,10 +155,10 @@ npx wrangler tail
 From another terminal:
 
 ```bash
-curl -i https://linear-trae.revrebel.io/health
-curl -i https://linear-trae.revrebel.io/install
-curl -i https://linear-trae.revrebel.io/oauth/callback
-curl -i https://trae-agent.revrebel.io/health
+curl -i https://linear-trae.yourdomain.com/health
+curl -i https://linear-trae.yourdomain.com/install
+curl -i https://linear-trae.yourdomain.com/oauth/callback
+curl -i https://trae-agent.yourdomain.com/health
 ```
 
 Expected: Worker health HTTP 200, install HTTP 302 to Linear with correct app client and callback, bare callback HTTP 400 missing code/state, Tunnel health HTTP 200 only when local listener and tunnel are online. A valid OAuth install and an assigned issue should generate fresh logs for verification, acknowledgment and forwarding. The final `/complete` call should result in a `response` or `error` Agent Activity, not simply a 2xx bridge acknowledgement.
