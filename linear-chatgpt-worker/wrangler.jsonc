@@ -3,6 +3,7 @@
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "linear-chatgpt-agent",
   "main": "src/index.ts",
+  "routes": [{ "pattern": "linear-${CHATGPT_PREFIX}.${DOMAIN}", "custom_domain": true }],
   "compatibility_date": "2026-07-01",
 	"workers_dev": false,
 	"preview_urls": false,
