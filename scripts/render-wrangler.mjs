@@ -31,11 +31,9 @@ if (process.env[`${key}_HOST`] && process.env[`${key}_HOST`] !== host) throw Err
 // Attach the OAuth/webhook Worker hostname as a Cloudflare Custom Domain.
 // The separate <prefix>-agent hostname belongs to the Tunnel, never this Worker.
 const customDomain = `linear-${prefix}.${domain}`;
-if (!/"routes"\\s*:/.test(config)) {
-  config = config.replace(/(\\{\\s*["']?\\$schema["']?\\s*:\\s*"[^"]+"\\s*,)/,
-    `$1\\n  "routes": [{ "pattern": "${customDomain}", "custom_domain": true }],`);
-} else {
+if (config.includes('"routes"')) {
   throw new Error("Template already defines routes; review explicitly before deployment");
 }
-if (!config.includes(`"pattern": "${customDomain}"`)) throw new Error("Unable to attach Worker custom domain");
+if (!config.includes('"main"')) throw new Error("Wrangler template is missing main");
+config = config.replace('"main"', `"routes": [{ "pattern": "${customDomain}", "custom_domain": true }],\\n  "main"`);
 writeFileSync(output,config,{mode:0o600,flag:"wx"});
