@@ -54,7 +54,12 @@ case "${1:-}" in
       *) usage ;;
     esac
     cd "${worker_dir}"
-    wrangler_cmd=(npx --no-install wrangler)
+    wrangler_bin="${REPO_ROOT}/node_modules/.bin/wrangler"
+    if [[ ! -x "${wrangler_bin}" ]]; then
+      echo "Wrangler is not installed. Run npm ci from ${REPO_ROOT} first." >&2
+      exit 1
+    fi
+    wrangler_cmd=("${wrangler_bin}")
     case "${action}" in
       types) exec "${wrangler_cmd[@]}" types "$@" ;;
       sync-secrets)
