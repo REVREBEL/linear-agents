@@ -28,6 +28,10 @@ if (handoffFile) {
   autoSend = autoSend || handoff.autoSend === true;
 }
 const keepOpen = args.includes("--keep-open");
+const headless = args.includes("--headless");
+const dryRun = args.includes("--dry-run");
+const nonInteractive = autoSend || dryRun;
+if (headless && !nonInteractive) throw Error("--headless requires --dry-run or --auto-send");
 conversationMode ||= (new URL(projectUrl || "https://chatgpt.com").pathname.includes("/c/") ? "reuse-existing" : "new-per-issue");
 if (!["reuse-existing", "new-per-issue"].includes(conversationMode)) usage();
 if (autoSend && conversationMode !== "reuse-existing") throw Error("--auto-send requires reuse-existing to prevent sending to an unverified new chat");
@@ -38,8 +42,8 @@ if (url.protocol !== "https:" || url.hostname !== "chatgpt.com" || !url.pathname
   process.exit(2);
 }
 if (prompt.length > 8000) { console.error("Test prompt too long."); process.exit(2); }
-const profile = resolve(homedir(), ".linear-agents-chatgpt-playwright-cdp");
-const cdpPort = 19228;
+const profile = resolve(homedir(), headless ? ".linear-agents-chatgpt-headless" : ".linear-agents-chatgpt-playwright-cdp");
+const cdpPort = headless ? 19229 : 19228;
 const cdpAddress = "http://127.0.0.1:" + cdpPort;
 const chromeBin = process.env.CHATGPT_CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 async function connectExistingChrome() {
@@ -58,6 +62,7 @@ async function connectOrStartChrome() {
     "--user-data-dir=" + profile,
     "--no-first-run",
     "--no-default-browser-check",
+    ...(headless ? ["--headless=new", "--disable-gpu"] : []),
   ], { detached: true, stdio: "ignore" });
   child.unref();
   for (let i = 0; i < 60; i++) {
@@ -82,7 +87,7 @@ try {
   console.log("Google Chrome selected (Playwright channel: chrome).");
   console.log("Opened ChatGPT Project:", url.href);
   console.log(conversationMode === "reuse-existing" ? "Sign in if necessary and verify the existing conversation is open. Do not start a new chat." : "Sign in if necessary, and MANUALLY start a new chat inside this project.");
-  if (!autoSend) await rl.question(conversationMode === "reuse-existing" ? "After confirming the intended existing conversation is open, press Return (Ctrl+C to cancel): " : "After checking the project and opening a new chat, press Return to continue (Ctrl+C to cancel): ");
+  if (!nonInteractive) await rl.question(conversationMode === "reuse-existing" ? "After confirming the intended existing conversation is open, press Return (Ctrl+C to cancel): " : "After checking the project and opening a new chat, press Return to continue (Ctrl+C to cancel): ");
   // Use the currently visible ChatGPT tab, not an arbitrary initial tab.
   const chatPages = context.pages().filter(p => {
     try { return new URL(p.url()).hostname === "chatgpt.com"; }
@@ -93,7 +98,7 @@ try {
     throw new Error("No ChatGPT tab found. Open a new chat in the test browser.");
   }
   console.log("Current destination:", activePage.url());
-  if (autoSend && new URL(activePage.url()).pathname !== url.pathname) throw Error("Refusing automatic send: existing conversation URL does not match configured target");
+  if (nonInteractive && new URL(activePage.url()).pathname !== url.pathname) throw Error("Refusing automatic send: existing conversation URL does not match configured target");
   await activePage.bringToFront();
   console.log("Finding ChatGPT composer...");
   console.log("Page title:", await activePage.title().catch(() => "(unavailable)"));
@@ -133,14 +138,15 @@ try {
     throw new Error("Composer is empty after input; refusing to send.");
   }
   console.log("Composer contains input; verifying before send.");
-  const answer = autoSend ? "SEND" : (await rl.question("Type SEND to submit, or anything else to cancel: ")).trim();
-  if (answer !== "SEND") { console.log("Cancelled: prompt was not submitted."); process.exitCode = 0; }
+  const answer = dryRun ? "DRY_RUN" : (autoSend ? "SEND" : (await rl.question("Type SEND to submit, or anything else to cancel: ")).trim());
+  if (dryRun) console.log("DRY RUN: Composer populated; no message submitted.");
+  else if (answer !== "SEND") { console.log("Cancelled: prompt was not submitted."); process.exitCode = 0; }
   else {
     await composer.press("Enter");
     console.log("Submission attempted in:", activePage.url());
     console.log("Check that the message appears in the intended project chat.");
   }
-  console.log("Automation handoff finished. Chrome remains open independently.");
+  console.log("Automation handoff finished. Chrome runs independently.");
 
 } catch (error) {
   console.error("Playwright handoff failed:", error.message);
