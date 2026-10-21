@@ -42,6 +42,7 @@ while (true) {
 }
 if (matches.length > 1) throw new Error(`Multiple KV namespaces are named ${title}; choose manually`);
 if (existing) {
+  if (!matches.length) throw new Error(`${envKey} is set, but no namespace named ${title} exists in this Cloudflare account`);
   if (matches.length && matches[0].id !== existing) throw new Error(`${envKey} disagrees with Cloudflare namespace ${title}; refusing to overwrite`);
   console.log(`${envKey} already configured. No changes made.`);
   process.exit(0);
