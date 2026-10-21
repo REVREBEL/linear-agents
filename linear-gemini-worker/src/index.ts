@@ -250,6 +250,40 @@ async function handleLinearWebhook(
     );
   }
 
+  // Issue workflow completion, not agent session completion, clears local inbox.
+  // Query Linear's current state rather than trusting webhook body labels.
+  if (linearEvent === "Issue" && (payload.action === "update" || payload.action === "updated")) {
+    const issueId = stringValue(getNested(payload, "data", "id")) ||
+      stringValue(getNested(payload, "issue", "id"));
+    if (issueId) {
+      try {
+        const result = await linearGraphql<{issue:null | {id:string;state:null | {type:string}}}>(
+          installation.accessToken,
+          `query InboxCleanupIssue($id:String!){issue(id:$id){id state{type}}}`,
+          {id:issueId},
+        );
+        if (result.issue?.state?.type === "completed") {
+          const callback = new URL(env.BRIDGE_URL);
+          callback.pathname = "/issue-completed";
+          callback.search = "";
+          const cleaned = await fetch(callback.toString(), {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${env.BRIDGE_SHARED_SECRET}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({issueId}),
+          });
+          if (!cleaned.ok) throw new Error(`Bridge cleanup HTTP ${cleaned.status}`);
+          console.log("Completed Linear issue inbox cleanup submitted", {issueId});
+        }
+      } catch (error) {
+        console.error("Completed issue cleanup failed", {issueId, error: String(error)});
+      }
+    }
+    return jsonResponse({ok:true, accepted:false, issueStatusProcessed:true});
+  }
+
   const promptContext = extractPromptContext(payload);
   const agentSessionId = extractAgentSessionId(payload);
   const action = stringValue(payload.action);
@@ -500,27 +534,6 @@ async function handleAgentComplete(
       body: bodyText,
     },
   );
-
-  if (activityType === "response") {
-    // Remove local inbox JSON only after Linear acknowledged completion.
-    // A cleanup outage must not cause a second Linear completion activity.
-    try {
-      const callback = new URL(env.BRIDGE_URL);
-      callback.pathname = "/job-complete";
-      callback.search = "";
-      const cleaned = await fetch(callback.toString(), {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${env.BRIDGE_SHARED_SECRET}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ agentSessionId, status: "completed" }),
-      });
-      if (!cleaned.ok) console.warn("Bridge inbox cleanup unsuccessful", { agentSessionId, status: cleaned.status });
-    } catch (error) {
-      console.warn("Bridge inbox cleanup unavailable", { agentSessionId, error: error instanceof Error ? error.message : String(error) });
-    }
-  }
 
   console.log("Linear Agent Session completion activity sent", {
     agentSessionId,
