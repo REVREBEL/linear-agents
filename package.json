@@ -10,12 +10,11 @@
     "linear-mock-worker"
   ],
   "scripts": {
-    "test": "node --test linear-agent-bridge/*.test.mjs",
+
     "types": "node scripts/workspace-command.mjs types",
     "dev": "node scripts/workspace-command.mjs dev",
     "deploy": "node scripts/workspace-command.mjs deploy",
     "setup": "node scripts/workspace-command.mjs install",
-    "setup:auto-launch": "bash scripts/macos/install-launchagent.sh",
     "terraform": "bash scripts/with-env.sh terraform",
     "terraform:init": "bash scripts/with-env.sh terraform init",
     "terraform:validate": "bash scripts/with-env.sh terraform validate",
@@ -31,6 +30,8 @@
     "bridge:unload": "./scripts/bridge.sh unload",
     "bridge:restart": "./scripts/bridge.sh restart",
     "bridge:status": "./scripts/bridge.sh status",
+    "bridge:test": "node --test linear-agent-bridge/*.test.mjs",
+    "bridge:macos-setup": "bash scripts/macos/install-launchagent.sh",
     "log:messages": "npx wrangler tail linear-mock-agent --format pretty"
   },
   "devDependencies": {

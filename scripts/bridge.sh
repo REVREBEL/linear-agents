@@ -3,7 +3,7 @@
 # 1. Check if DOMAIN is set; if missing, fail with an error
 if [ -z "${DOMAIN}" ]; then
   echo "Error: DOMAIN environment variable is required." >&2
-  echo "Example: DOMAIN=revrebel.io npm run bridge:status" >&2
+  echo "Example: DOMAIN=domain.com npm run bridge:status" >&2
   exit 1
 fi
 
@@ -16,7 +16,10 @@ SERVICE_TARGET="gui/$(id -u)/${REVERSED_ID}"
 case "$1" in
   load)
     echo "Loading LaunchAgent..."
+    # Force unload existing session if present to avoid error 5
+    launchctl bootout "gui/$(id -u)" "${PLIST}" 2>/dev/null || true
     launchctl bootstrap "gui/$(id -u)" "${PLIST}"
+    echo "Successfully loaded ${REVERSED_ID}"
     ;;
 
   unload)
