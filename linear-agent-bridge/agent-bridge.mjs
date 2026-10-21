@@ -488,16 +488,35 @@ async function resolveJobRoute(job) {
   const routing = job?.routing || {};
   const projectId = routing.projectId;
   const initiativeIds = Array.isArray(routing.initiativeIds) ? routing.initiativeIds : [];
-  if (!projectId || initiativeIds.length === 0) {
-    return { ok: false, error: "Missing structured Linear project ID or initiative IDs; no implicit fallback" };
+  if (!projectId) {
+    return { ok: false, error: "Missing structured Linear project ID; no implicit fallback" };
   }
   const project = config.projects?.[projectId];
   if (!project) return { ok: false, error: `Unmapped Linear project: ${projectId}` };
   const matches = initiativeIds.filter(id => config.initiatives?.[id] && (!project.initiativeId || project.initiativeId === id));
-  if (matches.length !== 1) return { ok: false, error: `Expected one mapped initiative for project ${projectId}, found ${matches.length}` };
-  const initiativeId = matches[0];
-  const initiative = config.initiatives[initiativeId];
-  const repoName = initiative.repository;
+  let initiativeId = null;
+  let repoName;
+  if (project.repository) {
+    // Standalone projects must explicitly declare their repository. If an
+    // initiative is also configured, refuse a conflicting repository mapping.
+    if (project.initiativeId && !initiativeIds.includes(project.initiativeId)) {
+      return { ok: false, error: `Required initiative missing for project ${projectId}` };
+    }
+    if (matches.length > 1) {
+      return { ok: false, error: `Ambiguous initiatives for project ${projectId}` };
+    }
+    initiativeId = matches[0] || null;
+    if (initiativeId && config.initiatives[initiativeId].repository !== project.repository) {
+      return { ok: false, error: `Conflicting repository mapping for project ${projectId}` };
+    }
+    repoName = project.repository;
+  } else {
+    if (matches.length !== 1) {
+      return { ok: false, error: `Expected one mapped initiative for project ${projectId}, found ${matches.length}; set project.repository for a standalone project` };
+    }
+    initiativeId = matches[0];
+    repoName = config.initiatives[initiativeId].repository;
+  }
   if (typeof repoName !== "string" || !/^REVREBEL\/[a-zA-Z0-9._-]+$/.test(repoName)) {
     return { ok: false, error: "Invalid or missing allowed REVREBEL repository mapping" };
   }
