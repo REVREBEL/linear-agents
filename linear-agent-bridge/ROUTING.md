@@ -107,3 +107,17 @@ For a project whose entire discussion should remain in the same conversation:
 ```
 
 The bridge validates the existing conversation URL and writes the mode into supervised Playwright handoff files. Playwright opens that conversation and asks you to confirm it before submitting a prompt; **it does not open a new chat** in `reuse-existing` mode. The handoff is still supervised and not an automatic, unattended agent runner. The conversation must remain accessible to the browser's signed-in account. Project-level files/instructions are not a substitute for a prior conversation's complete history.
+
+### Optional automatic delivery to an existing ChatGPT conversation
+
+`conversationMode` controls conversation identity; `autoSend` controls whether the supervised browser confirmation is bypassed. They are independent concepts:
+
+```json
+"chatgpt": {
+  "projectUrl": "https://chatgpt.com/g/g-p-YOUR-PROJECT/c/YOUR-CONVERSATION",
+  "conversationMode": "reuse-existing",
+  "autoSend": false
+}
+```
+
+Set `autoSend: true` for a project that should automatically open its **existing** conversation and submit the forwarded prompt when a ChatGPT Linear assignment is received. This launches a local Playwright Chrome process from the bridge's environment; the Mac must have an accessible logged-in desktop session and dedicated browser profile. Keep `false` (default) for supervised handoff. Automatic delivery is not the full Linear feedback loop: it does not read the ChatGPT response, post comments/status updates to Linear, or mark sessions complete. Concurrent Chrome sessions sharing the Playwright profile are not yet serialized, so enable this only in controlled tests. `autoSend: true` is intentionally rejected with `new-per-issue` mode to avoid accidental delivery to the wrong conversation.
