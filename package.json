@@ -26,6 +26,7 @@
     "chatgpt:playwright": "node scripts/chatgpt-playwright/handoff-test.mjs",
     "mock:agent": "bash scripts/with-env.sh mock-agent",
     "mock:submit": "bash scripts/with-env.sh mock-submit",
+    "mock:end": "bash scripts/with-env.sh mock-end",
     "setup:kv": "node scripts/workspace-command.mjs kv",
     "bridge:load": "./scripts/bridge.sh load",
     "bridge:unload": "./scripts/bridge.sh unload",
