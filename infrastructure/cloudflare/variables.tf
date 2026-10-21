@@ -4,6 +4,17 @@ variable "cloudflare_account_id" {
 }
 
 variable "cloudflare_zone_id" {
-  description = "revrebel.io zone ID, used for WAF import and configuration."
+  description = "Cloudflare zone ID used for WAF configuration."
   type        = string
+}
+
+variable "cloudflare_domain" {
+  description = "Zone domain containing the four Linear Worker custom hostnames."
+  type        = string
+}
+
+variable "manage_linear_webhook_waf" {
+  description = "Opt in only after verifying the zone has no existing custom ruleset, or modeling and importing all existing custom rules."
+  type        = bool
+  default     = false
 }
