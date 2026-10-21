@@ -30,9 +30,10 @@ if (process.env[`${key}_WEBHOOK_URL`] && process.env[`${key}_WEBHOOK_URL`] !== w
 if (process.env[`${key}_HOST`] && process.env[`${key}_HOST`] !== host) throw Error(`${key}_HOST must match prefix-derived ${host}`);
 // Resolve the tracked template's Worker Custom Domain.
 // The agent bridge Tunnel hostname is intentionally different.
-const routePattern = /("pattern"\\s*:\\s*")[^"]+(")/;
-if (!routePattern.test(config) || !/"custom_domain"\\s*:\\s*true/.test(config)) {
-  throw new Error("Expected a templated Worker Custom Domain route in wrangler.jsonc");
+const routePlaceholder = 'linear-${' + key + '_PREFIX}.${DOMAIN}';
+if (!config.includes(routePlaceholder) || !config.includes('"custom_domain": true')) {
+  throw new Error("Expected templated custom-domain route in wrangler.jsonc");
 }
-config = config.replace(routePattern, `$1linear-${prefix}.${domain}$2`);
+config = config.replace(routePlaceholder, `linear-${prefix}.${domain}`);
+if (config.includes('${')) throw new Error('Unresolved environment template variable in generated Wrangler config');
 writeFileSync(output,config,{mode:0o600,flag:"wx"});
