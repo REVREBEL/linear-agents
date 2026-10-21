@@ -193,6 +193,7 @@ const server = http.createServer(async (request, response) => {
         launchDirectory: route.launchDirectory,
         linearProjectId: route.projectId,
         linearInitiativeId: route.initiativeId,
+        chatgptProjectUrl: route.chatgptProjectUrl || null,
       },
     }, null, 2), { mode: 0o600 });
 
@@ -207,8 +208,26 @@ const server = http.createServer(async (request, response) => {
     if (agent === "antigravity") {
       startAntigravity(routedJob, filename, workspace, jobKey);
     } else if (agent === "chatgpt") {
-      startChatGPT(routedJob, filename);
-      await jobStore.transition(jobKey, "awaiting_external", { note: "ChatGPT task saved for external execution" });
+      if (!route.chatgptProjectUrl) {
+        await jobStore.transition(jobKey, "failed", { error: "No chatgpt.projectUrl in Linear project mapping" });
+        console.error("ChatGPT handoff stopped: project mapping has no chatgpt.projectUrl");
+      } else if (process.env.CHATGPT_HANDOFF_MODE === "supervised-playwright") {
+        const promptContext = extractPromptContext(routedJob);
+        if (!promptContext) {
+          await jobStore.transition(jobKey, "failed", { error: "Missing ChatGPT promptContext" });
+        } else {
+          const script = path.resolve(PROJECT_DIR, "../scripts/chatgpt-playwright/handoff-test.mjs");
+          // This supervised test requires an attached terminal, and must not consume the daemon stdin.
+          // Queue a ready-to-run handoff command as a local file instead of launching UI automation from launchd.
+          const handoffFile = filename + ".chatgpt-handoff.json";
+          await fs.writeFile(handoffFile, JSON.stringify({ projectUrl: route.chatgptProjectUrl, prompt: promptContext, jobFile: filename }, null, 2), { mode: 0o600 });
+          await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: "Supervised Playwright handoff ready; run manually" });
+          console.log(`ChatGPT Playwright handoff ready: ${handoffFile}`);
+          console.log(`Run: node ${script} --handoff-file ${handoffFile}`);
+        }
+      } else {
+        await jobStore.transition(jobKey, "awaiting_external", { note: "ChatGPT task saved; set CHATGPT_HANDOFF_MODE=supervised-playwright to prepare browser handoff" });
+      }
     } else if (agent === "trae") {
       startTrae(routedJob, filename, workspace, jobKey);
     } else if (agent === "gemini") {
@@ -507,7 +526,13 @@ async function resolveJobRoute(job) {
   }
   const launchDirectory = project.launchFromScope === true ? actualScope : repositoryRoot;
   const scopeKey = String(projectId).replace(/[^a-zA-Z0-9_-]/g, "_");
-  return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId };
+  const chatgptProjectUrl = project.chatgpt?.projectUrl;
+  if (chatgptProjectUrl !== undefined) {
+    if (typeof chatgptProjectUrl !== "string" || !/^https:\\/\\/chatgpt\\.com\\/g\\/g-p-[a-zA-Z0-9-]+(?:\\/.*)?$/.test(chatgptProjectUrl)) {
+      return { ok: false, error: `Invalid chatgpt.projectUrl for Linear project ${projectId}` };
+    }
+  }
+  return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId, chatgptProjectUrl };
 }
 
 function extractAgentSessionId(job) {
