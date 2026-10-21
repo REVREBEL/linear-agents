@@ -7,7 +7,10 @@ For a login-started local bridge, use the [macOS LaunchAgent setup guide](docs/M
 The four Cloudflare Workers are npm workspaces managed from the repository root. Run **one** installation from the root rather than `npm install` in each Worker folder. The root `package-lock.json` is the canonical lockfile, and dependencies are installed in root `node_modules/`.
 
 ```bash
-npm ci
+npm install                       # install/update all workspaces (root)
+npm ci                            # clean reproducible installation
+npm run setup -- all              # equivalent workspace setup shortcut
+npm run setup -- gemini           # select Gemini workspace + shared root deps
 npm test                           # local job-store tests
 npm run types                      # Wrangler types for all four Workers
 npm run dev -- gemini              # develop one Worker
@@ -15,7 +18,7 @@ npm run deploy -- antigravity      # deploy one Worker
 npm run deploy -- all              # deploy all four, sequentially
 ```
 
-To target a single Workspace directly, npm also supports `npm run dev --workspace=linear-trae-worker` (and the corresponding `deploy`/`types` scripts). `npm run dev -- all` is intentionally disallowed because a Wrangler dev server remains running. `npm ci` sets up the shared toolchain for all four; no per-agent dependency installation is needed. A Worker can be deployed independently, and each retains its own `wrangler.jsonc`, KV binding, and OAuth secrets.
+To target a single Workspace directly, npm also supports `npm run dev --workspace=linear-trae-worker` (and the corresponding `deploy`/`types` scripts). `npm run dev -- all` is intentionally disallowed because a Wrangler dev server remains running. `npm install` sets up or updates the shared toolchain, while `npm ci` installs exactly the locked dependency versions. `npm run setup -- <agent>` limits the workspace selection but still installs root-level shared dependencies; it does not create a separate `node_modules` per agent. The script is called `setup` instead of `install` to avoid npm automatically running it during `npm install`. A Worker can be deployed independently, and each retains its own `wrangler.jsonc`, KV binding, and OAuth secrets.
 
 For local development with the root `.env`, continue to use `bash scripts/with-env.sh worker <agent> dev`. For production, `bash scripts/with-env.sh worker <agent> deploy` and `... sync-secrets` remain supported. The wrapper now uses `node_modules/.bin/wrangler` from the root, so install dependencies first. **Do not use `npm run deploy` as a substitute for syncing secrets or configuring Cloudflare credentials.** The Python bridge environment remains separate in `linear-agent-bridge/.venv/`.
 
