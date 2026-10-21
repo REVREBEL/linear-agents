@@ -22,6 +22,7 @@ const jobStore = createJobStore(JOBS_DIR);
 const ROUTING_CONFIG_FILE = process.env.ROUTING_CONFIG_FILE || path.join(PROJECT_DIR, "routing.json");
 const AGENT_JOB_DIRS = {
   antigravity: path.join(JOBS_DIR, "antigravity"),
+  mock: path.join(JOBS_DIR, "mock"),
   chatgpt: path.join(JOBS_DIR, "chatgpt"),
   trae: path.join(JOBS_DIR, "trae"),
   gemini: path.join(JOBS_DIR, "gemini"),
@@ -36,6 +37,7 @@ const RUN_AGENT_PATH =
 // Public hostnames that Cloudflare Tunnel forwards to this same local listener.
 const ANTIGRAVITY_HOST =
   process.env.ANTIGRAVITY_HOST || "antigravity-agent.revrebel.io";
+const MOCK_HOST = process.env.MOCK_HOST || "mock-agent.revrebel.io";
 const CHATGPT_HOST =
   process.env.CHATGPT_HOST || "chatgpt-agent.revrebel.io";
 const TRAE_HOST =
@@ -89,6 +91,7 @@ const server = http.createServer(async (request, response) => {
         port: PORT,
         antigravityHost: ANTIGRAVITY_HOST,
         chatgptHost: CHATGPT_HOST,
+        mockHost: MOCK_HOST,
         traeHost: TRAE_HOST,
         geminiHost: GEMINI_HOST,
         python: PYTHON_BIN,
@@ -202,7 +205,10 @@ const server = http.createServer(async (request, response) => {
     console.log(`Project scope: ${route.projectScope}`);
 
     await jobStore.transition(jobKey, "launching", { attempts: 1 });
-    if (agent === "antigravity") {
+    if (agent === "mock") {
+      await jobStore.transition(jobKey, "awaiting_external", { note: "Mock Agent queued; use mock-agent CLI to advance status or comment", taskFile: filename });
+      console.log(`Mock Agent queued: ${filename}`);
+    } else if (agent === "antigravity") {
       startAntigravity(routedJob, filename, workspace, jobKey);
     } else if (agent === "chatgpt") {
       if (!route.chatgptProjectUrl) {
@@ -253,6 +259,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Local Linear agent router listening on http://${HOST}:${PORT}`);
   console.log(`Antigravity host: ${ANTIGRAVITY_HOST}`);
   console.log(`ChatGPT host: ${CHATGPT_HOST}`);
+  console.log(`Mock host: ${MOCK_HOST}`);
   console.log(`Trae host: ${TRAE_HOST}`);
   console.log(`Gemini host: ${GEMINI_HOST}`);
   console.log(`Antigravity workspace: ${ANTIGRAVITY_WORKSPACE}`);
@@ -680,6 +687,7 @@ function matchesHost(actualHost, expectedHost) {
 }
 
 function agentForHost(host) {
+  if (matchesHost(host, MOCK_HOST)) return "mock";
   if (matchesHost(host, ANTIGRAVITY_HOST)) return "antigravity";
   if (matchesHost(host, CHATGPT_HOST)) return "chatgpt";
   if (matchesHost(host, TRAE_HOST)) return "trae";
