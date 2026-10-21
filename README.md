@@ -167,3 +167,14 @@ npm run types -- mock                # generate Wrangler types for Mock only
 ```
 
 For a single agent's Wrangler types use `npm run types -- mock` or `npm run types --workspace=linear-mock-worker`. The all-agent `dev` command is intentionally unsupported because each Wrangler development server stays running; start separate terminals for each agent instead. Deploying `all` requires all five Worker configurations, KV namespace IDs, domains, and secrets to be ready. `deploy` does not create DNS/KV or synchronize secrets. To sync secrets with root `.env`, use `bash scripts/with-env.sh worker mock sync-secrets` or substitute another agent name.
+
+## Cloudflare runtime TypeScript types
+
+Workers use Wrangler-generated `worker-configuration.d.ts` runtime declarations rather than `@cloudflare/workers-types`. After changing a Worker's `wrangler.jsonc`, regenerate its declarations:
+
+```bash
+npm run types -- mock    # just Mock Agent
+npm run types            # all five Workers
+```
+
+The newly scaffolded Mock Worker does not have a committed generated declaration yet. Run `npm run types -- mock` locally after setting the Mock Worker's KV namespace ID in its Wrangler configuration. The Worker TypeScript configurations include `worker-configuration.d.ts` automatically. For static typechecking, run `npx tsc --noEmit -p linear-mock-worker/tsconfig.json` (or substitute another worker). Generated declaration files may contain runtime-specific configuration metadata, so review generated file changes before committing them.
