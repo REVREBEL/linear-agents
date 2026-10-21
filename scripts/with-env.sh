@@ -73,6 +73,13 @@ case "${1:-}" in
       mock) worker_dir="${REPO_ROOT}/linear-mock-worker"; prefix="MOCK" ;;
       *) usage ;;
     esac
+    if [[ "${action}" == kv ]]; then
+      require CLOUDFLARE_ACCOUNT_ID
+      require CLOUDFLARE_API_TOKEN
+      cd "${REPO_ROOT}"
+      node "${REPO_ROOT}/scripts/setup-kv.mjs" "${agent}"
+      exit $?
+    fi
     cd "${worker_dir}"
     wrangler_bin="${REPO_ROOT}/node_modules/.bin/wrangler"
     if [[ ! -x "${wrangler_bin}" ]]; then
