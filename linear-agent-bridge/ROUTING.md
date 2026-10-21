@@ -16,14 +16,14 @@ If your live bridge folder is `~/.linear-agent-bridge/`, use:
 cp .linear-agent-bridge/routing.example.json ~/.linear-agent-bridge/routing.json
 ```
 
-Edit `projectsRoot` to the **parent directory of local repository checkouts**. Example: `${HOME}/path/to/projects`.
+Edit `projectsRoot` to the **parent directory of local repository checkouts**. Example: `/absolute/path/to/projects`.
 
 The configuration is keyed by Linear's **UUIDs** rather than project titles. Each entry in `initiatives` maps the initiative to an approved repository, and each `projects` entry maps a project to one initiative, a **repository-relative** scope, and optional `launchFromScope`:
 
 ```json
 {
   "version": 1,
-  "projectsRoot": "${HOME}/path/to/projects",
+  "projectsRoot": "/absolute/path/to/projects",
   "initiatives": {
     "a7f15d16-f380-40d1-9bc8-c20021feb486": {
       "name": "Metrics",
