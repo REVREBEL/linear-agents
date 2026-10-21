@@ -48,6 +48,12 @@ try {
     viewport: null,
     chromiumSandbox: true,
   });
+  console.log("Playwright PID:", process.pid, "keepOpen:", keepOpen, "profile:", profile);
+  browser.on("close", () => console.error("Chrome browser context CLOSED (possibly externally or by another process)."));
+  process.on("SIGTERM", () => console.error("Playwright received SIGTERM"));
+  process.on("SIGHUP", () => console.error("Playwright received SIGHUP"));
+  process.on("SIGINT", () => console.error("Playwright received SIGINT"));
+  process.on("exit", code => console.error("Playwright process exit:", code));
   const page = browser.pages()[0] ?? await browser.newPage();
   await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
   console.log("Google Chrome selected (Playwright channel: chrome).");
