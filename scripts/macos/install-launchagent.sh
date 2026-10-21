@@ -20,7 +20,8 @@ if [[ -z "${DOMAIN:-}" ]]; then echo "DOMAIN must be configured in $ENV_FILE" >&
 if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]; then
   echo "Invalid DOMAIN: must be a DNS name such as example.com" >&2; exit 1
 fi
-lower_domain="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')"\nIFS='.' read -r -a parts <<< "$lower_domain"
+lower_domain="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')"
+IFS='.' read -r -a parts <<< "$lower_domain"
 reversed=""
 for part in "${parts[@]}"; do
   if [[ -z "$reversed" ]]; then reversed="$part"; else reversed="$part.$reversed"; fi
@@ -49,5 +50,11 @@ if [[ -e "$TARGET" ]]; then
 fi
 install -m 644 "$TEMP" "$TARGET"
 echo "Installed $TARGET (label: $LABEL)"
-echo "Service not reloaded; follow docs/MACOS_LAUNCHAGENT.md."
+echo "Service not reloaded. Run these commands when ready:"
+printf '\nPLIST=%q\n' "$TARGET"
+printf 'launchctl bootout gui/$(id -u) "$PLIST" 2>/dev/null || true\n'
+printf 'launchctl bootstrap gui/$(id -u) "$PLIST"\n'
+printf 'launchctl print %q\n' "gui/$(id -u)/$LABEL"
+printf 'curl -fsS http://127.0.0.1:8788/health\n\n'
+echo "See docs/MACOS_LAUNCHAGENT.md for instructions."
 echo "If upgrading from another label, unload/remove its old LaunchAgent separately."
