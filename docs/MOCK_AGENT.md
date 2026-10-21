@@ -5,7 +5,7 @@ A fifth, **isolated** Linear app for exercising the assignment -> local queue ->
 ## Linear and Cloudflare setup (manual)
 
 1. Create a new Linear OAuth agent app for Mock Agent with the same OAuth permissions and webhook configuration as the existing Antigravity agent.
-2. Create a **new** Cloudflare KV namespace; set its ID in `linear-mock-worker/wrangler.jsonc` (do not reuse another agent's KV namespace).
+2. Create a **new** Cloudflare KV namespace; set `MOCK_KV_NAMESPACE_ID` in the ignored root `.env` (do not reuse another agent's KV namespace).
 3. Configure `linear-mock.yourdomain.com` for OAuth and webhook traffic and `mock-agent.yourdomain.com` to forward to the local bridge's existing `/jobs` listener through your tunnel. Verify routing and security before enabling.
 4. Add `MOCK_LINEAR_CLIENT_ID`, `MOCK_LINEAR_CLIENT_SECRET`, `MOCK_LINEAR_WEBHOOK_SECRET`, and `MOCK_HOST=mock-agent.yourdomain.com` to your local ignored root `.env`. Configure the Worker secrets including `BRIDGE_SHARED_SECRET`.
 5. The Mock Worker is included in the npm workspaces. After completing KV, DNS, OAuth, tunnel and secret setup, use `npm run deploy -- mock` and `bash scripts/with-env.sh worker mock sync-secrets`. Avoid `deploy -- all` until every Worker is configured.
@@ -43,3 +43,7 @@ npm run mock:agent -- status --job "/absolute/path/to/scoped-job.json" --to comp
 The CLI loads `LINEAR_API_KEY` from your ignored root `.env` via `scripts/with-env.sh` and asks for explicit `YES` approval before each write. Use `--yes` only for controlled test automation. Status names are resolved against the issue team's actual workflow; missing or ambiguous statuses fail safely. Configure the key securely before running. Do not use `--yes` on non-test issues.
 
 **Important:** This scaffold does not yet dispatch from the new Linear app until its Worker is deployed, tunnel host mapped, and Linear app installed; it does not verify your Cloudflare configuration or the live webhook payload. The existing bridge requires a Linear project plus exactly one mapped initiative and repository, so put the test issue in a mapped project.
+
+## Private Worker configuration
+
+Put `DOMAIN=yourdomain.com` and `MOCK_KV_NAMESPACE_ID=<namespace ID>` in the ignored root `.env`. The committed `wrangler.jsonc` contains example URLs and a placeholder namespace ID. `npm run types -- mock` and `npm run deploy -- mock` load `.env`, write an untracked temporary Wrangler configuration, use it, and delete it after completion. The OAuth redirect and bridge URLs are derived from `DOMAIN`, not committed. The same process applies to all five agents.
