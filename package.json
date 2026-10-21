@@ -1,0 +1,22 @@
+{
+  "name": "linear-agents",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "linear-antigravity-worker",
+    "linear-chatgpt-worker",
+    "linear-gemini-worker",
+    "linear-trae-worker"
+  ],
+  "scripts": {
+    "test": "node --test linear-agent-bridge/*.test.mjs",
+    "types": "npm run types --workspaces",
+    "dev": "node scripts/workspace-command.mjs dev",
+    "deploy": "node scripts/workspace-command.mjs deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260701.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.24.3"
+  }
+}
