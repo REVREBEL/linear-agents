@@ -25,13 +25,13 @@
   "kv_namespaces": [
     {
       "binding": "LINEAR_DATA",
-      "id": "CONFIGURED_FROM_ENV",
+      "id": "${GEMINI_KV_NAMESPACE_ID}",
     }
   ],
   "vars": {
-    "SERVICE_NAME": "linear-gemini-agent", 
-    "LINEAR_REDIRECT_URI": "https://linear-gemini.yourdomain.com/oauth/callback",
+    "SERVICE_NAME": "linear-${GEMINI_PREFIX}-agent", 
+    "LINEAR_REDIRECT_URI": "https://linear-${GEMINI_PREFIX}.${DOMAIN}/oauth/callback",
     "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
-    "BRIDGE_URL": "https://gemini-agent.yourdomain.com/jobs"
+    "BRIDGE_URL": "https://${GEMINI_PREFIX}-agent.${DOMAIN}/jobs"
   }
 }
