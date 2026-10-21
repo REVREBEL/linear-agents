@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "projectsRoot": "/Users/garystringham/github-revrebel",
+  "projectsRoot": "REPLACE_WITH_PROJECT_ROOT_PATH",
   "initiatives": {
     "74d63a61-a583-4059-812a-61243bbb9e41": {
       "name": "Custom Booking Engine / Mew API",
-      "repository": "REVREBEL/urban-cowboy-booking-engine"
+      "repository": "REPLACE_WITH_VERIFIED_REPOSITORY"
     },
     "a7f15d16-f380-40d1-9bc8-c20021feb486": {
       "name": "Metrics",
-      "repository": "REVREBEL/Metrics-Core"
+      "repository": "REPLACE_WITH_VERIFIED_REPOSITORY"
     },
     "9bc44802-73c3-4215-8a1b-25e382dc0075": {
       "name": "GuestBridge",

@@ -157,3 +157,4 @@ linear-jobs/
 **/*.tfplan
 **/*.tfvars
 !**/*.tfvars.example
+linear-agent-bridge/routing.json
