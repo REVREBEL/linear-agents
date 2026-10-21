@@ -158,3 +158,6 @@ linear-jobs/
 **/*.tfvars
 !**/*.tfvars.example
 linear-agent-bridge/routing.json
+
+# Optional isolated ChatGPT Playwright test dependencies
+scripts/chatgpt-playwright/package-lock.json
