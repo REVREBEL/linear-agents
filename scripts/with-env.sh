@@ -92,19 +92,32 @@ case "${1:-}" in
     cleanup_config() { rm -f -- "${temp_config}"; }
     trap cleanup_config EXIT
     node "${REPO_ROOT}/scripts/render-wrangler.mjs" "${agent}" "${temp_config}"
-    wrangler_cmd=("${wrangler_bin}" --config "${temp_config}")
+    sync_worker_secrets() {
+      require BRIDGE_SHARED_SECRET
+      local key sourced_key
+      for key in LINEAR_CLIENT_ID LINEAR_CLIENT_SECRET LINEAR_WEBHOOK_SECRET; do
+        sourced_key="${prefix}_${key}"
+        require "${sourced_key}"
+      done
+      for key in LINEAR_CLIENT_ID LINEAR_CLIENT_SECRET LINEAR_WEBHOOK_SECRET; do
+        sourced_key="${prefix}_${key}"
+        printf '%s' "${!sourced_key}" | "${wrangler_bin}" secret put "${key}" --config "${temp_config}"
+      done
+      printf '%s' "${BRIDGE_SHARED_SECRET}" | "${wrangler_bin}" secret put BRIDGE_SHARED_SECRET --config "${temp_config}"
+      echo "Synced four secrets for ${agent}."
+    }
     case "${action}" in
       types) "${wrangler_bin}" types --config "${temp_config}" "$@" ;;
-      sync-secrets)
+      sync-secrets) sync_worker_secrets ;;
+      deploy)
+        # Fail before deployment if secret values are missing, to avoid a partial setup.
         require BRIDGE_SHARED_SECRET
-        for key in LINEAR_CLIENT_ID LINEAR_CLIENT_SECRET LINEAR_WEBHOOK_SECRET; do
-          sourced_key="${prefix}_${key}"
-          require "${sourced_key}"
-          printf '%s' "${!sourced_key}" | "${wrangler_bin}" secret put "${key}" --config "${temp_config}" "$@"
-        done
-        printf '%s' "${BRIDGE_SHARED_SECRET}" | "${wrangler_bin}" secret put BRIDGE_SHARED_SECRET --config "${temp_config}" "$@"
+        require "${prefix}_LINEAR_CLIENT_ID"
+        require "${prefix}_LINEAR_CLIENT_SECRET"
+        require "${prefix}_LINEAR_WEBHOOK_SECRET"
+        "${wrangler_bin}" deploy --config "${temp_config}" "$@"
+        sync_worker_secrets
         ;;
-      deploy) "${wrangler_bin}" deploy --config "${temp_config}" "$@" ;;
       dev)
         if [[ -e .dev.vars ]]; then
           echo "Refusing to overwrite pre-existing ${worker_dir}/.dev.vars" >&2
