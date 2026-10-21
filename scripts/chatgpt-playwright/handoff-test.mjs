@@ -38,16 +38,48 @@ try {
   console.log("Opened ChatGPT Project:", url.href);
   console.log("Sign in if necessary, and MANUALLY start a new chat inside this project.");
   await rl.question("After checking the project and opening a new chat, press Return to continue (Ctrl+C to cancel): ");
-  if (new URL(page.url()).hostname !== "chatgpt.com") throw new Error("Browser is no longer on ChatGPT.");
-  const composer = page.locator('#prompt-textarea[contenteditable="true"], [data-testid="composer-input"][contenteditable="true"], [contenteditable="true"][role="textbox"]').first();
-  await composer.waitFor({ state: "visible", timeout: 15000 });
+  // Use the currently visible ChatGPT tab, not an arbitrary initial tab.
+  const chatPages = browser.pages().filter(p => {
+    try { return new URL(p.url()).hostname === "chatgpt.com"; }
+    catch { return false; }
+  });
+  const activePage = chatPages.at(-1) ?? page;
+  if (new URL(activePage.url()).hostname !== "chatgpt.com") {
+    throw new Error("No ChatGPT tab found. Open a new chat in the test browser.");
+  }
+  console.log("Current destination:", activePage.url());
+  console.log("Finding ChatGPT composer...");
+  // ChatGPT uses a contenteditable editor. Select a visible editable area.
+  const choices = [
+    activePage.locator('#prompt-textarea[contenteditable="true"]'),
+    activePage.locator('[data-testid="composer-input"][contenteditable="true"]'),
+    activePage.locator('[contenteditable="true"][role="textbox"]'),
+    activePage.locator('[contenteditable="true"]'),
+  ];
+  let composer;
+  for (const choice of choices) {
+    const count = await choice.count();
+    for (let i=0; i<count; i++) {
+      const candidate = choice.nth(i);
+      if (await candidate.isVisible().catch(() => false)) { composer = candidate; break; }
+    }
+    if (composer) break;
+  }
+  if (!composer) {
+    throw new Error("Could not find a visible ChatGPT text composer. Ensure you are signed in and opened a new project chat.");
+  }
+  await composer.click();
   await composer.fill(prompt);
-  console.log("Prompt filled, NOT sent. Confirm the destination and text in the visible browser.");
+  const inserted = (await composer.innerText()).trim();
+  if (inserted !== prompt) {
+    throw new Error("Composer did not retain the prompt. Check the ChatGPT tab before retrying.");
+  }
+  console.log("Prompt verified in editor, NOT sent. Confirm the destination and text in the visible browser.");
   const answer = (await rl.question("Type SEND to submit, or anything else to cancel: ")).trim();
   if (answer !== "SEND") { console.log("Cancelled: prompt was not submitted."); process.exitCode = 0; }
   else {
     await composer.press("Enter");
-    console.log("Submission attempted in:", page.url());
+    console.log("Submission attempted in:", activePage.url());
     console.log("Check that the message appears in the intended project chat.");
   }
   await rl.question("Press Return to close this test browser: ");
