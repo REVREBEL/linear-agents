@@ -467,7 +467,7 @@ export LINEAR_API_KEY="$(
   source "$linear_env_file"
   print -rn -- "\${LINEAR_API_KEY:-}"
 )"
-if [[ -z ${LINEAR_API_KEY:-} ]]; then
+if [[ -z ${LINEAR_API_KEY} ]]; then
   print -u2 -- "Gemini launch stopped: LINEAR_API_KEY not set in bridge environment"
   exit 1
 fi
