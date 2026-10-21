@@ -14,6 +14,10 @@ A fifth, **isolated** Linear app for exercising the assignment -> local queue ->
 
 The install endpoint is `https://linear-mock.yourdomain.com/install`, not `https://mock-agent.yourdomain.com`. The former is the Cloudflare Worker; the latter is the tunnel forwarding `/jobs` to the local bridge. Configure and deploy the Worker, attach its custom domain in Cloudflare, synchronize Worker secrets, then visit `/install` to authorize the Linear OAuth app. Check `/health` on the Worker first.
 
+In Linear, register Mock Agent as an OAuth app, enable Agent Session webhook events, set callback to `https://linear-mock.yourdomain.com/oauth/callback` and webhook to `https://linear-mock.yourdomain.com/webhook`, and request `read,write,app:assignable,app:mentionable` scopes. Set the app credentials in the ignored root `.env` using `MOCK_LINEAR_CLIENT_ID`, `MOCK_LINEAR_CLIENT_SECRET`, and `MOCK_LINEAR_WEBHOOK_SECRET`. The Worker uses `actor=app` to authorize installation into a workspace. After deployment, run `bash scripts/with-env.sh worker mock sync-secrets`; visit the installation URL and approve the workspace authorization.
+
+Cloudflare Worker Custom Domain `linear-mock.yourdomain.com` must be attached in **Workers & Pages → linear-mock-agent → Settings → Domains & Routes**. The separate Tunnel public hostname `mock-agent.yourdomain.com` must forward to `http://127.0.0.1:8788`. Do not point the Worker domain to the Tunnel, or the Tunnel domain to the Worker.
+
 Cloudflare Error 1014 (CNAME Cross-User Banned) concerns DNS or hostname association, not IP allowlisting. Check the tunnel hostname's CNAME target and account association.
 
 ## Inspect a received job
