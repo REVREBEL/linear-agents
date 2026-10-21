@@ -173,6 +173,7 @@ const server = http.createServer(async (request, response) => {
       routing: job.routing,
       issueMetadata: job.issueMetadata,
       source: job.source,
+      sessionAction: job.sessionAction || "created",
       receivedAt: job.receivedAt,
       organizationId: job.organizationId,
       agentSessionId: job.agentSessionId,
