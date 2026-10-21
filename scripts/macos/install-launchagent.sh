@@ -20,7 +20,7 @@ if [[ -z "${DOMAIN:-}" ]]; then echo "DOMAIN must be configured in $ENV_FILE" >&
 if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]; then
   echo "Invalid DOMAIN: must be a DNS name such as example.com" >&2; exit 1
 fi
-IFS='.' read -r -a parts <<< "${DOMAIN,,}"
+lower_domain="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]')"\nIFS='.' read -r -a parts <<< "$lower_domain"
 reversed=""
 for part in "${parts[@]}"; do
   if [[ -z "$reversed" ]]; then reversed="$part"; else reversed="$part.$reversed"; fi
