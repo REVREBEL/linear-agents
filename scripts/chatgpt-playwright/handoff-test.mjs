@@ -68,25 +68,30 @@ try {
   await activePage.bringToFront();
   console.log("Finding ChatGPT composer...");
   console.log("Page title:", await activePage.title().catch(() => "(unavailable)"));
-  // ChatGPT uses a contenteditable editor. Select a visible editable area.
-  const choices = [
-    activePage.locator('#prompt-textarea[contenteditable="true"]'),
-    activePage.locator('[data-testid="composer-input"][contenteditable="true"]'),
-    activePage.locator('[contenteditable="true"][role="textbox"]'),
-    activePage.locator('[contenteditable="true"]'),
+  // ChatGPT hydrates the composer asynchronously after DOMContentLoaded.
+  // Poll visible editors rather than checking once and immediately exiting.
+  const selectors = [
+    '#prompt-textarea[contenteditable="true"]',
+    '[data-testid="composer-input"][contenteditable="true"]',
+    '[contenteditable="true"][role="textbox"]',
+    '[contenteditable="true"]',
   ];
   let composer;
-  for (const [index, choice] of choices.entries()) {
-    console.log(`Composer candidate group ${index+1}: ${await choice.count()} matches`);
-    const count = await choice.count();
-    for (let i=0; i<count; i++) {
-      const candidate = choice.nth(i);
-      if (await candidate.isVisible().catch(() => false)) { composer = candidate; break; }
+  const deadline = Date.now() + 45000;
+  while (Date.now() < deadline && !composer) {
+    for (const selector of selectors) {
+      const candidate = activePage.locator(selector).first();
+      if (await candidate.isVisible().catch(() => false)) {
+        composer = candidate;
+        break;
+      }
     }
-    if (composer) break;
+    if (!composer) await activePage.waitForTimeout(750);
   }
   if (!composer) {
-    throw new Error("Could not find a visible ChatGPT text composer. Ensure you are signed in and the intended project conversation is open.");
+    const currentUrl = activePage.url();
+    const title = await activePage.title().catch(() => "(unavailable)");
+    throw new Error(`Composer not visible after 45s. Current URL: ${currentUrl}; title: ${title}. Check that the dedicated Chrome profile is signed in and the conversation finished loading.`);
   }
   await composer.click();
   await composer.fill(prompt);
