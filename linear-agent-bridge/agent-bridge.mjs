@@ -626,20 +626,20 @@ function extractDirectTask(prompt) {
   // created issue sessions, discard generated project summaries, synced
   // comment banners, agent guidance, and redundant wrapper text. Do not
   // filter the issue description itself: its safety/scope rules are task data.
-  const issue = prompt.match(/<issue\\b[^>]*identifier="([^"]+)"[^>]*>([\\s\\S]*?)<\\/issue>/);
+  const issue = prompt.match(/<issue\b[^>]*identifier="([^"]+)"[^>]*>([\s\S]*?)<\/issue>/);
   if (!issue) return prompt;
-  const title = issue[2].match(/<title>([\\s\\S]*?)<\\/title>/)?.[1]?.trim();
-  const description = issue[2].match(/<description>([\\s\\S]*?)<\\/description>/)?.[1]?.trim();
+  const title = issue[2].match(/<title>([\s\S]*?)<\/title>/)?.[1]?.trim();
+  const description = issue[2].match(/<description>([\s\S]*?)<\/description>/)?.[1]?.trim();
   if (!title || !description) return prompt;
-  const request = prompt.match(/<user-request>([\\s\\S]*?)<\\/user-request>/)?.[1]?.trim();
-  const isGenericRequest = request && /^Work on \\[?[A-Z]+-\\d+/i.test(request);
+  const request = prompt.match(/<user-request>([\s\S]*?)<\/user-request>/)?.[1]?.trim();
+  const isGenericRequest = request && /^Work on \[?[A-Z]+-\d+/i.test(request);
   return [
     `Issue: ${issue[1]}`,
     `Title: ${title}`,
     "",
     description,
     ...(request && !isGenericRequest ? ["", "Request:", request] : []),
-  ].join("\\n");
+  ].join("\n");
 }
 
 function extractPromptContext(job) {
