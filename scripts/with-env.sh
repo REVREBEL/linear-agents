@@ -34,6 +34,12 @@ export TF_VAR_cloudflare_zone_id="${CLOUDFLARE_ZONE_ID:-}"
 export TF_VAR_cloudflare_domain="${DOMAIN:-}"
 
 case "${1:-}" in
+  mock-submit)
+    shift
+    require BRIDGE_SHARED_SECRET
+    cd "${REPO_ROOT}"
+    exec node "${REPO_ROOT}/scripts/mock-agent-submit.mjs" "$@"
+    ;;
   mock-agent)
     shift
     require LINEAR_API_KEY
