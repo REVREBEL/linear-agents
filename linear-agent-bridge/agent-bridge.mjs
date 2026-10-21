@@ -194,6 +194,7 @@ const server = http.createServer(async (request, response) => {
         linearProjectId: route.projectId,
         linearInitiativeId: route.initiativeId,
         chatgptProjectUrl: route.chatgptProjectUrl || null,
+        chatgptConversationMode: route.chatgptConversationMode || null,
       },
     }, null, 2), { mode: 0o600 });
 
@@ -223,7 +224,7 @@ const server = http.createServer(async (request, response) => {
           // This supervised test requires an attached terminal, and must not consume the daemon stdin.
           // Queue a ready-to-run handoff command as a local file instead of launching UI automation from launchd.
           const handoffFile = filename + ".chatgpt-handoff.json";
-          await fs.writeFile(handoffFile, JSON.stringify({ projectUrl: route.chatgptProjectUrl, prompt: promptContext, jobFile: filename }, null, 2), { mode: 0o600 });
+          await fs.writeFile(handoffFile, JSON.stringify({ projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, prompt: promptContext, jobFile: filename }, null, 2), { mode: 0o600 });
           await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: "Supervised Playwright handoff ready; run manually" });
           console.log(`ChatGPT Playwright handoff ready: ${handoffFile}`);
           console.log(`Run: node ${script} --handoff-file ${handoffFile}`);
@@ -550,18 +551,24 @@ async function resolveJobRoute(job) {
   const launchDirectory = project.launchFromScope === true ? actualScope : repositoryRoot;
   const scopeKey = String(projectId).replace(/[^a-zA-Z0-9_-]/g, "_");
   const chatgptProjectUrl = project.chatgpt?.projectUrl;
+  const chatgptConversationMode = project.chatgpt?.conversationMode || "new-per-issue";
   if (chatgptProjectUrl !== undefined) {
     try {
       const destination = new URL(chatgptProjectUrl);
+      const projectPath = /^\\/g\\/g-p-[^/]+(?:\\/)?$/;
+      const conversationPath = /^\\/g\\/g-p-[^/]+\\/c\\/[^/]+\\/?$/;
+      const validPath = chatgptConversationMode === "reuse-existing"
+        ? conversationPath.test(destination.pathname)
+        : chatgptConversationMode === "new-per-issue" && projectPath.test(destination.pathname);
       if (destination.protocol !== "https:" || destination.hostname !== "chatgpt.com" ||
-          !destination.pathname.startsWith("/g/g-p-") || destination.pathname.includes("/c/")) {
-        return { ok: false, error: `Invalid chatgpt.projectUrl for Linear project ${projectId}` };
+          destination.search || destination.hash || !validPath) {
+        return { ok: false, error: `Invalid chatgpt.projectUrl or conversationMode for Linear project ${projectId}` };
       }
     } catch {
       return { ok: false, error: `Invalid chatgpt.projectUrl for Linear project ${projectId}` };
     }
   }
-  return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId, chatgptProjectUrl };
+  return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId, chatgptProjectUrl, chatgptConversationMode };
 }
 
 function extractAgentSessionId(job) {
