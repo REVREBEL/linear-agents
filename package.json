@@ -26,7 +26,9 @@
     "linear:projects": "bash scripts/with-env.sh linear-projects",
     "chatgpt:playwright": "node scripts/chatgpt-playwright/handoff-test.mjs",
     "mock:agent": "bash scripts/with-env.sh mock-agent",
-    "setup:kv": "node scripts/workspace-command.mjs kv"
+    "setup:kv": "node scripts/workspace-command.mjs kv",
+    "restart:bridge":"zsh scripts/restart-bridge.sh",
+    "log:messages": "npx wrangler tail linear-mock-agent --format pretty"
   },
   "devDependencies": {
     "typescript": "^7.0.0",
