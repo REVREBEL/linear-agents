@@ -15,10 +15,12 @@ if (command === "dev" && requested === "all") {
 if (command === "install") {
   // A script literally named "install" would run automatically during npm install.
   // Use "setup" instead, and install shared dependencies from the repository root.
-  const args = requested === "all"
-    ? ["install", ...extra]
-    : ["install", `--workspace=linear-${requested}-worker`, "--include-workspace-root", ...extra];
-  const result = spawnSync("npm", args, { stdio: "inherit", shell: process.platform === "win32" });
+  // npm's allowScripts policy is defined at the root; a workspace-scoped
+  // install is rejected with EALLOWSCRIPTS. All workers share one root
+  // dependency tree, so install the entire workspace set even when a single
+  // worker was requested.
+  const args = ["install", ...extra];
+  const result = spawnSync("npm", args, { cwd: new URL("..", import.meta.url).pathname, stdio: "inherit", shell: process.platform === "win32" });
   process.exit(result.status ?? 1);
 }
 for (const agent of (requested === "all" ? agents : [requested])) {
