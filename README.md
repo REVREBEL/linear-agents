@@ -1,3 +1,7 @@
+## macOS LaunchAgent
+
+For a login-started local bridge, use the [macOS LaunchAgent setup guide](docs/MACOS_LAUNCHAGENT.md) and [validated plist template](scripts/macos/io.revrebel.agent-bridge.plist.example). Run `bash scripts/macos/install-launchagent.sh` after configuring the root `.env`. This installs the plist without restarting the running bridge.
+
 ## Local environment and Terraform
 
 All local credentials and Cloudflare resource IDs are configured through one root [`.env.example`](.env.example). Copy it to an ignored `.env`. Use [`scripts/with-env.sh`](scripts/with-env.sh) to load that file for Terraform, local Worker development, production Worker secret uploads and manual bridge launches. No per-Agent `.dev.vars.example` or `.tfvars` file is required. See the [Cloudflare setup guide](infrastructure/cloudflare/README.md) before importing existing security resources; do not run Terraform apply until the deployed WAF ruleset and list are reconciled.
