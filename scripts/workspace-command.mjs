@@ -2,7 +2,8 @@
 // Select one or all Worker workspaces using one shared root dependency installation.
 import { spawnSync } from "node:child_process";
 const agents = ["antigravity", "chatgpt", "gemini", "trae", "mock"];
-const [command, requested, ...extra] = process.argv.slice(2);
+const [command, requestedArg, ...extra] = process.argv.slice(2);
+const requested = requestedArg || (command === "types" ? "all" : undefined);
 if (!["dev", "deploy", "install", "types"].includes(command) || !requested || (requested !== "all" && !agents.includes(requested))) {
   console.error("Usage: npm run setup|dev|deploy|types -- <antigravity|chatgpt|gemini|trae|mock|all> [args]");
   process.exit(2);
