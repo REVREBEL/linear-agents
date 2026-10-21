@@ -30,6 +30,7 @@ require() {
 }
 export TF_VAR_cloudflare_account_id="${CLOUDFLARE_ACCOUNT_ID:-}"
 export TF_VAR_cloudflare_zone_id="${CLOUDFLARE_ZONE_ID:-}"
+export TF_VAR_cloudflare_domain="${DOMAIN:-}"
 
 case "${1:-}" in
   terraform)
