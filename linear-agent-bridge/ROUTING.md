@@ -18,7 +18,7 @@ cp .linear-agent-bridge/routing.example.json ~/.linear-agent-bridge/routing.json
 
 Edit `projectsRoot` to the **parent directory of local repository checkouts**. Example: `/absolute/path/to/projects`.
 
-The configuration is keyed by Linear's **UUIDs** rather than project titles. Each entry in `initiatives` maps the initiative to an approved repository, and each `projects` entry maps a project to one initiative, a **repository-relative** scope, and optional `launchFromScope`:
+The configuration is keyed by Linear's **UUIDs** rather than project titles. Each entry in `initiatives` maps an initiative to an approved repository. Projects can either select a mapped initiative or declare an explicit approved `repository` for a standalone project. Each project also sets a **repository-relative** scope and optional `launchFromScope`:
 
 ```json
 {
@@ -41,6 +41,23 @@ The configuration is keyed by Linear's **UUIDs** rather than project titles. Eac
 }
 ```
 
+A standalone project without a Linear initiative can be configured directly:
+
+```json
+{
+  "projects": {
+    "9e86240e-75b8-4df2-8f54-97988f3b22e5": {
+      "name": "Skills Library Taxonomy & Architecture",
+      "repository": "REVREBEL/YOUR-VERIFIED-REPOSITORY",
+      "scope": ".",
+      "launchFromScope": false
+    }
+  }
+}
+```
+
+Replace the repository placeholder with the verified checkout name under `projectsRoot`. The bridge still rejects missing project IDs, unknown repositories, conflicting initiative mappings, and paths outside the repository root. For ChatGPT `new-per-issue`, `chatgpt.projectUrl` must be the base `/g/g-p-...` Project URL, with no `/c/...` conversation suffix. Editing the ignored `routing.json` does not require restarting the bridge.
+
 `launchFromScope: false` intentionally starts the agent at the **repository root** for Git/workspace trust and consistent CLI project memory. The task prompt still identifies the relevant app subfolder. Set `true` **only** if an agent's trusted session is specifically established at that subfolder.
 
 ### Mappings requiring local verification
@@ -51,7 +68,7 @@ The configuration is keyed by Linear's **UUIDs** rather than project titles. Eac
 
 ### Required Worker changes
 
-All four Workers now query Linear for the assigned issue's project ID and initiative IDs using the app OAuth installation. The bridge requires `job.routing.projectId` and exactly one matching mapped `job.routing.initiativeIds`. If enrichment fails, **do not** fall back to parsing issue text. Verify the GraphQL query against the active Linear API schema and run an end-to-end smoke test before turning on this strict requirement in production.
+All four Workers now query Linear for the assigned issue's project ID and initiative IDs using the app OAuth installation. The bridge requires `job.routing.projectId`, plus either exactly one mapped initiative or an explicit `project.repository` for a standalone project. If enrichment fails, **do not** fall back to parsing issue text. Verify the GraphQL query against the active Linear API schema and run an end-to-end smoke test before turning on this strict requirement in production.
 
 ### Storage and failures
 
