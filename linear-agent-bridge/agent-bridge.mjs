@@ -175,13 +175,22 @@ const server = http.createServer(async (request, response) => {
       "Respect the original issue's explicit scope, restrictions and repository-wide guidance.",
       "",
     ].join("\n");
+    // Persist and dispatch one canonical prompt. The raw Linear webhook embeds
+    // the same issue in agentSession.issue and promptContext; keeping it
+    // duplicates instructions and unnecessarily expands downstream context.
     const routedJob = {
-      ...job,
+      routing: job.routing,
+      issueMetadata: job.issueMetadata,
+      source: job.source,
+      receivedAt: job.receivedAt,
+      organizationId: job.organizationId,
+      agentSessionId: job.agentSessionId,
+      completionUrl: job.completionUrl,
       payload: {
-        ...job.payload,
         data: {
-          ...job.payload?.data,
-          promptContext: originalPrompt ? scopeHeader + originalPrompt : originalPrompt,
+          promptContext: originalPrompt ? scopeHeader + originalPrompt : undefined,
+          agentSessionId: job.agentSessionId ?? job.payload?.data?.agentSessionId,
+          completionUrl: job.completionUrl ?? job.payload?.data?.completionUrl,
         },
       },
     };
