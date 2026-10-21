@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
+import { createJobStore } from "./job-store.mjs";
 
 const PORT = Number(process.env.BRIDGE_PORT || 8788);
 const HOST = process.env.BRIDGE_HOST || "127.0.0.1";
@@ -17,6 +18,7 @@ const AGENT_ENV_FILE = process.env.AGENT_ENV_FILE || path.join(PROJECT_DIR, ".en
 const PROJECTS_ROOT =
   process.env.PROJECTS_ROOT || path.join(os.homedir(), "github-revrebel");
 const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs");
+const jobStore = createJobStore(JOBS_DIR);
 const ROUTING_CONFIG_FILE = process.env.ROUTING_CONFIG_FILE || path.join(PROJECT_DIR, "routing.json");
 const AGENT_JOB_DIRS = {
   antigravity: path.join(JOBS_DIR, "antigravity"),
@@ -74,6 +76,9 @@ await Promise.all(
   ),
 );
 
+const recovered = await jobStore.reconcile();
+if (recovered) console.warn(`Marked ${recovered} unfinished jobs interrupted; manual reconciliation required.`);
+
 const server = http.createServer(async (request, response) => {
   try {
     const host = normalizeHost(request.headers.host);
@@ -125,10 +130,23 @@ const server = http.createServer(async (request, response) => {
       `job-${Date.now()}-${crypto.randomUUID()}`;
     const safeJobId = String(jobId).replace(/[^a-zA-Z0-9._-]/g, "_");
     const agent = agentForHost(host);
+    // Scope delivery identifiers by agent and preserve their original contents.
+    // For missing upstream IDs, hash the payload so retries stay idempotent.
+    const deliveryId = request.headers["x-linear-webhook-id"] ??
+      crypto.createHash("sha256").update(rawBody).digest("hex");
+    const jobKey = `${agent}:${String(deliveryId)}`;
+    const claimed = await jobStore.claim(jobKey, { agent, deliveryId: String(deliveryId), jobId: safeJobId });
+    if (!claimed.created) {
+      return sendJson(response, 202, {
+        ok: true, accepted: true, duplicate: true, jobId: claimed.record?.jobId || safeJobId,
+        state: claimed.record?.state || "claimed", host,
+      });
+    }
     const route = await resolveJobRoute(job);
     if (!route.ok) {
       const pendingFile = path.join(AGENT_JOB_DIRS[agent], `${safeJobId}.unrouted.json`);
       await fs.writeFile(pendingFile, JSON.stringify({ reason: route.error, job }, null, 2), { mode: 0o600 });
+      await jobStore.transition(jobKey, "unrouted", { error: route.error, taskFile: pendingFile });
       console.error(`Routing failed: ${route.error}; saved pending job to ${pendingFile}`);
       return sendJson(response, 422, { ok: false, accepted: false, error: route.error });
     }
@@ -178,21 +196,25 @@ const server = http.createServer(async (request, response) => {
       },
     }, null, 2), { mode: 0o600 });
 
+    await jobStore.transition(jobKey, "queued", { taskFile: filename, repositoryRoot: route.repositoryRoot, workspace });
     console.log("\nLinear job received");
     console.log(`Host: ${host}`);
     console.log(`Saved to: ${filename}`);
     console.log(`Resolved workspace: ${workspace}`);
     console.log(`Project scope: ${route.projectScope}`);
 
+    await jobStore.transition(jobKey, "launching", { attempts: 1 });
     if (agent === "antigravity") {
-      startAntigravity(routedJob, filename, workspace);
+      startAntigravity(routedJob, filename, workspace, jobKey);
     } else if (agent === "chatgpt") {
       startChatGPT(routedJob, filename);
+      await jobStore.transition(jobKey, "awaiting_external", { note: "ChatGPT task saved for external execution" });
     } else if (agent === "trae") {
-      startTrae(routedJob, filename, workspace);
+      startTrae(routedJob, filename, workspace, jobKey);
     } else if (agent === "gemini") {
-      await startGemini(routedJob, filename, workspace);
+      await startGemini(routedJob, filename, workspace, jobKey);
     } else {
+      await jobStore.transition(jobKey, "failed", { error: "Unknown agent host" });
       console.log(`Unknown agent hostname: ${host}. Job saved but not executed.`);
     }
 
@@ -228,7 +250,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Python runner: ${PYTHON_BIN}`);
 });
 
-function startAntigravity(job, filename, workspace) {
+function startAntigravity(job, filename, workspace, jobKey) {
   const sessionId = extractAgentSessionId(job);
 
   if (!sessionId) {
@@ -253,7 +275,7 @@ function startAntigravity(job, filename, workspace) {
     },
   );
 
-  attachProcessLogs(agentProcess, "Antigravity");
+  attachProcessLogs(agentProcess, "Antigravity", jobKey);
 }
 
 function startChatGPT(job, filename) {
@@ -271,7 +293,7 @@ function startChatGPT(job, filename) {
   console.log(`ChatGPT job file: ${filename}`);
 }
 
-function startTrae(job, filename, workspace) {
+function startTrae(job, filename, workspace, jobKey) {
   if (!TRAE_BIN) {
     console.error("TRAE_BIN is not configured. Job saved but Trae was not started.");
     return;
@@ -306,10 +328,10 @@ function startTrae(job, filename, workspace) {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  attachProcessLogs(traeProcess, "Trae");
+  attachProcessLogs(traeProcess, "Trae", jobKey);
 }
 
-async function startGemini(job, filename, workspace) {
+async function startGemini(job, filename, workspace, jobKey) {
   if (!GEMINI_BIN) {
     console.error("GEMINI_BIN is not configured. Job saved but Gemini was not started.");
     return;
@@ -322,7 +344,7 @@ async function startGemini(job, filename, workspace) {
   }
 
   if (GEMINI_LAUNCH_MODE === "warp") {
-    await startGeminiInWarp(promptContext, filename, workspace);
+    await startGeminiInWarp(promptContext, filename, workspace, jobKey);
     return;
   }
 
@@ -348,10 +370,10 @@ async function startGemini(job, filename, workspace) {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  attachProcessLogs(geminiProcess, "Gemini");
+  attachProcessLogs(geminiProcess, "Gemini", jobKey);
 }
 
-async function startGeminiInWarp(promptContext, filename, workspace) {
+async function startGeminiInWarp(promptContext, filename, workspace, jobKey) {
   const jobStem = path.basename(filename, path.extname(filename));
   const launchDir = path.join(AGENT_JOB_DIRS.gemini, "warp-launchers");
   const tabConfigDir = path.join(os.homedir(), ".warp", "tab_configs");
@@ -417,7 +439,7 @@ is_focused = true
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  attachProcessLogs(warpProcess, "Gemini-Warp");
+  attachProcessLogs(warpProcess, "Gemini-Warp", jobKey, true);
 }
 
 function configuredWorkspaceForAgent(agent) {
@@ -590,7 +612,9 @@ function maskArg(arg) {
   return arg;
 }
 
-function attachProcessLogs(child, label) {
+function attachProcessLogs(child, label, jobKey, external = false) {
+  let launchError = false;
+  child.on("spawn", () => { void jobStore.transition(jobKey, "running", { pid: child.pid }).catch(console.error); });
   child.stdout.on("data", (data) => {
     console.log(`[${label}-Out]: ${data.toString().trim()}`);
   });
@@ -600,10 +624,16 @@ function attachProcessLogs(child, label) {
   });
 
   child.on("error", (error) => {
+    launchError = true;
+    void jobStore.transition(jobKey, "failed", { error: error.message }).catch(console.error);
     console.error(`[${label}-Spawn-Error]: ${error.message}`);
   });
 
   child.on("close", (code, signal) => {
+    if (!launchError) {
+      const state = code === 0 ? (external ? "awaiting_external" : "completed") : "failed";
+      void jobStore.transition(jobKey, state, { exitCode: code, signal }).catch(console.error);
+    }
     console.log(`[${label}-Exit]: code=${code ?? "null"} signal=${signal ?? "none"}`);
   });
 }
