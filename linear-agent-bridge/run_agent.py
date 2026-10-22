@@ -119,18 +119,11 @@ def update_linear_activity(
 
 
 def load_prompt(json_file_path: str) -> str:
-    with open(json_file_path, "r", encoding="utf-8") as file:
-        job_data = json.load(file)
-
-    prompt = (
-        job_data.get("payload", {})
-        .get("data", {})
-        .get("promptContext")
-    )
-
+    with open(json_file_path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    prompt = data.get("payload", {}).get("data", {}).get("promptContext")
     if not isinstance(prompt, str) or not prompt.strip():
-        raise ValueError("No payload.data.promptContext found in saved job.")
-
+        raise ValueError("Missing payload.data.promptContext")
     return prompt.strip()
 
 
@@ -141,144 +134,111 @@ class QuotaExhausted(Exception):
 
 
 def quota_exhausted(message: str) -> bool:
-    return bool(re.search(r"RESOURCE_EXHAUSTED|Individual quota reached|quota (?:has been )?(?:exceeded|exhausted|reached)|rate limit exceeded", message, re.I))
+    return bool(re.search(
+        r"RESOURCE_EXHAUSTED|Individual quota reached|quota (?:has been )?(?:exceeded|exhausted|reached)|rate limit exceeded",
+        message, re.I
+    ))
 
 
-def conversation_from_output(events: list[dict]) -> str | None:
+def valid_conversation_id(value: Any) -> str | None:
+    if isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_-]{8,128}", value):
+        return value
+    return None
+
+
+def event_conversation_id(events: list[dict]) -> str | None:
     for event in events:
-        for data in (event, event.get("result") or {}):
-            if isinstance(data, dict):
-                value = data.get("conversation_id") or data.get("conversationId")
-                if isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_-]{8,128}", value):
+        for entry in (event, event.get("result")):
+            if isinstance(entry, dict):
+                value = valid_conversation_id(entry.get("conversation_id") or entry.get("conversationId"))
+                if value:
                     return value
     return None
 
 
-def workspace_cached_conversation() -> str | None:
-    cache = Path.home() / ".gemini/antigravity-cli/cache/last_conversations.json"
-    try:
-        data = json.loads(cache.read_text(encoding="utf-8"))
-        value = data.get(os.path.realpath(ANTIGRAVITY_WORKSPACE))
-        if isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_-]{8,128}", value):
-            return value
-    except (OSError, ValueError):
-        pass
-    return None
-
-
 async def run_antigravity(prompt: str, conversation_id: str | None = None) -> str:
-    """Run one Antigravity CLI turn using cached local authentication."""
     if not os.path.isfile(ANTIGRAVITY_BIN) or not os.access(ANTIGRAVITY_BIN, os.X_OK):
-        raise FileNotFoundError(f"Antigravity CLI is not executable: {ANTIGRAVITY_BIN}")
-
+        raise FileNotFoundError(f"Antigravity CLI not executable: {ANTIGRAVITY_BIN}")
     if not os.path.isdir(ANTIGRAVITY_WORKSPACE):
-        raise NotADirectoryError(
-            f"Antigravity workspace does not exist: {ANTIGRAVITY_WORKSPACE}"
-        )
+        raise NotADirectoryError(ANTIGRAVITY_WORKSPACE)
 
     command = [
-        ANTIGRAVITY_BIN,
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--print-timeout",
-        ANTIGRAVITY_PRINT_TIMEOUT,
-        "--sandbox",
+        ANTIGRAVITY_BIN, "--input-format", "stream-json",
+        "--output-format", "stream-json",
+        "--print-timeout", ANTIGRAVITY_PRINT_TIMEOUT, "--sandbox",
     ]
-    if conversation_id:\n        command.extend(["--conversation", conversation_id])\n    input_message = json.dumps(
+    if conversation_id:
+        command.extend(["--conversation", conversation_id])
+    input_message = json.dumps(
         {"event": "user", "message": {"content": prompt}},
         ensure_ascii=False,
     ) + "\n"
 
     process = await asyncio.create_subprocess_exec(
-        *command,
-        cwd=ANTIGRAVITY_WORKSPACE,
-        env=os.environ.copy(),
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
+        *command, cwd=ANTIGRAVITY_WORKSPACE, env=os.environ.copy(),
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout_bytes, stderr_bytes = await process.communicate(
-        input=input_message.encode("utf-8")
-    )
+    stdout_bytes, stderr_bytes = await process.communicate(input=input_message.encode("utf-8"))
     stdout = stdout_bytes.decode("utf-8", errors="replace")
     stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
-
-    terminal_result: dict[str, Any] | None = None
+    events = []
+    result = None
     for line in stdout.splitlines():
-        if not line.strip():
-            continue
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(event, dict):\n            events.append(event)\n        if event.get("event") == "result" and isinstance(
-            event.get("result"), dict
-        ):
-            terminal_result = event["result"]
+        if not isinstance(event, dict):
+            continue
+        events.append(event)
+        if event.get("event") == "result" and isinstance(event.get("result"), dict):
+            result = event["result"]
 
-    if terminal_result is None:
-        diagnostic = stderr[-4000:] if stderr else "No terminal result received."
-        raise RuntimeError(
-            f"Antigravity CLI exited {process.returncode}: {diagnostic}"
-        )
-
-    status = str(terminal_result.get("status", "UNKNOWN"))
-    if process.returncode != 0 or status != "SUCCESS":
-        error = terminal_result.get("error") or stderr or "Unknown error"
-        if quota_exhausted(str(error)):\n            raise QuotaExhausted(detected_conversation, str(error)[-1000:])\n        raise RuntimeError(f"Antigravity CLI status {status}: {error}")
-
-    response = terminal_result.get("response")
+    # Never use -c or a workspace's "last conversation" in a multi-issue bridge.
+    # Require the actual run to report its conversation ID.
+    resolved_id = conversation_id or event_conversation_id(events)
+    error_text = str(result.get("error") or "") if result else ""
+    diagnostic = "\n".join((error_text, stderr, stdout[-2000:]))
+    if quota_exhausted(diagnostic) and (result is None or result.get("status") != "SUCCESS"):
+        raise QuotaExhausted(resolved_id, diagnostic[-1000:])
+    if result is None:
+        raise RuntimeError(f"AGY exited {process.returncode} without terminal result: {stderr[-1500:]}")
+    if process.returncode != 0 or result.get("status") != "SUCCESS":
+        raise RuntimeError(f"AGY status {result.get('status')}: {error_text or stderr}")
+    response = result.get("response")
     if not isinstance(response, str) or not response.strip():
         raise RuntimeError("Antigravity CLI completed without a response.")
-
     return response.strip()
 
 
 async def main() -> int:
     if len(sys.argv) < 3:
-        print(
-            "Usage: run_agent.py <agentSessionId> <jsonFilePath>",
-            file=sys.stderr,
-        )
+        print("Usage: run_agent.py <agentSessionId> <jobPath> [conversationId]", file=sys.stderr)
         return 1
-
-    session_id = sys.argv[1]
-    json_file_path = sys.argv[2]
-
-    update_linear_activity(
-        session_id,
-        "thought",
-        "Antigravity has initialized locally and is analyzing the task.",
-    )
-
+    session_id, json_file_path = sys.argv[1:3]
+    resumed_conversation = sys.argv[3] if len(sys.argv) > 3 else None
+    update_linear_activity(session_id, "thought", "Antigravity has initialized locally and is analyzing the task.")
     try:
-        prompt_context = load_prompt(json_file_path)
-
-        print("Dispatching task to Antigravity CLI...")
-        agent_output = await run_antigravity(\n            "Resume the existing Linear task from where you stopped. Check the work already completed and continue only the unfinished steps. Do not repeat completed changes."\n            if resumed_conversation else prompt_context,\n            conversation_id=resumed_conversation,\n        )
-
-        print(agent_output)
-
-        update_linear_activity(
-            session_id,
-            "response",
-            f"Task completed.\n\n{agent_output}",
-        )
-
+        prompt = load_prompt(json_file_path)
+        if resumed_conversation:
+            prompt = (
+                "Resume the existing Linear task where you stopped. Review the work already "
+                "completed and continue only the unfinished steps; do not repeat changes."
+            )
+        response = await run_antigravity(prompt, resumed_conversation)
+        print(response)
+        update_linear_activity(session_id, "response", f"Task completed.\n\n{response}")
         return 0
-
+    except QuotaExhausted as error:
+        event = {"event": "on_exhaustion", "conversation_id": error.conversation_id}
+        print("AGY_BRIDGE_EVENT=" + json.dumps(event), flush=True)
+        update_linear_activity(session_id, "thought", "Antigravity quota exhausted; a retry will be scheduled if the session can be identified.")
+        return 75
     except Exception as error:
-        error_message = f"{type(error).__name__}: {error}"
-        print(f"Execution failure: {error_message}", file=sys.stderr)
-
-        update_linear_activity(
-            session_id,
-            "error",
-            f"Local execution failed.\n\n{error_message}",
-        )
-
+        message = f"{type(error).__name__}: {error}"
+        print(f"Execution failure: {message}", file=sys.stderr)
+        update_linear_activity(session_id, "error", f"Local execution failed.\n\n{message}")
         return 1
 
 
