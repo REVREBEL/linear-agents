@@ -310,7 +310,36 @@ server.listen(PORT, HOST, () => {
   console.log(`Python runner: ${PYTHON_BIN}`);
 });
 
-function startAntigravity(job, filename, workspace, jobKey) {
+const AGY_RETRY_DELAY_MS = Math.max(60000, Number(process.env.AGY_RETRY_DELAY_MS || 7200000));
+const agyResumeTimers = new Map();
+
+function scheduleAgyResume(jobKey, resumeAt) {
+  clearTimeout(agyResumeTimers.get(jobKey));
+  const delay = Math.max(0, new Date(resumeAt).getTime() - Date.now());
+  const timer = setTimeout(() => {
+    agyResumeTimers.delete(jobKey);
+    void (async () => {
+      const record = await jobStore.get(jobKey);
+      if (record.state !== "waiting_quota" || record.resumeAt !== resumeAt) return;
+      if (!record.conversationId || !record.taskFile || !record.repositoryRoot || !record.workspace || !record.agentSessionId) {
+        await jobStore.transition(jobKey, "failed", { error: "Incomplete AGY resume metadata" });
+        return;
+      }
+      try {
+        await fs.access(record.taskFile);
+      } catch {
+        await jobStore.transition(jobKey, "failed", { error: "Original task file missing; cannot resume" });
+        return;
+      }
+      const job = JSON.parse(await fs.readFile(record.taskFile, "utf8"));
+      const updated = await jobStore.transition(jobKey, "launching", { resumeAt: null });
+      startAntigravity(job, record.taskFile, record.workspace, jobKey, updated.conversationId);
+    })().catch(error => console.error("AGY scheduled resume failed:", error));
+  }, Math.min(delay, 2147483647));
+  agyResumeTimers.set(jobKey, timer);
+}
+
+function startAntigravity(job, filename, workspace, jobKey, conversationId = null) {
   const sessionId = extractAgentSessionId(job);
 
   if (!sessionId) {
@@ -323,7 +352,7 @@ function startAntigravity(job, filename, workspace, jobKey) {
 
   const agentProcess = spawn(
     PYTHON_BIN,
-    [RUN_AGENT_PATH, sessionId, filename],
+    [RUN_AGENT_PATH, sessionId, filename, ...(conversationId ? [conversationId] : [])],
     {
       cwd: PROJECT_DIR,
       env: {
@@ -336,8 +365,61 @@ function startAntigravity(job, filename, workspace, jobKey) {
     },
   );
 
-  attachProcessLogs(agentProcess, "Antigravity", jobKey);
+  // AGY emits a structured exhaustion event; only that event schedules a retry.
+  // Keep the same Linear agent session and explicitly resume the AGY conversation.
+  let output = "";
+  let exhaustionEvent = null;
+  agentProcess.on("spawn", () => { void jobStore.transition(jobKey, "running", { pid: agentProcess.pid }).catch(console.error); });
+  agentProcess.stdout.on("data", data => {
+    output += String(data);
+    let newline;
+    while ((newline = output.indexOf("\n")) >= 0) {
+      const line = output.slice(0, newline).trim();
+      output = output.slice(newline + 1);
+      if (line.startsWith("AGY_BRIDGE_EVENT=")) {
+        try {
+          const parsed = JSON.parse(line.slice("AGY_BRIDGE_EVENT=".length));
+          if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
+        } catch (error) { console.error("Invalid AGY exhaustion event:", error.message); }
+      } else if (line) console.log("[Antigravity-Out]:", line);
+    }
+  });
+  agentProcess.stderr.on("data", data => console.error("[Antigravity-Err]:", String(data).trimEnd()));
+  agentProcess.on("error", error => { void jobStore.transition(jobKey, "failed", { error: error.message }).catch(console.error); });
+  agentProcess.on("close", (code, signal) => {
+    void (async () => {
+      if (code === 75 && exhaustionEvent?.event === "on_exhaustion") {
+        const conversationId = exhaustionEvent.conversation_id;
+        if (!conversationId) {
+          await jobStore.transition(jobKey, "failed", { error: "Quota exhausted but AGY conversation ID could not be established; automatic resume refused." });
+          return;
+        }
+        const previous = await jobStore.get(jobKey);
+        const attempts = previous.resumeAttempts || 0;
+        if (attempts >= 3) {
+          await jobStore.transition(jobKey, "failed", { error: "Exhaustion retry limit reached", resumeAttempts: attempts });
+          return;
+        }
+        const resumeAt = new Date(Date.now() + AGY_RETRY_DELAY_MS).toISOString();
+        await jobStore.transition(jobKey, "waiting_quota", {
+          conversationId, resumeAt, resumeAttempts: attempts + 1,
+          pid: null, exitCode: code,
+        });
+        console.log(`[Antigravity] on_exhaustion: conversation ${conversationId}; resume at ${resumeAt}`);
+        scheduleAgyResume(jobKey, resumeAt);
+      } else {
+        await jobStore.transition(jobKey, code === 0 ? "completed" : "failed", { exitCode: code, signal, pid: null });
+      }
+    })().catch(error => console.error("Antigravity completion handling failed:", error));
+  });
 }
+
+// Recover scheduled AGY quota retries after a bridge restart.
+void jobStore.findByState("waiting_quota").then(records => {
+  for (const record of records) {
+    if (record.resumeAt) scheduleAgyResume(record.key, record.resumeAt);
+  }
+}).catch(error => console.error("AGY retry recovery failed:", error));
 
 function startChatGPT(job, filename) {
   const sessionId = extractAgentSessionId(job);
