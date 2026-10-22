@@ -69,6 +69,21 @@ export function createJobStore(root) {
       }
       return interrupted;
     },
+    async findByState(state) {
+      await fs.mkdir(ledger, { recursive: true, mode: 0o700 });
+      const entries = await fs.readdir(ledger, { withFileTypes: true });
+      const records = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        try {
+          const record = await read(path.join(ledger, entry.name));
+          if (record.state === state) records.push(record);
+        } catch (error) {
+          if (error.code !== "ENOENT") console.warn("Unreadable job ledger entry:", error.message);
+        }
+      }
+      return records;
+    },
     async findByIssueId(issueId) {
       const entries = await fs.readdir(ledger, { withFileTypes: true });
       const records = [];
