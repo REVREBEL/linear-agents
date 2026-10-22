@@ -4,6 +4,8 @@ import asyncio
 import json
 import os
 import sys
+import re
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -132,7 +134,39 @@ def load_prompt(json_file_path: str) -> str:
     return prompt.strip()
 
 
-async def run_antigravity(prompt: str) -> str:
+class QuotaExhausted(Exception):
+    def __init__(self, conversation_id: str | None, message: str):
+        super().__init__(message)
+        self.conversation_id = conversation_id
+
+
+def quota_exhausted(message: str) -> bool:
+    return bool(re.search(r"RESOURCE_EXHAUSTED|Individual quota reached|quota (?:has been )?(?:exceeded|exhausted|reached)|rate limit exceeded", message, re.I))
+
+
+def conversation_from_output(events: list[dict]) -> str | None:
+    for event in events:
+        for data in (event, event.get("result") or {}):
+            if isinstance(data, dict):
+                value = data.get("conversation_id") or data.get("conversationId")
+                if isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_-]{8,128}", value):
+                    return value
+    return None
+
+
+def workspace_cached_conversation() -> str | None:
+    cache = Path.home() / ".gemini/antigravity-cli/cache/last_conversations.json"
+    try:
+        data = json.loads(cache.read_text(encoding="utf-8"))
+        value = data.get(os.path.realpath(ANTIGRAVITY_WORKSPACE))
+        if isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_-]{8,128}", value):
+            return value
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+async def run_antigravity(prompt: str, conversation_id: str | None = None) -> str:
     """Run one Antigravity CLI turn using cached local authentication."""
     if not os.path.isfile(ANTIGRAVITY_BIN) or not os.access(ANTIGRAVITY_BIN, os.X_OK):
         raise FileNotFoundError(f"Antigravity CLI is not executable: {ANTIGRAVITY_BIN}")
@@ -152,7 +186,7 @@ async def run_antigravity(prompt: str) -> str:
         ANTIGRAVITY_PRINT_TIMEOUT,
         "--sandbox",
     ]
-    input_message = json.dumps(
+    if conversation_id:\n        command.extend(["--conversation", conversation_id])\n    input_message = json.dumps(
         {"event": "user", "message": {"content": prompt}},
         ensure_ascii=False,
     ) + "\n"
@@ -179,7 +213,7 @@ async def run_antigravity(prompt: str) -> str:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if event.get("event") == "result" and isinstance(
+        if isinstance(event, dict):\n            events.append(event)\n        if event.get("event") == "result" and isinstance(
             event.get("result"), dict
         ):
             terminal_result = event["result"]
@@ -193,7 +227,7 @@ async def run_antigravity(prompt: str) -> str:
     status = str(terminal_result.get("status", "UNKNOWN"))
     if process.returncode != 0 or status != "SUCCESS":
         error = terminal_result.get("error") or stderr or "Unknown error"
-        raise RuntimeError(f"Antigravity CLI status {status}: {error}")
+        if quota_exhausted(str(error)):\n            raise QuotaExhausted(detected_conversation, str(error)[-1000:])\n        raise RuntimeError(f"Antigravity CLI status {status}: {error}")
 
     response = terminal_result.get("response")
     if not isinstance(response, str) or not response.strip():
@@ -223,7 +257,7 @@ async def main() -> int:
         prompt_context = load_prompt(json_file_path)
 
         print("Dispatching task to Antigravity CLI...")
-        agent_output = await run_antigravity(prompt_context)
+        agent_output = await run_antigravity(\n            "Resume the existing Linear task from where you stopped. Check the work already completed and continue only the unfinished steps. Do not repeat completed changes."\n            if resumed_conversation else prompt_context,\n            conversation_id=resumed_conversation,\n        )
 
         print(agent_output)
 
