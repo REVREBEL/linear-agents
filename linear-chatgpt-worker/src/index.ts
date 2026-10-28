@@ -284,9 +284,12 @@ async function handleLinearWebhook(
     return jsonResponse({ok:true, accepted:false, issueStatusProcessed:true});
   }
 
-  const promptContext = extractPromptContext(payload);
-  const agentSessionId = extractAgentSessionId(payload);
   const action = stringValue(payload.action);
+  const isAgentFollowup = linearEvent === "AgentSessionEvent" && action === "prompted";
+  const followupBody = stringValue(getNested(payload, "agentActivity", "content", "body")) ||
+    stringValue(getNested(payload, "data", "agentActivity", "content", "body"));
+  const promptContext = isAgentFollowup ? followupBody : extractPromptContext(payload);
+  const agentSessionId = extractAgentSessionId(payload);
 
   // Linear expects an Agent Activity within 10 seconds for a newly created
   // Agent Session. A normal HTTP 200/202 from the webhook or local bridge is
@@ -433,6 +436,7 @@ async function handleLinearWebhook(
       stringValue(getNested(payload, "data", "agentSession", "issueId")) ||
       stringValue(getNested(payload, "data", "agentSession", "issue", "id")),
     source: "linear",
+    sessionAction: isAgentFollowup ? "prompted" : "created",
     receivedAt: new Date().toISOString(),
     organizationId: installation.organizationId,
     agentSessionId,
