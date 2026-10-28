@@ -42,3 +42,9 @@ The ledger is local durability, not a remote queue: webhook deliveries cannot be
 - Headless processes are marked completed by exit status; a zero exit is **not** proof the code changes are correct or that Linear was updated.
 - Gemini Warp is marked awaiting external because the tracked process is only macOS `open`, not the Gemini CLI.
 - Deploy and restart during idle periods. Until automatic reconciliation is implemented, unfinished jobs require manual review.
+
+## Worker-side acceptance hardening (2026-10-28)
+
+All five Workers now authenticate the Linear installation before consulting their webhook deduplication marker. For actionable agent sessions, they await the bridge's HTTP acknowledgment before writing `webhook:<organization>:<delivery>` with a one-day TTL. Failed authentication, failed forwarding, and failed issue-completed cleanup no longer preemptively write a successful-delivery marker. When Linear does not supply `linear-delivery`, a SHA-256 fingerprint of the signed payload body is used rather than the webhook configuration ID (`payload.webhookId`). A successful bridge `202` can mean a previously persisted local duplicate, which is acceptable for a retry.
+
+**Concurrency and deployment limitations:** Cloudflare KV does not provide atomic compare-and-set or strongly consistent reads. Simultaneous identical events may both pass the marker check, making local bridge idempotency the final safeguard. This change does not implement Durable Objects, Cloudflare Queues, an OAuth refresh lock, or durable retry scheduling at the Worker edge. Agent Activity creation before forwarding can be repeated when Linear retries. Live OAuth/Cloudflare webhook testing is still required. Do not characterize this as exactly-once processing. A future production-grade ingress should use an atomic durable claim with explicitly retryable and accepted states.
