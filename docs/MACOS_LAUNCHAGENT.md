@@ -1,5 +1,16 @@
 # macOS LaunchAgent setup
 
+## Verified startup configuration and PATH caveat (2026-10-28)
+
+**Current repository behavior:** `scripts/macos/agent-bridge.plist.example` still uses `/bin/bash __REPO_ROOT__/scripts/with-env.sh bridge` with the checkout root as `WorkingDirectory`. The installer currently renders **that** template. A dedicated `linear-agent-bridge/` startup wrapper and direct absolute-Node `ProgramArguments` have been proposed, but are **not** implemented in the checked-in installer/template. Do not treat them as the active launchd configuration.
+
+On macOS, launchd does not load interactive zsh/NVM initialization. Before loading the plist, ensure the trusted root `.env` sets a usable `PATH` that includes the desired executable's directory (for example, `/usr/local/bin`, `/opt/homebrew/bin`, or an explicit absolute NVM Node version's `bin` directory); verify `node` and `npm` are resolvable **in the wrapper's environment**, not just an interactive shell. The existing `with-env.sh` wrapper loads root `.env` and must export `BRIDGE_SHARED_SECRET` to the Node process. If replacing the wrapper with a direct Node invocation in a **local custom plist**, first supply an equivalent trusted environment loader, use an absolute Node executable, and set `WorkingDirectory` consistently with the bridge's config and routing paths. Do **not** embed the secret in a plist or commit it.
+
+A repeating launchd exit code 1 may come from missing `BRIDGE_SHARED_SECRET`, bad routing configuration, missing Node on `PATH`, or another startup error; inspect `linear-agent-bridge/bridge-error.log` rather than assuming a single cause. This documentation change **does not change the plist or installer**. A future code change should implement and test the proposed bridge-specific wrapper before promoting it as the standard install.
+
+---
+
+
 The `<reverse-DOMAIN>.agent-bridge` LaunchAgent starts the local Linear bridge at login and restarts it when it exits.
 
 ## Template placeholders
