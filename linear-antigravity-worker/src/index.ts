@@ -222,8 +222,7 @@ async function handleLinearWebhook(
   // across different events, which can incorrectly suppress AgentSessionEvent.
   const webhookId =
     request.headers.get("linear-delivery") ||
-    stringValue(payload.webhookId) ||
-    crypto.randomUUID();
+    `event:${Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawBody)))).map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
 
   const linearEvent =
     request.headers.get("linear-event") ||
@@ -236,18 +235,19 @@ async function handleLinearWebhook(
     organizationId,
   });
 
-  const dedupeKey = `webhook:${webhookId}`;
-  if (await env.LINEAR_DATA.get(dedupeKey)) {
-    return jsonResponse({ ok: true, duplicate: true });
-  }
-  await env.LINEAR_DATA.put(dedupeKey, "1", { expirationTtl: 86400 });
-
+  // Authentication must succeed before a delivery can be considered handled.
+  // This KV marker only denotes a successful bridge acceptance, not an attempt.
+  const dedupeKey = `webhook:${organizationId}:${webhookId}`;
   const installation = await getInstallation(organizationId, env);
   if (!installation) {
     return jsonResponse(
       { ok: false, error: "No OAuth installation found for this workspace" },
       409,
     );
+  }
+
+  if (await env.LINEAR_DATA.get(dedupeKey)) {
+    return jsonResponse({ ok: true, duplicate: true });
   }
 
   // Issue status is authoritative for inbox deletion; session completion is not.
@@ -278,8 +278,10 @@ async function handleLinearWebhook(
         }
       } catch (error) {
         console.error("Completed issue cleanup failed", {issueId, error: String(error)});
+        return jsonResponse({ok:false, error:"Issue cleanup failed; retry required"}, 503);
       }
     }
+    await env.LINEAR_DATA.put(dedupeKey, "accepted", { expirationTtl: 86400 });
     return jsonResponse({ok:true, accepted:false, issueStatusProcessed:true});
   }
 
@@ -431,33 +433,15 @@ async function handleLinearWebhook(
     },
   };
 
-  ctx.waitUntil(
-    forwardToMacBridge(
-      bridgeJob,
-      webhookId,
-      linearEvent,
-      env,
-    ).catch(async (error) => {
-      console.error("Failed to forward job to Mac bridge", {
-        webhookId,
-        linearEvent,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      if (agentSessionId) {
-        try {
-          await createAgentActivity(installation.accessToken, agentSessionId, {
-            type: "error",
-            body: "Unable to deliver this task to a verified local workspace. Check the local bridge routing configuration and Worker logs.",
-          });
-        } catch (activityError) {
-          console.error("Failed to report local dispatch error to Linear", {
-            agentSessionId,
-            error: activityError instanceof Error ? activityError.message : String(activityError),
-          });
-        }
-      }
-    }),
-  );
+  // Wait for the bridge to durably accept the job before acknowledging Linear.
+  // A failure returns a retryable HTTP response and does not poison deduplication.
+  try {
+    await forwardToMacBridge(bridgeJob, webhookId, linearEvent, env);
+  } catch (error) {
+    console.error("Failed to forward job to Mac bridge", { webhookId, error: String(error) });
+    return jsonResponse({ ok: false, accepted: false, error: "Local bridge delivery failed; retry required" }, 503);
+  }
+  await env.LINEAR_DATA.put(dedupeKey, "accepted", { expirationTtl: 86400 });
 
   return jsonResponse(
     {
