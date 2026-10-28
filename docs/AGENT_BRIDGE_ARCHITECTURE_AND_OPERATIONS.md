@@ -1,3 +1,33 @@
+## Current operational reference (verified against repository main, 2026-10-28)
+
+**The material below this section is a retained 2026-10-20 audit, not the current runbook.** In particular, references to four Workers, `yourdomain.com`, `payload.original`, `originalPromptContext`, completion curl instructions inside prompts, and the former `.linear-agent-bridge/` source directory are historical.
+
+### Deployment matrix
+
+| Agent | Worker source | Worker hostname | Tunnel /jobs hostname |
+| --- | --- | --- | --- |
+| Antigravity | `linear-antigravity-worker/` | `linear-antigravity.revrebel.io` | `antigravity-agent.revrebel.io` |
+| Trae | `linear-trae-worker/` | `linear-trae.revrebel.io` | `trae-agent.revrebel.io` |
+| Gemini | `linear-gemini-worker/` | `linear-gemini.revrebel.io` | `gemini-agent.revrebel.io` |
+| ChatGPT | `linear-chatgpt-worker/` | `linear-chatgpt.revrebel.io` | `chatgpt-agent.revrebel.io` |
+| Mock | `linear-mock-worker/` | `linear-mock.revrebel.io` | `mock-agent.revrebel.io` |
+
+All five tunnel hostnames dispatch to the host-checked local listener `linear-agent-bridge/agent-bridge.mjs` (default `127.0.0.1:8788`). The Mock Worker is an isolated simulation agent, not an arbitrary-code executor. Worker OAuth installations and KV namespaces remain agent-specific.
+
+### Compact job and session contract
+
+The Worker sends a compact JSON envelope including `organizationId`, `agentSessionId`, `completionUrl`, `sessionAction`, and `payload.data.promptContext`, with issue/routing metadata when available. **Do not expect `payload.original` or `originalPromptContext`** in newly created jobs. The task prompt is focused on the issue/request and does **not** include an inline shared-secret curl command. The completing runtime reads top-level job metadata and follows [linear-session-completion](../.agents/skills/linear-session-completion/SKILL.md) to send an authenticated `/complete` notification. Completion of an **agent session** does not independently change the Linear issue status.
+
+The Worker accepts created agent sessions and `AgentSessionEvent` with action `prompted`. For a follow-up, the new instruction is taken from `agentActivity.content.body`, rather than assuming the original issue prompt is replayed. The bridge retains `sessionAction` in the job. Reusing the Linear session ID alone does not guarantee reuse of the local model conversation.
+
+### Inbox retention, retries, and testing boundaries
+
+Routed task JSON is kept under the target repository's `.linear-agent/projects/<project-uuid>/inbox/`. The Worker sends a signed/authenticated issue-completed notification to the bridge when the Linear issue reaches a completed workflow state; the bridge's `POST /issue-completed` endpoint removes associated inbox JSON then. A `/complete` session callback alone does **not** delete the inbox. On the AGY path, a structured quota-exhaustion event with a conversation ID can transition the persisted ledger to `waiting_quota`, set a default two-hour `resumeAt`, and schedule continuation of that same conversation with a cap on retries (see [job durability](JOB_DURABILITY.md)). This is implemented in source; a real production quota-exhaustion recovery has **not** been verified in this review.
+
+For ChatGPT, see [the Playwright handoff](CHATGPT_PLAYWRIGHT_HANDOFF.md). For macOS startup, see [LaunchAgent setup](MACOS_LAUNCHAGENT.md). This audit checked checked-in code, not live OAuth installations, Cloudflare WAF rules, the Mac's launchd state, or end-to-end Linear agent behavior.
+
+---
+
 > **Current implementation note (2026-10-27):** This document contains a historical code-audit snapshot, including retired paths and four-Worker assumptions. For current operational commands and implementation boundaries, read [AGENTS.md](../AGENTS.md) and the current source files. The repository now has five Workers (including Mock), and the local router and Python runner live under `linear-agent-bridge/`. The bridge includes issue-completed inbox cleanup and a persisted AGY quota-retry path; neither has been verified by a production exhaustion simulation. Historical findings below remain as audit history, not an assertion of current behavior.
 
 # REVREBEL Linear Agent Bridge
