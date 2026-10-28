@@ -18,7 +18,7 @@ All five tunnel hostnames dispatch to the host-checked local listener `linear-ag
 
 The Worker sends a compact JSON envelope including `organizationId`, `agentSessionId`, `completionUrl`, `sessionAction`, and `payload.data.promptContext`, with issue/routing metadata when available. **Do not expect `payload.original` or `originalPromptContext`** in newly created jobs. The task prompt is focused on the issue/request and does **not** include an inline shared-secret curl command. The completing runtime reads top-level job metadata and follows [linear-session-completion](../.agents/skills/linear-session-completion/SKILL.md) to send an authenticated `/complete` notification. Completion of an **agent session** does not independently change the Linear issue status.
 
-The Worker accepts created agent sessions and `AgentSessionEvent` with action `prompted`. For a follow-up, the new instruction is taken from `agentActivity.content.body`, rather than assuming the original issue prompt is replayed. The bridge retains `sessionAction` in the job. Reusing the Linear session ID alone does not guarantee reuse of the local model conversation.
+All five checked-in Workers accept created agent sessions and `AgentSessionEvent` with action `prompted` (the four non-Antigravity Workers were aligned in PR #10). For a follow-up, the new instruction is taken from `agentActivity.content.body`, rather than assuming the original issue prompt is replayed. The bridge retains `sessionAction` in the job. Reusing the Linear session ID alone does not guarantee reuse of the local model conversation.
 
 ### Inbox retention, retries, and testing boundaries
 
