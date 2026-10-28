@@ -19,6 +19,17 @@ const PROJECTS_ROOT =
   process.env.PROJECTS_ROOT || path.join(os.homedir(), "github-revrebel");
 const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs");
 const jobStore = createJobStore(JOBS_DIR);
+// Serialize automated ChatGPT handoffs across the shared Chrome CDP browser.
+// Different conversations share the same browser process and visible tabs.
+let chatgptHandoffTail = Promise.resolve();
+function enqueueChatgptHandoff(task) {
+  const running = chatgptHandoffTail.catch(() => {}).then(task);
+  chatgptHandoffTail = running.catch(error => {
+    console.error("ChatGPT handoff queue error:", error);
+  });
+  return running;
+}
+
 const ROUTING_CONFIG_FILE = process.env.ROUTING_CONFIG_FILE || path.join(PROJECT_DIR, "routing.json");
 const AGENT_JOB_DIRS = {
   antigravity: path.join(JOBS_DIR, "antigravity"),
@@ -252,13 +263,18 @@ const server = http.createServer(async (request, response) => {
           await fs.writeFile(handoffFile, JSON.stringify({ projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, autoSend: route.chatgptAutoSend === true, prompt: promptContext, jobFile: filename }, null, 2), { mode: 0o600 });
           if (route.chatgptAutoSend === true) {
             await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: "Automatic Playwright submission launched; response processing not implemented" });
-            const child = spawn(process.execPath, [script, "--handoff-file", handoffFile, "--auto-send", "--keep-open"], {
-              cwd: path.resolve(PROJECT_DIR, ".."), env: process.env, stdio: ["ignore", "pipe", "pipe"],
+            void enqueueChatgptHandoff(() => new Promise((resolve, reject) => {
+              const child = spawn(process.execPath, [script, "--handoff-file", handoffFile, "--auto-send", "--keep-open"], {
+                cwd: path.resolve(PROJECT_DIR, ".."), env: process.env, stdio: ["ignore", "pipe", "pipe"],
+              });
+              child.stdout?.on("data", chunk => console.log("[ChatGPT handoff] " + String(chunk).trimEnd()));
+              child.stderr?.on("data", chunk => console.error("[ChatGPT handoff] " + String(chunk).trimEnd()));
+              child.once("error", reject);
+              child.once("close", code => code === 0 ? resolve() : reject(new Error("Playwright handoff exited with code " + code)));
+            })).catch(async error => {
+              console.error("Automatic ChatGPT handoff failed:", error);
+              await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(e => console.error("Unable to record ChatGPT handoff failure:", e));
             });
-            child.stdout?.on("data", chunk => console.log("[ChatGPT handoff] " + String(chunk).trimEnd()));
-            child.stderr?.on("data", chunk => console.error("[ChatGPT handoff] " + String(chunk).trimEnd()));
-            child.on("error", error => console.error("Automatic ChatGPT browser could not start:", error));
-            child.on("exit", code => console.log("Automatic ChatGPT handoff exited:", code));
           } else {
             await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: "Supervised Playwright handoff ready; run manually" });
             console.log(`ChatGPT Playwright handoff ready: ${handoffFile}`);
