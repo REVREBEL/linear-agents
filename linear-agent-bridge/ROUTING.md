@@ -10,10 +10,10 @@ Copy the example into the **live bridge directory** as `routing.json` (do not re
 cp routing.example.json routing.json
 ```
 
-If your live bridge folder is `~/.linear-agent-bridge/`, use:
+If your live bridge folder is `~/linear-agent-bridge/`, use:
 
 ```bash
-cp .linear-agent-bridge/routing.example.json ~/.linear-agent-bridge/routing.json
+cp linear-agent-bridge/routing.example.json ~/linear-agent-bridge/routing.json
 ```
 
 Edit `projectsRoot` to the **parent directory of local repository checkouts**. Example: `/absolute/path/to/projects`.
@@ -68,7 +68,7 @@ Replace the repository placeholder with the verified checkout name under `projec
 
 ### Required Worker changes
 
-All four Workers now query Linear for the assigned issue's project ID and initiative IDs using the app OAuth installation. The bridge requires `job.routing.projectId`, plus either exactly one mapped initiative or an explicit `project.repository` for a standalone project. If enrichment fails, **do not** fall back to parsing issue text. Verify the GraphQL query against the active Linear API schema and run an end-to-end smoke test before turning on this strict requirement in production.
+All five Workers now query Linear for the assigned issue's project ID and initiative IDs using the app OAuth installation. The bridge requires `job.routing.projectId`, plus either exactly one mapped initiative or an explicit `project.repository` for a standalone project. If enrichment fails, **do not** fall back to parsing issue text. Verify the GraphQL query against the active Linear API schema and run an end-to-end smoke test before turning on this strict requirement in production.
 
 ### Storage and failures
 
@@ -86,7 +86,7 @@ The central bridge still owns job dispatch and the existing `/complete` session 
 
 1. Put `routing.json` in the *actual* live bridge directory, beside `agent-bridge.mjs`.
 2. Verify `projectsRoot`, exact checkout folder casing, the presence of each `.git`, and project scope directories.
-3. Deploy **all four Workers**, because webhook routing enrichment is new.
+3. Deploy **all five Workers**, because webhook routing enrichment is new.
 4. Install the updated `agent-bridge.mjs` on your Mac and restart its LaunchAgent. Check that its `RUN_AGENT_PATH`, Python environment, Trae executable and Gemini executable still point to working locations.
 5. Delegate a low-risk issue. Check Worker logs for successful project/initiative enrichment, and bridge logs for the resolved repository and created inbox file. Confirm the agent opened in the intended workspace and produced a terminal Linear Agent Activity.
 6. Check error cases: unmapped project, missing initiative, missing repository, invalid scope, and duplicate event.
@@ -106,7 +106,7 @@ For a project whose entire discussion should remain in the same conversation:
 }
 ```
 
-The bridge validates the existing conversation URL and writes the mode into supervised Playwright handoff files. Playwright opens that conversation and asks you to confirm it before submitting a prompt; **it does not open a new chat** in `reuse-existing` mode. The handoff is still supervised and not an automatic, unattended agent runner. The conversation must remain accessible to the browser's signed-in account. Project-level files/instructions are not a substitute for a prior conversation's complete history.
+The bridge validates the existing conversation URL and writes the mode into supervised Playwright handoff files. Playwright opens that conversation and asks you to confirm it before submitting a prompt; **it does not open a new chat** in `reuse-existing` mode. With `autoSend: false` the handoff is supervised. With `autoSend: true` the bridge launches the Playwright runner automatically. The conversation must remain accessible to the browser's signed-in account. Project-level files/instructions are not a substitute for a prior conversation's complete history.
 
 ### Optional automatic delivery to an existing ChatGPT conversation
 
@@ -120,4 +120,8 @@ The bridge validates the existing conversation URL and writes the mode into supe
 }
 ```
 
-Set `autoSend: true` for a project that should automatically open its **existing** conversation and submit the forwarded prompt when a ChatGPT Linear assignment is received. This launches a local Playwright Chrome process from the bridge's environment; the Mac must have an accessible logged-in desktop session and dedicated browser profile. Keep `false` (default) for supervised handoff. Automatic delivery is not the full Linear feedback loop: it does not read the ChatGPT response, post comments/status updates to Linear, or mark sessions complete. Concurrent Chrome sessions sharing the Playwright profile are not yet serialized, so enable this only in controlled tests. `autoSend: true` is intentionally rejected with `new-per-issue` mode to avoid accidental delivery to the wrong conversation.
+Set `autoSend: true` for a project that should automatically open its **existing** conversation and submit the forwarded prompt when a ChatGPT Linear assignment is received. This starts a local Playwright handoff from the bridge's environment; the Mac must have an accessible logged-in desktop session and dedicated browser profile. Keep `false` (default) for supervised handoff. Automatic delivery is not the full Linear feedback loop: it does not read the ChatGPT response, post comments/status updates to Linear, or mark sessions complete. Concurrent Chrome sessions sharing the Playwright profile are not yet serialized, so enable this only in controlled tests. `autoSend: true` is intentionally rejected with `new-per-issue` mode to avoid accidental delivery to the wrong conversation.
+
+### AGY quota retry routing
+
+AGY exhaustion events must include a conversation ID tied to the exact dispatched job. The bridge persists a two-hour retry (`AGY_RETRY_DELAY_MS`, default `7200000`) and resumes with `--conversation <id>` in the same workspace. Do **not** use `agy -c` or a shared `.agents/last_session`, which may point to a different Linear issue. Without a verified ID, the retry fails safely. The implementation requires live CLI verification.
