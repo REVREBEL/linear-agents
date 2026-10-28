@@ -1,5 +1,24 @@
 # Mock Agent
 
+## Current Mock Agent CLI workflow (verified 2026-10-28)
+
+The Mock Agent uses its own OAuth app identity when operated through the Mock Worker's `/mock-action` endpoint. **Use `npm run mock:submit` for comments and issue-status changes, not `mock:agent`**, when the action must appear under the connected Mock Agent. The legacy `mock:agent` command uses a personal `LINEAR_API_KEY`, and comments can be attributed to that human user.
+
+```bash
+npm run mock:submit -- --job "/absolute/path/to/scoped-job.json"
+# Or explicitly supply --issue REV-123 --organization ORGANIZATION_UUID
+npm run mock:end -- --job "/absolute/path/to/scoped-job.json"
+```
+
+`mock:submit` opens the current issue and workflow statuses, prompts for a comment and optional status, and requires explicit `YES` confirmation. It uses the shared-secret-authenticated Mock Worker endpoint, which performs the action using the Mock app's installed OAuth credentials. `mock:end` sends a `completed` or `failed` **session** result to the validated `https://linear-mock.revrebel.io/complete` URL and requires explicit confirmation. Neither session completion nor a posted comment deletes the local job inbox; the Linear issue must enter a completed workflow state.
+
+The compact job format uses top-level `agentSessionId`, `completionUrl`, and `organizationId`, plus `payload.data.promptContext` and optional issue metadata. **`payload.original` is no longer a guaranteed field.** The current submit utility still has backward-compatible reads from that older field, but falls back to `issueMetadata`, `issueId`, or an issue key in the task prompt (`Issue: REV-123`, an `<issue identifier="REV-123">` tag, or a Linear issue URL). The end utility likewise extracts an identifier from issue metadata/prompt. Supply `--issue` if extraction is ambiguous.
+
+**Legacy note:** sections below mentioning `linear-mock.yourdomain.com`, `mock-agent.yourdomain.com`, mandatory initiative mappings, or `mock:agent` as the app-identity posting workflow are historical setup instructions. The actual production hostnames are `linear-mock.revrebel.io` and `mock-agent.revrebel.io`; standalone projects work when explicitly mapped in `routing.json`.
+
+---
+
+
 A fifth, **isolated** Linear app for exercising the assignment -> local queue -> issue status -> comment loop. It queues jobs only; it never executes arbitrary code.
 
 ## Linear and Cloudflare setup (manual)
