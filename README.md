@@ -4,7 +4,7 @@ For a login-started local bridge, use the [macOS LaunchAgent setup guide](docs/M
 
 ## Node.js dependencies and npm workspaces
 
-The four Cloudflare Workers are npm workspaces managed from the repository root. Run **one** installation from the root rather than `npm install` in each Worker folder. The root `package-lock.json` is the canonical lockfile, and dependencies are installed in root `node_modules/`.
+The five Cloudflare Workers are npm workspaces managed from the repository root. Run **one** installation from the root rather than `npm install` in each Worker folder. The root `package-lock.json` is the canonical lockfile, and dependencies are installed in root `node_modules/`.
 
 ```bash
 npm install                       # install/update all workspaces (root)
@@ -12,10 +12,10 @@ npm ci                            # clean reproducible installation
 npm run setup -- all              # equivalent workspace setup shortcut
 npm run setup -- gemini           # select Gemini workspace + shared root deps
 npm test                           # local job-store tests
-npm run types                      # Wrangler types for all four Workers
+npm run types                      # Wrangler types for all five Workers
 npm run dev -- gemini              # develop one Worker
 npm run deploy -- antigravity      # deploy one Worker
-npm run deploy -- all              # deploy all four, sequentially
+npm run deploy -- all              # deploy all five, sequentially
 ```
 
 To target a single Workspace directly, npm also supports `npm run dev --workspace=linear-trae-worker` (and the corresponding `deploy`/`types` scripts). `npm run dev -- all` is intentionally disallowed because a Wrangler dev server remains running. `npm install` sets up or updates the shared toolchain, while `npm ci` installs exactly the locked dependency versions. `npm run setup -- <agent>` limits the workspace selection but still installs root-level shared dependencies; it does not create a separate `node_modules` per agent. The script is called `setup` instead of `install` to avoid npm automatically running it during `npm install`. A Worker can be deployed independently, and each retains its own `wrangler.jsonc`, KV binding, and OAuth secrets.
@@ -37,7 +37,9 @@ All local credentials and Cloudflare resource IDs are configured through one roo
 
 **REVREBEL's Linear-to-local-agent integration.** Four independently installed Linear app agents each use a Cloudflare Worker for OAuth, authenticated webhooks, initial Agent Session activity and completion callbacks. Workers forward jobs over Cloudflare Tunnel to a local machine.
 
-> **Repository status:** The canonical hostname router is now checked in at [`.linear-agent-bridge/agent-bridge.mjs`](.linear-agent-bridge/agent-bridge.mjs). The older `chatgpt-bridge.mjs` and `bridge_daemon.py` receivers have been retired. The Antigravity Python runner `run_agent.py` remains at the repository root and may still need to be referenced via `RUN_AGENT_PATH` on the deployed Mac.
+> **Repository status:** The canonical hostname router is now checked in at [`linear-agent-bridge/agent-bridge.mjs`](linear-agent-bridge/agent-bridge.mjs). The older `chatgpt-bridge.mjs` and `bridge_daemon.py` receivers have been retired. The Antigravity Python runner `run_agent.py` remains in `linear-agent-bridge/` and may still need to be referenced via `RUN_AGENT_PATH` on the deployed Mac.
+
+See [AGENTS.md](AGENTS.md) for the current architecture, local file paths, safety invariants and agent development checklist. Historical review notes under `docs/` may describe older implementations.
 
 ## Architecture
 
@@ -69,6 +71,7 @@ Antigravity / Trae / Gemini CLI / ChatGPT file handoff
 | Trae | `linear-trae-worker/` | `linear-trae.yourdomain.com` | `trae-agent.yourdomain.com` |
 | Gemini CLI | `linear-gemini-worker/` | `linear-gemini.yourdomain.com` | `gemini-agent.yourdomain.com` |
 | ChatGPT | `linear-chatgpt-worker/` | `linear-chatgpt.yourdomain.com` | `chatgpt-agent.yourdomain.com` |
+| Mock | `linear-mock-worker/` | `linear-mock.yourdomain.com` | `mock-agent.yourdomain.com` |
 
 ## Repository
 
@@ -80,10 +83,10 @@ linear-antigravity-worker/
 linear-trae-worker/
 linear-gemini-worker/
 linear-chatgpt-worker/
-.linear-agent-bridge/
+linear-agent-bridge/
   agent-bridge.mjs      # canonical multi-agent local router
   .trae/               # Trae session-start integration
-run_agent.py             # Antigravity CLI runner
+linear-agent-bridge/run_agent.py # Antigravity CLI runner
 ```
 
 Each Worker retains its own `wrangler.jsonc`, `src/index.ts`, and workspace `package.json`, while npm dependencies and the lockfile are shared at the root. The shared source is duplicated between Worker folders, so a fix in one does **not** automatically reach the others.
@@ -114,11 +117,11 @@ The bare OAuth callback should return a 400 for missing code/state. `/install` s
 
 The Worker enriches Agent Session webhooks using Linear GraphQL: issue → project ID → initiative IDs. The local bridge resolves those IDs using a **local routing.json** file. Initiative selects the repository; project selects the application scope within that repository. The agent launches from the repository root by default to preserve root-level trust and session context. Set `launchFromScope: true` only for projects that deliberately maintain independent subfolder-based CLI sessions.
 
-Copy `[.linear-agent-bridge/routing.example.json](.linear-agent-bridge/routing.example.json)` to `routing.json` in the **live bridge folder**. Set `PROJECTS_ROOT` or edit `projectsRoot` to the actual Mac repositories parent directory. The example is built from the current Linear initiative/project IDs. Verify the GuestBridge repository mapping and any project scopes still set to `.`.
+Copy `[linear-agent-bridge/routing.example.json](linear-agent-bridge/routing.example.json)` to `routing.json` in the **live bridge folder**. Set `PROJECTS_ROOT` or edit `projectsRoot` to the actual Mac repositories parent directory. The example is built from the current Linear initiative/project IDs. Verify the GuestBridge repository mapping and any project scopes still set to `.`.
 
 Each successfully routed job is saved beneath the Git repository at `.linear-agent/projects/<Linear-project-UUID>/inbox/` before dispatch. The bridge writes a local `/.linear-agent/` exclusion into `.git/info/exclude` when available. If the initiative, project, or directory mapping is missing, the job is saved under the central `linear-jobs/<agent>/` as `*.unrouted.json`, and the bridge returns HTTP 422 instead of launching into the wrong workspace.
 
-**Deployment note:** The four Workers must be deployed from their respective directories, and the changed local router must be installed/restarted on the Mac. Git commits alone do not replace a live LaunchAgent process or deploy Workers. The Linear GraphQL enrichment schema and live delivery should be validated using a smoke-test Agent Session before depending on it.
+**Deployment note:** The five Workers must be deployed from their respective directories, and the changed local router must be installed/restarted on the Mac. Git commits alone do not replace a live LaunchAgent process or deploy Workers. The Linear GraphQL enrichment schema and live delivery should be validated using a smoke-test Agent Session before depending on it.
 
 ## Edge webhook protection
 
@@ -141,7 +144,7 @@ See [Linear Webhook Traffic Protection](docs/LINEAR_WEBHOOK_TRAFFIC_PROTECTION.m
 
 ## Local service
 
-The canonical local router is [`.linear-agent-bridge/agent-bridge.mjs`](.linear-agent-bridge/agent-bridge.mjs). It listens on `127.0.0.1:8788` and routes by Tunnel `Host` header. Antigravity launches `RUN_AGENT_PATH` with Python, Trae launches its configured CLI, Gemini supports headless mode or a Warp interactive launch, and ChatGPT saves the job for external handling. Configure `RUN_AGENT_PATH` to point to the actual deployed `run_agent.py` location; the repository keeps that Python file at its root.
+The canonical local router is [`linear-agent-bridge/agent-bridge.mjs`](linear-agent-bridge/agent-bridge.mjs). It listens on `127.0.0.1:8788` and routes by Tunnel `Host` header. Antigravity launches `RUN_AGENT_PATH` with Python, Trae launches its configured CLI, Gemini supports headless mode or a Warp interactive launch, and ChatGPT can prepare or automatically launch an existing-conversation Playwright handoff based on the project route. Configure `RUN_AGENT_PATH` to point to the actual deployed `run_agent.py` location; the repository keeps that Python file at its root.
 
 ## Documentation
 
@@ -188,3 +191,9 @@ Generated `worker-configuration.d.ts` files are deliberately ignored and must be
 ### Agent prefixes
 
 A single `DOMAIN` and an optional `<AGENT>_PREFIX` per agent control the generated Worker settings. For example, `CHATGPT_PREFIX=chatgpt` derives the Worker name `linear-chatgpt-agent`, the OAuth redirect `https://linear-chatgpt.yourdomain.com/oauth/callback`, and the bridge URL `https://chatgpt-agent.yourdomain.com/jobs`. In `.env`, `CHATGPT_HOST="${CHATGPT_PREFIX}-agent.${DOMAIN}"` and `CHATGPT_WEBHOOK_URL="https://linear-${CHATGPT_PREFIX}.${DOMAIN}/webhook"` are optional conveniences for bridge settings and registering the webhook in Linear; the deploy renderer derives URLs itself. Prefix defaults to the agent name when unset. Changing a prefix after deployment changes the Worker name and therefore may create a new deployment; retain existing prefixes unless migrating intentionally.
+
+## AGY exhaustion and resume
+
+The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge/run_agent.py` and stores a delayed retry in the job ledger. After two hours by default (`AGY_RETRY_DELAY_MS=7200000`) it resumes the **specific** AGY conversation by ID with a short instruction. It does not use the most recent conversation in the workspace as a fallback. The retry cap is three. Actual exhaustion detection and CLI conversation-ID reporting require a live smoke test.
+
+**Issue completion vs session completion:** The inbox task file is removed only after the bridge receives an authenticated `/issue-completed` notification for an issue confirmed Done. Session termination or quota exhaustion does not remove it.
