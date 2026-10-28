@@ -1,5 +1,16 @@
 # Durable local job ledger
 
+## Quota recovery and inbox lifecycle (source-verified 2026-10-28)
+
+In addition to the states below, the bridge implements **`waiting_quota`** for Antigravity structured quota exhaustion. On detecting the exhaustion event with a usable `conversation_id`, it persists `conversationId`, `resumeAt`, `resumeAttempts` and task/workspace metadata in the ledger. `AGY_RETRY_DELAY_MS` defaults to **7,200,000 ms (two hours)** and is clamped to at least 60 seconds. The runner resumes via the recorded conversation ID (the AGY CLI `--conversation <id>` path). The retry mechanism limits scheduled recovery attempts to **three**, failing the job if the limit is reached or conversation identity is missing. On restart, the bridge reloads `waiting_quota` records and schedules remaining retries. This is an implemented path, **not** proof of recovery observed under actual production quota exhaustion.
+
+The ordinary restart reconciliation converts uncertain `received`, `queued`, `launching`, and `running` jobs to `interrupted` without replaying their side effects. `waiting_quota` is intentionally distinct from those states. Source details: `linear-agent-bridge/agent-bridge.mjs` and `linear-agent-bridge/job-store.mjs`.
+
+Compact task JSON contains the direct task `payload.data.promptContext`; it should not carry raw duplicate payloads or embedded completion curl instructions. Session completion via Worker `/complete` and the Linear issue's workflow status are separate. Inbox JSON under the project-scoped `.linear-agent/projects/<project-uuid>/inbox/` is retained until the Worker reports the associated Linear issue has transitioned to a **completed** workflow status and the bridge handles authenticated `POST /issue-completed`. A failed session remains available for investigation. Removing an inbox file does not by itself remove ledger history.
+
+---
+
+
 This bridge uses a small filesystem-backed lifecycle ledger inspired by durable orchestration patterns (idempotent delivery, explicit states, crash reconciliation). It does **not** embed or depend on Trigger.dev.
 
 ## Location and identity
