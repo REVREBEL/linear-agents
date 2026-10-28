@@ -1,3 +1,5 @@
+> **Current implementation note (2026-10-27):** This document contains a historical code-audit snapshot, including retired paths and four-Worker assumptions. For current operational commands and implementation boundaries, read [AGENTS.md](../AGENTS.md) and the current source files. The repository now has five Workers (including Mock), and the local router and Python runner live under `linear-agent-bridge/`. The bridge includes issue-completed inbox cleanup and a persisted AGY quota-retry path; neither has been verified by a production exhaustion simulation. Historical findings below remain as audit history, not an assertion of current behavior.
+
 # REVREBEL Linear Agent Bridge
 ## Architecture, construction notes, operations and code audit
 
