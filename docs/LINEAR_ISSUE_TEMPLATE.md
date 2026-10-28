@@ -1,5 +1,14 @@
 # Agent implementation and review issue template
 
+## Current review workflow and routing (2026-10-28)
+
+The canonical code review handoff procedure is [`linear-code-review-handoff/SKILL.md`](../.agents/skills/linear-code-review-handoff/SKILL.md). Review the linked GitHub PR head, checks, inline comments, issue context and acceptance criteria; post a concise Linear issue verdict of **`CHANGES_REQUESTED`**, **`APPROVED`**, or **`BLOCKED`** with verified PR URL, head SHA, evidence, and next action. For corrections, make a resolvable Linear mention of the implementing agent, and verify delivery instead of relying on literal `@text`. Approval alone does not authorize a merge or deployment.
+
+A **Linear Project** with an explicit repository mapping in the bridge's ignored `routing.json` is required for dispatch. An **Initiative is optional** for a standalone mapped project. Do not infer repository paths from issue titles or require an initiative solely to dispatch a mapped standalone project. Populate dynamic session, project, issue, and PR metadata from actual Linear/GitHub records.
+
+---
+
+
 > Create this as a native Linear **issue template** using Linear Settings → Templates → New issue template. Set the **Project** as an issue property, not only as text. An issue must belong to a mapped Linear project; initiative is optional when the project has an explicit `repository` in `routing.json`.
 
 ## Objective

@@ -1,5 +1,44 @@
 # Linear Webhook Traffic Protection
 
+## Updated hostname, IP, and deployment check (2026-10-28)
+
+This is a **configuration runbook**, not confirmation of live Cloudflare deployment. The five Worker hosts are `linear-antigravity.revrebel.io`, `linear-trae.revrebel.io`, `linear-gemini.revrebel.io`, `linear-chatgpt.revrebel.io`, and `linear-mock.revrebel.io`.
+
+Recommended **Block** expression for the webhook route (retain browser-accessible `/install` and `/oauth/callback`):
+
+```text
+(http.host in {"linear-antigravity.revrebel.io" "linear-trae.revrebel.io" "linear-gemini.revrebel.io" "linear-chatgpt.revrebel.io" "linear-mock.revrebel.io"})
+and http.request.uri.path eq "/webhook"
+and (http.request.method ne "POST" or not ip.src in $linear_webhooks)
+```
+
+The original nine-IP work order is **not** the official complete list. Linear's [published machine-readable list](https://linear.app/.well-known/appspecific/app.linear.ips.json), checked 2026-10-28, contains **15 `ips` entries**:
+
+```text
+34.134.222.122/32
+34.140.253.14/32
+34.185.239.137/32
+34.186.126.124/32
+34.38.87.206/32
+34.48.40.158/32
+34.60.255.158/32
+34.62.119.29/32
+35.196.141.51/32
+35.222.25.142/32
+35.231.147.226/32
+35.236.218.67/32
+35.243.134.228/32
+35.246.206.27/32
+35.246.210.220/32
+```
+
+Synchronize `linear_webhooks` with the **current** `ips` array, not `codingSessionIps`; inspect changed vendor entries before applying. The original nine entries are a historical subset, not proof of the current Cloudflare list contents. Source code may verify Worker HMAC handling; this does not establish WAF deployment, enabled status, list membership, or rule precedence. Confirm those separately in the Cloudflare dashboard. When the ChatGPT Cloudflare account connector is unavailable, the authenticated Codex CLI MCP integration can be used **if separately configured and authorized** (for example `codex mcp add cloudflare ...` with the actual server/auth parameters from the installed Cloudflare integration). Do not invent a working command or print tokens. Verify the active account/zone before any WAF write.
+
+**Historical section below:** the four-host placeholder expression and October 20 observations are retained as a change record and must not be copied into production.
+
+---
+
+
 ## Scope and verification status (2026-10-20)
 
 This document records the separate Cloudflare WAF hardening work order for the Linear agent Workers. **GitHub configuration and public vendor documentation have been checked; live Cloudflare account WAF rules, list contents and deployed Worker settings could not be inspected because the connected Cloudflare API returned internal errors.** Do not interpret this document as proof that the rule is deployed.

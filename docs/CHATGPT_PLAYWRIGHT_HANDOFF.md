@@ -1,44 +1,41 @@
-# Supervised ChatGPT Project handoff test
+# ChatGPT Playwright handoff
 
-This is an **optional, manual local experiment**. It does not modify the Linear webhook bridge, launchd service, Worker configuration, or routing.json and does not create a ChatGPT Work task. Browser automation of chatgpt.com is unofficial; review applicable service terms before using it.
+**Implementation reference, 2026-10-28.** The checked-in bridge supports automated prompt submission to an **existing** ChatGPT conversation when explicitly enabled. Browser control uses Playwright; it is not a ChatGPT API integration and does not verify that an LLM completed a task.
 
 ## Setup
 
-```bash
-cd ~/.linear-agents
-git pull origin main
-npm install --prefix scripts/chatgpt-playwright
+From the repository checkout, run `npm install --prefix scripts/chatgpt-playwright`. A local Google Chrome installation and an authenticated **dedicated** Chrome profile are needed for visible-browser use. Do not commit profiles or session cookies.
+
+## Route configuration
+
+In the ignored `linear-agent-bridge/routing.json`, configure the mapped Linear project's `chatgpt` object. For unattended submission use:
+
+```json
+{
+  "chatgpt": {
+    "projectUrl": "https://chatgpt.com/g/g-p-REAL_PROJECT_ID/c/REAL_CONVERSATION_ID",
+    "conversationMode": "reuse-existing",
+    "autoSend": true
+  }
+}
 ```
 
-Requires Node 20+ and an installed Google Chrome. The Playwright test uses a dedicated Chrome profile at `~/.linear-agents-chatgpt-playwright`. Log into ChatGPT in the window opened by the script. Do not share or commit that browser profile.
+`reuse-existing` requires a validated ChatGPT Project conversation URL (`/g/g-p-.../c/...`). The default `new-per-issue` mode requires a **Project base URL** and remains supervised: the operator must create the new chat. The bridge rejects `autoSend: true` unless the mode is `reuse-existing`. Do not use arbitrary web URLs or a different conversation than the mapped target.
 
-## First test
+## Execution
 
-```bash
-npm run chatgpt:playwright -- \
-  --project-url "https://chatgpt.com/g/g-p-REPLACE_WITH_REAL_PROJECT_URL/project" \
-  --prompt "Reply with exactly: PLAYWRIGHT HANDOFF SUCCESS" \
-  --keep-open
-```
-
-The script checks the hostname, opens the specified Project, and waits. **You must select New chat within the intended project yourself**; it does not try to guess UI selectors or choose the project automatically after navigation. After you press Return, it fills the visible composer and waits for an explicit `SEND` confirmation before pressing Enter. Inspect the correct project and new chat in the browser before sending.
-
-`--keep-open` leaves Google Chrome running after submission until you press Ctrl+C in that Terminal. The default remains an interactive Return-to-close test. This is not yet a reusable daemon or external-command listener, so a second CLI invocation cannot attach to the running test. The stored profile and server-side ChatGPT conversations remain available after Chrome closes.
-
-This does not read or scrape response contents, provide guaranteed conversation identity, or support unattended assignments. If the composer selector changes, the script stops. No secrets are needed beyond a manual login in the dedicated browser. A successful test only proves supervised browser input; it does not prove usage accounting, ChatGPT Work invocation, or future automatic Linear issue handling.
-
-## Clean up
-
-Quit the test browser normally. Delete `~/.linear-agents-chatgpt-playwright` manually if you want to remove the dedicated login/profile. The profile is not inside the Git repository.
-
-## Linear bridge mapping (supervised only)
-
-In your **local** ignored `linear-agent-bridge/routing.json`, configure `projects[LINEAR_PROJECT_UUID].chatgpt.projectUrl` with a ChatGPT Project base URL. The bridge checks that the URL is a `https://chatgpt.com/g/g-p-...` project URL. Do not include a `/c/...` existing conversation suffix if you want a new chat.
-
-Set `CHATGPT_HANDOFF_MODE=supervised-playwright` in the root `.env` and restart the bridge **only when no jobs are active**. This mode does **not** automatically send messages or open Chrome from launchd. On a valid Linear ChatGPT job, the bridge writes a private `*.chatgpt-handoff.json` alongside the existing job JSON and records `awaiting_external` in the ledger. Find the path in the bridge logs. Then run:
+The bridge creates a private `*.chatgpt-handoff.json` alongside the job. Automatic handoffs are serialized within the running bridge process because all handoffs connect to the same Chrome CDP browser, even across different conversation URLs. A failed controller exit marks the local job `failed`, while a successful exit only confirms a submission attempt. This queue is in-process and is not crash-durable; do not assume that restarting the bridge or launching the CLI independently prevents overlapping submissions. When `autoSend: true`, it starts the handoff script with noninteractive submission; otherwise `CHATGPT_HANDOFF_MODE=supervised-playwright` enables manual handoff. The CLI can also run directly:
 
 ```bash
 npm run chatgpt:playwright -- --handoff-file "/absolute/path/to/job.json.chatgpt-handoff.json" --keep-open
+npm run chatgpt:playwright -- --project-url "https://chatgpt.com/g/g-p-REAL_ID/project" --prompt "Test" --keep-open
+npm run chatgpt:playwright -- --project-url "https://chatgpt.com/g/g-p-REAL_ID/project" --prompt "Test" --headless --dry-run
 ```
 
-The supervised controller opens the mapped Project, waits for you to select a new conversation, fills the prompt, and requests `SEND`. Existing conversation targeting, unattended/browser background job dispatch, response capture, and completion callbacks are **not** implemented. The successful Playwright test does not establish these capabilities. The bridge's existing initiative/repository routing requirements still apply; standalone projects without a mapped initiative may be rejected before ChatGPT handoff.
+`--keep-open` runs the **visible Chrome process independently** from the Playwright controller through local CDP (`127.0.0.1:19228` by default). The dedicated profile allows the controller to reconnect, and automation failure does not intentionally terminate that Chrome process. **Security:** the unauthenticated Chrome DevTools Protocol endpoint grants control of the signed-in browser. Loopback binding alone does not prevent other local users or untrusted local processes from connecting. Use this mode only on a trusted single-user Mac with appropriately restricted local access, or implement and verify OS-level endpoint isolation before running on a shared host. Do not forward CDP ports through a tunnel or expose them to a network. The controller polls for a visible composer for up to **45 seconds**, fills it, confirms nonempty normalized editor content, and attempts Enter submission. It logs useful destination/selector errors. Check the destination and message yourself; Enter attempted is not proof the service accepted or completed the message.
+
+`--headless` uses **native Playwright Chromium** with an isolated browser context, rather than connecting to the visible Chrome/CDP process. The script reserves a separate headless debugging-port configuration but its native headless launch does not attach to a persistent Chrome process. Headless mode starts without an authenticated visible Chrome profile, so it may require additional setup to reach an authenticated composer. It is primarily a test mode.
+
+## Limitations and safety
+
+The current implementation does not capture model responses, infer task completion, establish ChatGPT Work task identity, or turn a browser submit into a verified Linear completion callback. Preserve browser credentials locally. A configured `autoSend` is deliberate authorization to submit automatically to the mapped conversation. Avoid rerunning a job if duplicate content would be harmful. See `linear-agent-bridge/agent-bridge.mjs` and `scripts/chatgpt-playwright/handoff-test.mjs` for the authoritative implementation.
