@@ -11,17 +11,38 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 1
 fi
 
+caller_domain="${DOMAIN-}"
+caller_domain_is_set="${DOMAIN+x}"
 set -a
 # shellcheck disable=SC1090
 source "${ENV_FILE}"
 set +a
+# Explicit caller selection overrides the default environment file.
+if [[ -n "${caller_domain_is_set}" ]]; then
+  DOMAIN="${caller_domain}"
+  export DOMAIN
+fi
 
 if [[ -z "${DOMAIN:-}" || ! "${DOMAIN}" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]; then
-  echo "Error: DOMAIN must be a valid DNS name in ${ENV_FILE}" >&2
+  echo "Error: DOMAIN must be a valid DNS name (from caller or ${ENV_FILE})" >&2
   exit 1
 fi
 
 # Match the installer's domain-derived launchd label for any number of labels.
+# DNS hostnames allow at most 253 octets overall and 63 per label.
+# The validated pattern restricts the value to ASCII, so byte and character lengths agree.
+if (( ${#DOMAIN} > 253 )); then
+  echo "Error: DOMAIN exceeds 253 octets" >&2
+  exit 1
+fi
+IFS='.' read -r -a domain_parts_check <<< "${DOMAIN}"
+for label in "${domain_parts_check[@]}"; do
+  if (( ${#label} > 63 )); then
+    echo "Error: DOMAIN contains a label longer than 63 octets" >&2
+    exit 1
+  fi
+done
+
 domain_lower="$(printf '%s' "${DOMAIN}" | tr '[:upper:]' '[:lower:]')"
 IFS='.' read -r -a domain_parts <<< "${domain_lower}"
 reversed=""
