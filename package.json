@@ -10,7 +10,6 @@
     "linear-mock-worker"
   ],
   "scripts": {
-
     "types": "node scripts/workspace-command.mjs types",
     "dev": "node scripts/workspace-command.mjs dev",
     "deploy": "node scripts/workspace-command.mjs deploy",
@@ -44,6 +43,6 @@
     "sharp@0.34.5": true,
     "fsevents@2.3.3": true,
     "esbuild@0.28.2": true,
-    "workerd@1.20261019.1": true
+    "workerd@1.20261023.1": true
   }
 }
