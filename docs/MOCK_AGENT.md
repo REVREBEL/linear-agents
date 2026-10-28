@@ -6,7 +6,9 @@ The Mock Agent uses its own OAuth app identity when operated through the Mock Wo
 
 ```bash
 npm run mock:submit -- --job "/absolute/path/to/scoped-job.json"
-# Or explicitly supply --issue REV-123 --organization ORGANIZATION_UUID
+# Alternative when no job JSON is available:
+npm run mock:submit -- --issue REV-123 --organization ORGANIZATION_UUID
+# Separate operation: end a session using its job metadata:
 npm run mock:end -- --job "/absolute/path/to/scoped-job.json"
 ```
 
