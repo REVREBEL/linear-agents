@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, routeCompleteToCoordinator } from "../../shared/delivery-coordinator";
+import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, routeCompleteToCoordinator, onceDeliveryActivity } from "../../shared/delivery-coordinator";
 import { ReauthorizationRequiredError } from "../../shared/oauth-errors";
 import { getInstallation } from "../../shared/oauth-installation";
 
@@ -113,14 +113,14 @@ export class DeliveryCoordinator extends DurableObject<Env> {
     return this.enqueue(() => coordinateWebhook(
       this.ctx.storage,
       request,
-      retry => handleLinearWebhook(retry, this.env),
+      retry => handleLinearWebhook(retry, this.env, (key, work) => onceDeliveryActivity(this.ctx.storage, key, work)),
     ));
   }
 
   alarm(): Promise<void> {
     return this.enqueue(() => retryPendingWebhooks(
       this.ctx.storage,
-      retry => handleLinearWebhook(retry, this.env),
+      retry => handleLinearWebhook(retry, this.env, (key, work) => onceDeliveryActivity(this.ctx.storage, key, work)),
     ));
   }
 }
@@ -231,6 +231,7 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
 async function handleLinearWebhook(
   request: Request,
   env: Env,
+  activityOnce: (key: string, perform: () => Promise<void>) => Promise<void> = async (_key, perform) => perform(),
 ): Promise<Response> {
   requireConfig(env, [
     "LINEAR_WEBHOOK_SECRET",
@@ -373,14 +374,14 @@ async function handleLinearWebhook(
     }
 
     try {
-      await createAgentActivity(
+      await activityOnce(`started:${webhookId}:${agentSessionId}`, () => createAgentActivity(
         installation.accessToken,
         agentSessionId,
         {
           type: "thought",
           body: "I’ve received the task and started working on it.",
         },
-      );
+      ));
 
       console.log("Linear Agent Session acknowledged", {
         webhookId,
