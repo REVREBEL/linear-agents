@@ -10,6 +10,12 @@
   "observability": {
     "enabled": true,
   },
+  "durable_objects": {
+    "bindings": [{ "name": "DELIVERY_COORDINATOR", "class_name": "DeliveryCoordinator" }]
+  },
+  "exports": {
+    "DeliveryCoordinator": { "type": "durable-object", "storage": "sqlite" }
+  },
   "kv_namespaces": [
     {
       "binding": "LINEAR_DATA",
