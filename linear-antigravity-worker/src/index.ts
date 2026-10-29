@@ -1,3 +1,5 @@
+import { isInvalidGrant, ReauthorizationRequiredError } from "../../shared/oauth-errors";
+
 interface Env {
   LINEAR_DATA: KVNamespace;
   LINEAR_CLIENT_ID: string;
@@ -238,7 +240,16 @@ async function handleLinearWebhook(
   // Authentication must succeed before a delivery can be considered handled.
   // This KV marker only denotes a successful bridge acceptance, not an attempt.
   const dedupeKey = `webhook:${organizationId}:${webhookId}`;
-  const installation = await getInstallation(organizationId, env);
+  let installation: LinearInstallation | null;
+  try {
+    installation = await getInstallation(organizationId, env);
+  } catch (error) {
+    if (error instanceof ReauthorizationRequiredError) {
+      console.error("Linear OAuth reauthorization required", { organizationId, service: env.SERVICE_NAME });
+      return jsonResponse({ ok: false, accepted: false, error: "reauthorization_required", installUrl: new URL("/install", request.url).toString() }, 503);
+    }
+    throw error;
+  }
   if (!installation) {
     return jsonResponse(
       { ok: false, error: "No OAuth installation found for this workspace" },
@@ -755,7 +766,9 @@ async function refreshLinearToken(
 
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`Linear token refresh failed (${response.status}): ${text}`);
+    if (isInvalidGrant(response.status, text)) throw new ReauthorizationRequiredError();
+    // Avoid leaking OAuth responses, which may contain sensitive details.
+    throw new Error(`Linear token refresh failed (HTTP ${response.status})`);
   }
 
   return JSON.parse(text) as LinearTokenResponse;
