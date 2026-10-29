@@ -11,13 +11,20 @@ const helperSource = await fs.readFile(path.join(root, "shared/oauth-errors.ts")
 const transpile = source => ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
 }).outputText;
-const helperUrl = "data:text/javascript;base64," + Buffer.from(transpile(helperSource)).toString("base64");
+const dataUrl = source => "data:text/javascript;base64," + Buffer.from(transpile(source)).toString("base64");
+const helperUrl = dataUrl(helperSource);
+const deliveryUrl = dataUrl(await fs.readFile(path.join(root, "shared/delivery-coordinator.ts"), "utf8"));
+const cloudflareStubUrl = "data:text/javascript;base64," + Buffer.from(
+  "export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }"
+).toString("base64");
 
 async function loadWorker(agent) {
   const file = path.join(root, `linear-${agent}-worker/src/index.ts`);
   let js = transpile(await fs.readFile(file, "utf8"));
   js = js.replaceAll('"../../shared/oauth-errors"', JSON.stringify(helperUrl));
-  return (await import("data:text/javascript;base64," + Buffer.from(js).toString("base64"))).default;
+  js = js.replaceAll('"../../shared/delivery-coordinator"', JSON.stringify(deliveryUrl));
+  js = js.replaceAll('"cloudflare:workers"', JSON.stringify(cloudflareStubUrl));
+  return await import("data:text/javascript;base64," + Buffer.from(js).toString("base64"));
 }
 function kv(initial = {}) {
   const map = new Map(Object.entries(initial));
@@ -26,6 +33,36 @@ function kv(initial = {}) {
     async get(key) { return map.get(key) ?? null; },
     async put(key, value) { map.set(key, value); },
     async delete(key) { map.delete(key); }
+  };
+}
+function makeCoordinatorNamespace(workerModule, config) {
+  const actors = new Map();
+  function storage() {
+    const records = new Map();
+    let alarm = null;
+    return {
+      records,
+      async get(key) { return records.get(key) ?? null; },
+      async put(key, value) { records.set(key, value); },
+      async delete(key) { records.delete(key); },
+      async list(options = {}) {
+        const entries = [...records.entries()].filter(([key]) => key.startsWith(options.prefix || ""));
+        return new Map(entries.slice(0, options.limit ?? entries.length));
+      },
+      async getAlarm() { return alarm; },
+      async setAlarm(time) { alarm = time; },
+    };
+  }
+  return {
+    actors,
+    idFromName(name) { return name; },
+    get(id) {
+      if (!actors.has(id)) {
+        actors.set(id, new workerModule.DeliveryCoordinator({ storage: storage() }, config));
+      }
+      const actor = actors.get(id);
+      return { fetch: request => actor.fetch(request) };
+    }
   };
 }
 function env(store) {
@@ -64,9 +101,11 @@ const installed = (expiresAt, refreshToken = "refresh") => JSON.stringify({
 const agents = ["antigravity", "chatgpt", "gemini", "trae", "mock"];
 for (const agent of agents) {
   test(`${agent}: expired OAuth does not poison dedupe; reauthorization permits retry`, { concurrency: false }, async () => {
-    const worker = await loadWorker(agent);
+    const workerModule = await loadWorker(agent);
+    const worker = workerModule.default;
     const store = kv({ "installation:org": installed(Date.now() - 10000) });
     const config = env(store);
+    config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
     const request = await signedEvent("expired-token-" + agent);
     const oldFetch = globalThis.fetch;
     try {
@@ -100,9 +139,11 @@ for (const agent of agents) {
     } finally { globalThis.fetch = oldFetch; }
   });
   test(`${agent}: bridge outage retains retryability until accepted`, { concurrency: false }, async () => {
-    const worker = await loadWorker(agent);
+    const workerModule = await loadWorker(agent);
+    const worker = workerModule.default;
     const store = kv({ "installation:org": installed(Date.now() + 3600000) });
     const config = env(store);
+    config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
     const request = await signedEvent("bridge-outage-" + agent);
     const oldFetch = globalThis.fetch;
     let attempts = 0;
@@ -123,6 +164,70 @@ for (const agent of agents) {
       const retried = await worker.fetch(request(), config, {});
       assert.equal(retried.status, 200);
       assert.equal(attempts, 2);
+    } finally { globalThis.fetch = oldFetch; }
+  });
+}
+
+for (const agent of agents) {
+  test(`${agent}: atomic per-organization delivery serialization prevents concurrent duplicate forwarding`, { concurrency: false }, async () => {
+    const workerModule = await loadWorker(agent);
+    const worker = workerModule.default;
+    const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+    const config = env(store);
+    config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
+    const request = await signedEvent("concurrent-" + agent);
+    const oldFetch = globalThis.fetch;
+    let forwarded = 0;
+    try {
+      globalThis.fetch = async url => {
+        if (String(url).includes("api.linear.app/graphql"))
+          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        if (String(url).includes("bridge.test")) {
+          forwarded++;
+          await new Promise(resolve => setTimeout(resolve, 10));
+          return Response.json({ ok: true, accepted: true }, { status: 202 });
+        }
+        throw new Error("Unexpected external fetch: " + url);
+      };
+      const responses = await Promise.all([
+        worker.fetch(request(), config, {}),
+        worker.fetch(request(), config, {})
+      ]);
+      assert.deepEqual(responses.map(response => response.status), [200, 200]);
+      assert.equal(forwarded, 1);
+    } finally { globalThis.fetch = oldFetch; }
+  });
+
+  test(`${agent}: alarm replay recovers delivery without new Linear webhook`, { concurrency: false }, async () => {
+    const workerModule = await loadWorker(agent);
+    const worker = workerModule.default;
+    const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+    const config = env(store);
+    config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
+    const request = await signedEvent("alarm-" + agent);
+    const oldFetch = globalThis.fetch;
+    let forwarded = 0;
+    try {
+      globalThis.fetch = async url => {
+        if (String(url).includes("api.linear.app/graphql"))
+          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        if (String(url).includes("bridge.test")) {
+          forwarded++;
+          return forwarded === 1 ? new Response("offline", { status: 503 }) :
+            Response.json({ ok: true, accepted: true }, { status: 202 });
+        }
+        throw new Error("Unexpected external fetch: " + url);
+      };
+      assert.equal((await worker.fetch(request(), config, {})).status, 503);
+      const actor = [...config.DELIVERY_COORDINATOR.actors.values()][0];
+      const storage = actor.ctx.storage;
+      const entry = [...storage.records.entries()].find(([key]) => key.startsWith("pending:"));
+      assert.ok(entry);
+      storage.records.set(entry[0], { ...entry[1], nextAttemptAt: Date.now() - 1 });
+      await actor.alarm();
+      assert.equal(forwarded, 2);
+      assert.equal([...storage.records.keys()].some(key => key.startsWith("pending:")), false);
+      assert.equal([...storage.records.keys()].some(key => key.startsWith("accepted:")), true);
     } finally { globalThis.fetch = oldFetch; }
   });
 }
