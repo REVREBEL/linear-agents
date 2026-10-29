@@ -153,3 +153,16 @@ export async function routeCompleteToCoordinator(
   }
   return namespace.get(namespace.idFromName(`${serviceName}:${org}`)).fetch(request);
 }
+
+/** Keep Linear Agent Activity idempotency independent from bridge acceptance.
+ * The per-organization coordinator serializes requests before calling this. */
+export async function onceDeliveryActivity(
+  storage: StorageLike,
+  key: string,
+  perform: () => Promise<void>,
+): Promise<void> {
+  const marker = `activity:${key}`;
+  if (await storage.get(marker)) return;
+  await perform();
+  await storage.put(marker, Date.now());
+}
