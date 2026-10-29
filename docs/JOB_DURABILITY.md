@@ -63,3 +63,9 @@ All five Workers now authenticate the Linear installation before consulting thei
 
 **First deployment:** Pull the PR branch, run `npm run types`, `npm run typecheck`, and `npm run test:reliability`. Review the generated Wrangler config before running `npm run deploy -- <agent>`. Each deployment provisions a new SQLite Durable Object namespace. Confirm alarms and delivery acceptance in Worker logs and test an isolated Mock Agent event before rolling out to the other four Workers. Never remove an existing DO namespace to force a redeploy, as that discards pending jobs.
 
+
+### Legacy deduplication migration
+
+Older Workers used `payload.webhookId` as a fallback deduplication identifier when `linear-delivery` was absent. This value can identify the **webhook configuration**, not the individual event; the legacy `webhook:<configurationId>` KV record may therefore have been written for many unrelated deliveries, including ones that never reached the bridge. **Do not migrate or trust that record as proof an individual task was accepted.** New Workers derive a stable SHA-256 from the verified payload instead. For any suspicious pre-upgrade event, compare its Linear session/issue and the local bridge ledger and manually reconcile it rather than automatically replaying potentially completed work. Old legacy KV markers are left intact only for audit and expire on their original TTL.
+
+Linear start activities now have a separate coordinator-stored `activity:<delivery>:started` marker, written after the activity succeeds. Retryable bridge failures cannot repeat that acknowledgement after the marker is persisted; the job stays pending until accepted. A crash between Linear confirming the activity and committing the activity marker may still cause the activity to be posted again, because the Linear mutation does not accept a demonstrated idempotency key in this implementation.
