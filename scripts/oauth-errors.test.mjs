@@ -12,7 +12,7 @@ const source = await fs.readFile(path.join(root, "shared/oauth-errors.ts"), "utf
 const js = ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
 }).outputText;
-const { isInvalidGrant, ReauthorizationRequiredError } = await import(
+const { isInvalidGrant, ReauthorizationRequiredError, withRefreshSingleflight } = await import(
   "data:text/javascript;base64," + Buffer.from(js).toString("base64")
 );
 
@@ -26,4 +26,24 @@ test("reauthorization error is safe to expose without disclosing tokens", () => 
   const error = new ReauthorizationRequiredError();
   assert.equal(error.name, "ReauthorizationRequiredError");
   assert.match(error.message, /authorization expired/);
+});
+
+test("refresh singleflight coalesces concurrent calls and allows a later retry", async () => {
+  let calls = 0;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const work = async () => { calls++; await gate; return "token"; };
+  const first = withRefreshSingleflight("agent:org-a", work);
+  const second = withRefreshSingleflight("agent:org-a", work);
+  assert.equal(first, second);
+  assert.equal(calls, 1);
+  release();
+  assert.equal(await first, "token");
+  assert.equal(await second, "token");
+  await withRefreshSingleflight("agent:org-a", async () => { calls++; return "next"; });
+  assert.equal(calls, 2);
+});
+test("refresh singleflight releases failed attempts for retry", async () => {
+  await assert.rejects(withRefreshSingleflight("agent:org-b", () => Promise.reject(new Error("temporary"))));
+  assert.equal(await withRefreshSingleflight("agent:org-b", async () => "recovered"), "recovered");
 });
