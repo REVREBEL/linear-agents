@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, routeCompleteToCoordinator } from "../../shared/delivery-coordinator";
-import { isInvalidGrant, ReauthorizationRequiredError, withRefreshSingleflight } from "../../shared/oauth-errors";
+import { ReauthorizationRequiredError } from "../../shared/oauth-errors";
+import { getInstallation } from "../../shared/oauth-installation";
 
 interface Env {
   LINEAR_DATA: KVNamespace;
@@ -754,59 +755,6 @@ async function exchangeCodeForToken(
   const text = await response.text();
   if (!response.ok) {
     throw new Error(`Linear token exchange failed (${response.status}): ${text}`);
-  }
-
-  return JSON.parse(text) as LinearTokenResponse;
-}
-
-async function getInstallation(
-  organizationId: string,
-  env: Env,
-): Promise<LinearInstallation | null> {
-  return withRefreshSingleflight(`${env.SERVICE_NAME}:${organizationId}`, async () => {
-    // Read inside the per-isolate singleflight to avoid rotating one token
-    // twice in the same isolate. Cross-isolate coordination remains pending.
-    const raw = await env.LINEAR_DATA.get(`installation:${organizationId}`);
-    if (!raw) return null;
-    const installation = JSON.parse(raw) as LinearInstallation;
-    if (installation.expiresAt > Date.now() + 60_000) return installation;
-    if (!installation.refreshToken) throw new ReauthorizationRequiredError();
-
-    const refreshed = await refreshLinearToken(installation.refreshToken, env);
-    const updated: LinearInstallation = {
-      ...installation,
-      accessToken: refreshed.access_token,
-      refreshToken: refreshed.refresh_token || installation.refreshToken,
-      expiresAt: Date.now() + refreshed.expires_in * 1000,
-      scope: refreshed.scope,
-    };
-    await env.LINEAR_DATA.put(`installation:${organizationId}`, JSON.stringify(updated));
-    return updated;
-  });
-}
-
-async function refreshLinearToken(
-  refreshToken: string,
-  env: Env,
-): Promise<LinearTokenResponse> {
-  const body = new URLSearchParams({
-    refresh_token: refreshToken,
-    grant_type: "refresh_token",
-    client_id: env.LINEAR_CLIENT_ID,
-    client_secret: env.LINEAR_CLIENT_SECRET,
-  });
-
-  const response = await fetch(LINEAR_TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body,
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    if (isInvalidGrant(response.status, text)) throw new ReauthorizationRequiredError();
-    // Avoid leaking OAuth responses, which may contain sensitive details.
-    throw new Error(`Linear token refresh failed (HTTP ${response.status})`);
   }
 
   return JSON.parse(text) as LinearTokenResponse;
