@@ -97,3 +97,29 @@ export async function retryPendingWebhooks(
   }
   await scheduleNext(storage);
 }
+
+/** Verify before resolving a DO to prevent unauthorized callers from
+ * manufacturing per-organization coordinator instances. */
+export async function routeWebhookToCoordinator(
+  request: Request,
+  namespace: DurableObjectNamespace,
+  serviceName: string,
+  verifySignature: (body: string, signature: string) => Promise<boolean>,
+): Promise<Response> {
+  const raw = await request.clone().text();
+  if (!await verifySignature(raw, request.headers.get("linear-signature") || "")) {
+    return Response.json({ ok: false, error: "Invalid Linear signature" }, { status: 401 });
+  }
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+  }
+  const org = payload.organizationId;
+  if (typeof org !== "string" || !org || org.length > 256) {
+    return Response.json({ ok: false, error: "Invalid organizationId" }, { status: 400 });
+  }
+  const id = namespace.idFromName(`${serviceName}:${org}`);
+  return namespace.get(id).fetch(request);
+}
