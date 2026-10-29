@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator } from "../../shared/delivery-coordinator";
+import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, routeCompleteToCoordinator } from "../../shared/delivery-coordinator";
 import { isInvalidGrant, ReauthorizationRequiredError, withRefreshSingleflight } from "../../shared/oauth-errors";
 
 interface Env {
@@ -72,7 +72,13 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/complete") {
-        return handleAgentComplete(request, env);
+        return routeCompleteToCoordinator(
+          request,
+          env.DELIVERY_COORDINATOR,
+          env.SERVICE_NAME,
+          env.BRIDGE_SHARED_SECRET,
+          id => env.LINEAR_DATA.get(`agent-session:${id}`),
+        );
       }
 
       return new Response("Not found", { status: 404 });
@@ -100,6 +106,9 @@ export class DeliveryCoordinator extends DurableObject<Env> {
   }
 
   fetch(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname === "/complete") {
+      return this.enqueue(() => handleAgentComplete(request, this.env));
+    }
     return this.enqueue(() => coordinateWebhook(
       this.ctx.storage,
       request,
