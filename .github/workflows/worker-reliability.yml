@@ -23,11 +23,14 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Prepare isolated local Worker configuration
+        run: |
+          echo 'DOMAIN=example.com' > .env
+          for agent in ANTIGRAVITY CHATGPT GEMINI TRAE MOCK; do
+            echo "${agent}_KV_NAMESPACE_ID=00000000000000000000000000000000" >> .env
+          done
       - name: Generate Worker runtime types
         run: npm run types
-        env:
-          DOMAIN: example.com
-          # The test environment uses an isolated .env to avoid live secrets.
       - name: Check Worker TypeScript
         run: npm run typecheck
       - name: Run reliability and bridge regression tests
