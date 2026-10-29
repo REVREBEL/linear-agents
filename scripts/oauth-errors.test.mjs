@@ -10,7 +10,7 @@ import ts from "typescript";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = await fs.readFile(path.join(root, "shared/oauth-errors.ts"), "utf8");
 const js = ts.transpileModule(source, {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
+  compilerOptions: { target: 9, module: 99 }
 }).outputText;
 const { isInvalidGrant, ReauthorizationRequiredError, withRefreshSingleflight } = await import(
   "data:text/javascript;base64," + Buffer.from(js).toString("base64")
