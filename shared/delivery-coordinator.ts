@@ -123,3 +123,33 @@ export async function routeWebhookToCoordinator(
   const id = namespace.idFromName(`${serviceName}:${org}`);
   return namespace.get(id).fetch(request);
 }
+
+/** Route completion writes through the same organization-scoped coordinator
+ * so webhook token refresh and session completion cannot rotate concurrently. */
+export async function routeCompleteToCoordinator(
+  request: Request,
+  namespace: DurableObjectNamespace,
+  serviceName: string,
+  bridgeSecret: string,
+  resolveSessionOrganization: (sessionId: string) => Promise<string | null>,
+): Promise<Response> {
+  if (request.headers.get("authorization") !== `Bearer ${bridgeSecret}`) {
+    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+  let payload: Record<string, unknown>;
+  try {
+    payload = await request.clone().json() as Record<string, unknown>;
+  } catch {
+    return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+  }
+  const sessionId = payload.agentSessionId;
+  if (typeof sessionId !== "string" || !sessionId) {
+    return Response.json({ ok: false, error: "Missing agentSessionId" }, { status: 400 });
+  }
+  const org = typeof payload.organizationId === "string" && payload.organizationId
+    ? payload.organizationId : await resolveSessionOrganization(sessionId);
+  if (!org || org.length > 256) {
+    return Response.json({ ok: false, error: "Organization mapping missing" }, { status: 404 });
+  }
+  return namespace.get(namespace.idFromName(`${serviceName}:${org}`)).fetch(request);
+}
