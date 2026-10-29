@@ -83,7 +83,7 @@ function env(store) {
 async function signedEvent(id = "delivery-1") {
   const body = JSON.stringify({
     organizationId: "org", type: "AgentSessionEvent", action: "created",
-    agentSessionId: "session-1", promptContext: "Test retry and duplicate delivery"
+    agentSessionId: "session-1", agentSession: { issueId: "issue-1" }, promptContext: "Test retry and duplicate delivery"
   });
   const signature = crypto.createHmac("sha256", "webhook-secret").update(body).digest("hex");
   return () => new Request("https://worker.test/webhook", {
@@ -123,8 +123,11 @@ for (const agent of agents) {
       store.map.set("installation:org", installed(Date.now() + 3600000));
       let forwarded = 0;
       globalThis.fetch = async url => {
-        if (String(url).includes("api.linear.app/graphql"))
-          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        if (String(url).includes("api.linear.app/graphql")) {
+          return Response.json({ data: { agentActivityCreate: { success: true },
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+          } });
+        }
         if (String(url).includes("bridge.test")) {
           forwarded++;
           return Response.json({ ok: true, accepted: true }, { status: 202 });
@@ -151,8 +154,11 @@ for (const agent of agents) {
     let attempts = 0;
     try {
       globalThis.fetch = async url => {
-        if (String(url).includes("api.linear.app/graphql"))
-          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        if (String(url).includes("api.linear.app/graphql")) {
+          return Response.json({ data: { agentActivityCreate: { success: true },
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+          } });
+        }
         if (String(url).includes("bridge.test")) {
           attempts++;
           return attempts === 1 ? new Response("Unavailable", { status: 503 }) :
@@ -182,8 +188,11 @@ for (const agent of agents) {
     let forwarded = 0;
     try {
       globalThis.fetch = async url => {
-        if (String(url).includes("api.linear.app/graphql"))
-          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        if (String(url).includes("api.linear.app/graphql")) {
+          return Response.json({ data: { agentActivityCreate: { success: true },
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+          } });
+        }
         if (String(url).includes("bridge.test")) {
           forwarded++;
           await new Promise(resolve => setTimeout(resolve, 10));
@@ -211,8 +220,11 @@ for (const agent of agents) {
     let forwarded = 0;
     try {
       globalThis.fetch = async url => {
-        if (String(url).includes("api.linear.app/graphql"))
-          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        if (String(url).includes("api.linear.app/graphql")) {
+          return Response.json({ data: { agentActivityCreate: { success: true },
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+          } });
+        }
         if (String(url).includes("bridge.test")) {
           forwarded++;
           return forwarded === 1 ? new Response("offline", { status: 503 }) :
