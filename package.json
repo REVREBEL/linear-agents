@@ -34,7 +34,8 @@
     "bridge:test": "node --test linear-agent-bridge/*.test.mjs",
     "bridge:macos-setup": "bash scripts/macos/install-launchagent.sh",
     "log:messages": "npx wrangler tail linear-mock-agent --format pretty",
-    "typecheck": "node scripts/workspace-typecheck.mjs"
+    "typecheck": "node scripts/workspace-typecheck.mjs",
+    "test:reliability": "node --test scripts/oauth-errors.test.mjs linear-agent-bridge/*.test.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.0",
