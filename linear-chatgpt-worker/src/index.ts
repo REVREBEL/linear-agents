@@ -478,10 +478,10 @@ async function handleLinearWebhook(
     });
     if (agentSessionId) {
       try {
-        await createAgentActivity(installation.accessToken, agentSessionId, {
+        await activityOnce(`routing-error:${webhookId}:${agentSessionId}`, () => createAgentActivity(installation.accessToken, agentSessionId, {
           type: "error",
           body: routingFailure + ". No local job was dispatched.",
-        });
+        }));
       } catch (error) {
         console.error("Unable to report routing failure", { agentSessionId, error: String(error) });
       }
