@@ -14,6 +14,9 @@ const transpile = source => ts.transpileModule(source, {
 const dataUrl = source => "data:text/javascript;base64," + Buffer.from(transpile(source)).toString("base64");
 const helperUrl = dataUrl(helperSource);
 const deliveryUrl = dataUrl(await fs.readFile(path.join(root, "shared/delivery-coordinator.ts"), "utf8"));
+const installationSource = (await fs.readFile(path.join(root, "shared/oauth-installation.ts"), "utf8"))
+  .replaceAll('"./oauth-errors"', JSON.stringify(helperUrl));
+const installationUrl = dataUrl(installationSource);
 const cloudflareStubUrl = "data:text/javascript;base64," + Buffer.from(
   "export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }"
 ).toString("base64");
@@ -23,6 +26,7 @@ async function loadWorker(agent) {
   let js = transpile(await fs.readFile(file, "utf8"));
   js = js.replaceAll('"../../shared/oauth-errors"', JSON.stringify(helperUrl));
   js = js.replaceAll('"../../shared/delivery-coordinator"', JSON.stringify(deliveryUrl));
+  js = js.replaceAll('"../../shared/oauth-installation"', JSON.stringify(installationUrl));
   js = js.replaceAll('"cloudflare:workers"', JSON.stringify(cloudflareStubUrl));
   return await import("data:text/javascript;base64," + Buffer.from(js).toString("base64"));
 }
