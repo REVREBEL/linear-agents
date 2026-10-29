@@ -152,9 +152,11 @@ for (const agent of agents) {
     const request = await signedEvent("bridge-outage-" + agent);
     const oldFetch = globalThis.fetch;
     let attempts = 0;
+    let startActivities = 0;
     try {
-      globalThis.fetch = async url => {
+      globalThis.fetch = async (url, options) => {
         if (String(url).includes("api.linear.app/graphql")) {
+          if (String(options?.body || "").includes("AgentActivityCreate")) startActivities++;
           return Response.json({ data: { agentActivityCreate: { success: true },
             issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
           } });
@@ -172,6 +174,7 @@ for (const agent of agents) {
       const retried = await worker.fetch(request(), config, {});
       assert.equal(retried.status, 200);
       assert.equal(attempts, 2);
+      assert.equal(startActivities, 1, "started activity must be posted once across retries");
     } finally { globalThis.fetch = oldFetch; }
   });
 }
