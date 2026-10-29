@@ -9,7 +9,7 @@ import ts from "typescript";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const helperSource = await fs.readFile(path.join(root, "shared/oauth-errors.ts"), "utf8");
 const transpile = source => ts.transpileModule(source, {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
+  compilerOptions: { target: 9, module: 99 }
 }).outputText;
 const dataUrl = source => "data:text/javascript;base64," + Buffer.from(transpile(source)).toString("base64");
 const helperUrl = dataUrl(helperSource);
