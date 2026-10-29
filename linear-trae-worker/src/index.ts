@@ -1,4 +1,4 @@
-import { isInvalidGrant, ReauthorizationRequiredError } from "../../shared/oauth-errors";
+import { isInvalidGrant, ReauthorizationRequiredError, withRefreshSingleflight } from "../../shared/oauth-errors";
 
 interface Env {
   LINEAR_DATA: KVNamespace;
@@ -716,33 +716,26 @@ async function getInstallation(
   organizationId: string,
   env: Env,
 ): Promise<LinearInstallation | null> {
-  const raw = await env.LINEAR_DATA.get(`installation:${organizationId}`);
-  if (!raw) return null;
+  return withRefreshSingleflight(`${env.SERVICE_NAME}:${organizationId}`, async () => {
+    // Read inside the per-isolate singleflight to avoid rotating one token
+    // twice in the same isolate. Cross-isolate coordination remains pending.
+    const raw = await env.LINEAR_DATA.get(`installation:${organizationId}`);
+    if (!raw) return null;
+    const installation = JSON.parse(raw) as LinearInstallation;
+    if (installation.expiresAt > Date.now() + 60_000) return installation;
+    if (!installation.refreshToken) throw new ReauthorizationRequiredError();
 
-  const installation = JSON.parse(raw) as LinearInstallation;
-
-  if (
-    installation.expiresAt > Date.now() + 60_000 ||
-    !installation.refreshToken
-  ) {
-    return installation;
-  }
-
-  const refreshed = await refreshLinearToken(installation.refreshToken, env);
-  const updated: LinearInstallation = {
-    ...installation,
-    accessToken: refreshed.access_token,
-    refreshToken: refreshed.refresh_token || installation.refreshToken,
-    expiresAt: Date.now() + refreshed.expires_in * 1000,
-    scope: refreshed.scope,
-  };
-
-  await env.LINEAR_DATA.put(
-    `installation:${organizationId}`,
-    JSON.stringify(updated),
-  );
-
-  return updated;
+    const refreshed = await refreshLinearToken(installation.refreshToken, env);
+    const updated: LinearInstallation = {
+      ...installation,
+      accessToken: refreshed.access_token,
+      refreshToken: refreshed.refresh_token || installation.refreshToken,
+      expiresAt: Date.now() + refreshed.expires_in * 1000,
+      scope: refreshed.scope,
+    };
+    await env.LINEAR_DATA.put(`installation:${organizationId}`, JSON.stringify(updated));
+    return updated;
+  });
 }
 
 async function refreshLinearToken(
