@@ -1,7 +1,10 @@
+import { DurableObject } from "cloudflare:workers";
+import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator } from "../../shared/delivery-coordinator";
 import { isInvalidGrant, ReauthorizationRequiredError, withRefreshSingleflight } from "../../shared/oauth-errors";
 
 interface Env {
   LINEAR_DATA: KVNamespace;
+  DELIVERY_COORDINATOR: DurableObjectNamespace;
   LINEAR_CLIENT_ID: string;
   LINEAR_CLIENT_SECRET: string;
   LINEAR_WEBHOOK_SECRET: string;
@@ -60,7 +63,12 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/webhook") {
-        return handleLinearWebhook(request, env, ctx);
+        return routeWebhookToCoordinator(
+          request,
+          env.DELIVERY_COORDINATOR,
+          env.SERVICE_NAME,
+          (body, signature) => verifyLinearSignature(body, signature, env.LINEAR_WEBHOOK_SECRET),
+        );
       }
 
       if (request.method === "POST" && url.pathname === "/mock-action") {
@@ -81,6 +89,35 @@ export default {
     }
   },
 };
+
+
+// One Durable Object per Linear organization serializes webhook processing,
+// OAuth refreshes from webhook traffic, and durable accepted/pending states.
+// Alarms replay failed deliveries even after Linear stops retrying.
+export class DeliveryCoordinator extends DurableObject<Env> {
+  private tail: Promise<void> = Promise.resolve();
+
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.tail.then(task);
+    this.tail = run.then(() => {}, () => {});
+    return run;
+  }
+
+  fetch(request: Request): Promise<Response> {
+    return this.enqueue(() => coordinateWebhook(
+      this.ctx.storage,
+      request,
+      retry => handleLinearWebhook(retry, this.env),
+    ));
+  }
+
+  alarm(): Promise<void> {
+    return this.enqueue(() => retryPendingWebhooks(
+      this.ctx.storage,
+      retry => handleLinearWebhook(retry, this.env),
+    ));
+  }
+}
 
 async function beginOAuth(env: Env): Promise<Response> {
   requireConfig(env, [
@@ -188,7 +225,6 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
 async function handleLinearWebhook(
   request: Request,
   env: Env,
-  ctx: ExecutionContext,
 ): Promise<Response> {
   requireConfig(env, [
     "LINEAR_WEBHOOK_SECRET",
