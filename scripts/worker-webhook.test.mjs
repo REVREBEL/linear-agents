@@ -4,13 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import { stripTypeScriptTypes } from "node:module";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const helperSource = await fs.readFile(path.join(root, "shared/oauth-errors.ts"), "utf8");
-const transpile = source => ts.transpileModule(source, {
-  compilerOptions: { target: 9, module: 99 }
-}).outputText;
+const transpile = source => stripTypeScriptTypes(source, { mode: "strip" });
 const dataUrl = source => "data:text/javascript;base64," + Buffer.from(transpile(source)).toString("base64");
 const helperUrl = dataUrl(helperSource);
 const deliveryUrl = dataUrl(await fs.readFile(path.join(root, "shared/delivery-coordinator.ts"), "utf8"));
