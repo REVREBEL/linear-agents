@@ -171,9 +171,18 @@ const server = http.createServer(async (request, response) => {
     const jobKey = `${agent}:${String(deliveryId)}`;
     const claimed = await jobStore.claim(jobKey, { agent, deliveryId: String(deliveryId), jobId: safeJobId });
     if (!claimed.created) {
+      const state = claimed.record?.state || "claimed";
+      // An old failed/unrouted/partial claim must not be reported to the
+      // Worker as successfully delivered. Manual reconciliation is required.
+      if (["claimed", "received", "unrouted", "failed", "interrupted"].includes(state)) {
+        return sendJson(response, 503, {
+          ok: false, accepted: false, duplicate: true, state,
+          error: "Existing delivery was not accepted; inspect local job ledger before replay",
+        });
+      }
       return sendJson(response, 202, {
         ok: true, accepted: true, duplicate: true, jobId: claimed.record?.jobId || safeJobId,
-        state: claimed.record?.state || "claimed", host,
+        state, host,
       });
     }
     const route = await resolveJobRoute(job);

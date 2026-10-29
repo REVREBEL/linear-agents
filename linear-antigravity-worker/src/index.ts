@@ -1,5 +1,11 @@
+import { DurableObject } from "cloudflare:workers";
+import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, routeCompleteToCoordinator, onceDeliveryActivity } from "../../shared/delivery-coordinator";
+import { ReauthorizationRequiredError } from "../../shared/oauth-errors";
+import { getInstallation } from "../../shared/oauth-installation";
+
 interface Env {
   LINEAR_DATA: KVNamespace;
+  DELIVERY_COORDINATOR: DurableObjectNamespace;
   LINEAR_CLIENT_ID: string;
   LINEAR_CLIENT_SECRET: string;
   LINEAR_WEBHOOK_SECRET: string;
@@ -58,11 +64,22 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/webhook") {
-        return handleLinearWebhook(request, env, ctx);
+        return routeWebhookToCoordinator(
+          request,
+          env.DELIVERY_COORDINATOR,
+          env.SERVICE_NAME,
+          (body, signature) => verifyLinearSignature(body, signature, env.LINEAR_WEBHOOK_SECRET),
+        );
       }
 
       if (request.method === "POST" && url.pathname === "/complete") {
-        return handleAgentComplete(request, env);
+        return routeCompleteToCoordinator(
+          request,
+          env.DELIVERY_COORDINATOR,
+          env.SERVICE_NAME,
+          env.BRIDGE_SHARED_SECRET,
+          id => env.LINEAR_DATA.get(`agent-session:${id}`),
+        );
       }
 
       return new Response("Not found", { status: 404 });
@@ -75,6 +92,38 @@ export default {
     }
   },
 };
+
+
+// One Durable Object per Linear organization serializes webhook processing,
+// OAuth refreshes from webhook traffic, and durable accepted/pending states.
+// Alarms replay failed deliveries even after Linear stops retrying.
+export class DeliveryCoordinator extends DurableObject<Env> {
+  private tail: Promise<void> = Promise.resolve();
+
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.tail.then(task);
+    this.tail = run.then(() => {}, () => {});
+    return run;
+  }
+
+  fetch(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname === "/complete") {
+      return this.enqueue(() => handleAgentComplete(request, this.env));
+    }
+    return this.enqueue(() => coordinateWebhook(
+      this.ctx.storage,
+      request,
+      retry => handleLinearWebhook(retry, this.env, (key, work) => onceDeliveryActivity(this.ctx.storage, key, work)),
+    ));
+  }
+
+  alarm(): Promise<void> {
+    return this.enqueue(() => retryPendingWebhooks(
+      this.ctx.storage,
+      retry => handleLinearWebhook(retry, this.env, (key, work) => onceDeliveryActivity(this.ctx.storage, key, work)),
+    ));
+  }
+}
 
 async function beginOAuth(env: Env): Promise<Response> {
   requireConfig(env, [
@@ -182,7 +231,7 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
 async function handleLinearWebhook(
   request: Request,
   env: Env,
-  ctx: ExecutionContext,
+  activityOnce: (key: string, perform: () => Promise<void>) => Promise<void> = async (_key, perform) => perform(),
 ): Promise<Response> {
   requireConfig(env, [
     "LINEAR_WEBHOOK_SECRET",
@@ -222,8 +271,7 @@ async function handleLinearWebhook(
   // across different events, which can incorrectly suppress AgentSessionEvent.
   const webhookId =
     request.headers.get("linear-delivery") ||
-    stringValue(payload.webhookId) ||
-    crypto.randomUUID();
+    `event:${Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawBody)))).map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
 
   const linearEvent =
     request.headers.get("linear-event") ||
@@ -236,18 +284,28 @@ async function handleLinearWebhook(
     organizationId,
   });
 
-  const dedupeKey = `webhook:${webhookId}`;
-  if (await env.LINEAR_DATA.get(dedupeKey)) {
-    return jsonResponse({ ok: true, duplicate: true });
+  // Authentication must succeed before a delivery can be considered handled.
+  // This KV marker only denotes a successful bridge acceptance, not an attempt.
+  const dedupeKey = `webhook:${organizationId}:${webhookId}`;
+  let installation: LinearInstallation | null;
+  try {
+    installation = await getInstallation(organizationId, env);
+  } catch (error) {
+    if (error instanceof ReauthorizationRequiredError) {
+      console.error("Linear OAuth reauthorization required", { organizationId, service: env.SERVICE_NAME });
+      return jsonResponse({ ok: false, accepted: false, error: "reauthorization_required", installUrl: new URL("/install", request.url).toString() }, 503);
+    }
+    throw error;
   }
-  await env.LINEAR_DATA.put(dedupeKey, "1", { expirationTtl: 86400 });
-
-  const installation = await getInstallation(organizationId, env);
   if (!installation) {
     return jsonResponse(
       { ok: false, error: "No OAuth installation found for this workspace" },
       409,
     );
+  }
+
+  if (await env.LINEAR_DATA.get(dedupeKey)) {
+    return jsonResponse({ ok: true, duplicate: true });
   }
 
   // Issue status is authoritative for inbox deletion; session completion is not.
@@ -278,8 +336,10 @@ async function handleLinearWebhook(
         }
       } catch (error) {
         console.error("Completed issue cleanup failed", {issueId, error: String(error)});
+        return jsonResponse({ok:false, error:"Issue cleanup failed; retry required"}, 503);
       }
     }
+    await env.LINEAR_DATA.put(dedupeKey, "accepted", { expirationTtl: 86400 });
     return jsonResponse({ok:true, accepted:false, issueStatusProcessed:true});
   }
 
@@ -314,14 +374,14 @@ async function handleLinearWebhook(
     }
 
     try {
-      await createAgentActivity(
+      await activityOnce(`started:${webhookId}:${agentSessionId}`, () => createAgentActivity(
         installation.accessToken,
         agentSessionId,
         {
           type: "thought",
           body: "I’ve received the task and started working on it.",
         },
-      );
+      ));
 
       console.log("Linear Agent Session acknowledged", {
         webhookId,
@@ -431,33 +491,15 @@ async function handleLinearWebhook(
     },
   };
 
-  ctx.waitUntil(
-    forwardToMacBridge(
-      bridgeJob,
-      webhookId,
-      linearEvent,
-      env,
-    ).catch(async (error) => {
-      console.error("Failed to forward job to Mac bridge", {
-        webhookId,
-        linearEvent,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      if (agentSessionId) {
-        try {
-          await createAgentActivity(installation.accessToken, agentSessionId, {
-            type: "error",
-            body: "Unable to deliver this task to a verified local workspace. Check the local bridge routing configuration and Worker logs.",
-          });
-        } catch (activityError) {
-          console.error("Failed to report local dispatch error to Linear", {
-            agentSessionId,
-            error: activityError instanceof Error ? activityError.message : String(activityError),
-          });
-        }
-      }
-    }),
-  );
+  // Wait for the bridge to durably accept the job before acknowledging Linear.
+  // A failure returns a retryable HTTP response and does not poison deduplication.
+  try {
+    await forwardToMacBridge(bridgeJob, webhookId, linearEvent, env);
+  } catch (error) {
+    console.error("Failed to forward job to Mac bridge", { webhookId, error: String(error) });
+    return jsonResponse({ ok: false, accepted: false, error: "Local bridge delivery failed; retry required" }, 503);
+  }
+  await env.LINEAR_DATA.put(dedupeKey, "accepted", { expirationTtl: 86400 });
 
   return jsonResponse(
     {
@@ -714,64 +756,6 @@ async function exchangeCodeForToken(
   const text = await response.text();
   if (!response.ok) {
     throw new Error(`Linear token exchange failed (${response.status}): ${text}`);
-  }
-
-  return JSON.parse(text) as LinearTokenResponse;
-}
-
-async function getInstallation(
-  organizationId: string,
-  env: Env,
-): Promise<LinearInstallation | null> {
-  const raw = await env.LINEAR_DATA.get(`installation:${organizationId}`);
-  if (!raw) return null;
-
-  const installation = JSON.parse(raw) as LinearInstallation;
-
-  if (
-    installation.expiresAt > Date.now() + 60_000 ||
-    !installation.refreshToken
-  ) {
-    return installation;
-  }
-
-  const refreshed = await refreshLinearToken(installation.refreshToken, env);
-  const updated: LinearInstallation = {
-    ...installation,
-    accessToken: refreshed.access_token,
-    refreshToken: refreshed.refresh_token || installation.refreshToken,
-    expiresAt: Date.now() + refreshed.expires_in * 1000,
-    scope: refreshed.scope,
-  };
-
-  await env.LINEAR_DATA.put(
-    `installation:${organizationId}`,
-    JSON.stringify(updated),
-  );
-
-  return updated;
-}
-
-async function refreshLinearToken(
-  refreshToken: string,
-  env: Env,
-): Promise<LinearTokenResponse> {
-  const body = new URLSearchParams({
-    refresh_token: refreshToken,
-    grant_type: "refresh_token",
-    client_id: env.LINEAR_CLIENT_ID,
-    client_secret: env.LINEAR_CLIENT_SECRET,
-  });
-
-  const response = await fetch(LINEAR_TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body,
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`Linear token refresh failed (${response.status}): ${text}`);
   }
 
   return JSON.parse(text) as LinearTokenResponse;

@@ -1,0 +1,37 @@
+name: Worker Reliability Validation
+
+on:
+  pull_request:
+    paths:
+      - 'linear-*-worker/**'
+      - 'linear-agent-bridge/**'
+      - 'shared/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/worker-reliability.yml'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Prepare isolated local Worker configuration
+        run: |
+          echo 'DOMAIN=example.com' > .env
+          for agent in ANTIGRAVITY CHATGPT GEMINI TRAE MOCK; do
+            echo "${agent}_KV_NAMESPACE_ID=00000000000000000000000000000000" >> .env
+          done
+      - name: Generate Worker runtime types
+        run: npm run types
+      - name: Check Worker TypeScript
+        run: npm run typecheck
+      - name: Run reliability and bridge regression tests
+        run: npm run test:reliability
