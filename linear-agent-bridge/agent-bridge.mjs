@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { createJobStore } from "./job-store.mjs";
 import { createSessionQueue } from "./agy-session-queue.mjs";
+import { recordResumedConversation } from "./agy-conversation-state.mjs";
 
 const PORT = Number(process.env.BRIDGE_PORT || 8788);
 const HOST = process.env.BRIDGE_HOST || "127.0.0.1";
@@ -264,6 +265,7 @@ const server = http.createServer(async (request, response) => {
           const prior = await jobStore.findLatestConversationBySessionId(sessionId, jobKey, workspace);
           conversationId = prior?.conversationId || null;
         }
+        await recordResumedConversation(jobStore, jobKey, conversationId);
         await startAntigravity(routedJob, filename, workspace, jobKey, conversationId);
       }).catch(async error => {
         console.error("AGY queued execution failed:", error);
@@ -371,7 +373,10 @@ function scheduleAgyResume(jobKey, resumeAt) {
       }
       const job = JSON.parse(await fs.readFile(record.taskFile, "utf8"));
       const updated = await jobStore.transition(jobKey, "launching", { resumeAt: null });
-      await agySessionQueue.enqueue(record.agentSessionId, () => startAntigravity(job, record.taskFile, record.workspace, jobKey, updated.conversationId));
+      await agySessionQueue.enqueue(record.agentSessionId, async () => {
+        await recordResumedConversation(jobStore, jobKey, updated.conversationId, "quota_retry");
+        await startAntigravity(job, record.taskFile, record.workspace, jobKey, updated.conversationId);
+      });
     })().catch(error => console.error("AGY scheduled resume failed:", error));
   }, Math.min(delay, 2147483647));
   agyResumeTimers.set(jobKey, timer);
