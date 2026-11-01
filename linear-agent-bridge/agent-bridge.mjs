@@ -34,6 +34,36 @@ function enqueueChatgptHandoff(task) {
 }
 
 const ROUTING_CONFIG_FILE = process.env.ROUTING_CONFIG_FILE || path.join(PROJECT_DIR, "routing.json");
+const AGY_PROJECT_CONVERSATIONS_DIR = path.join(JOBS_DIR, "project-conversations");
+async function readAgyProjectConversation(projectId, workspace) {
+  const file = path.join(AGY_PROJECT_CONVERSATIONS_DIR, projectId + ".json");
+  try {
+    const record = JSON.parse(await fs.readFile(file, "utf8"));
+    return record.workspace === workspace &&
+      typeof record.conversationId === "string" &&
+      /^[a-zA-Z0-9_-]{8,128}$/.test(record.conversationId) ? record.conversationId : null;
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+async function saveAgyProjectConversation(projectId, workspace, conversationId) {
+  if (!/^[a-zA-Z0-9_-]{8,128}$/.test(conversationId)) {
+    throw new Error("Cannot persist invalid AGY conversation ID");
+  }
+  await fs.mkdir(AGY_PROJECT_CONVERSATIONS_DIR, { recursive: true, mode: 0o700 });
+  const file = path.join(AGY_PROJECT_CONVERSATIONS_DIR, projectId + ".json");
+  const temporary = file + "." + process.pid + ".tmp";
+  try {
+    await fs.writeFile(temporary, JSON.stringify({
+      projectId, workspace, conversationId, updatedAt: new Date().toISOString()
+    }, null, 2), { mode: 0o600 });
+    await fs.rename(temporary, file);
+  } finally {
+    await fs.rm(temporary, { force: true }).catch(() => {});
+  }
+}
+
 const AGENT_JOB_DIRS = {
   antigravity: path.join(JOBS_DIR, "antigravity"),
   mock: path.join(JOBS_DIR, "mock"),
@@ -283,15 +313,21 @@ const server = http.createServer(async (request, response) => {
     } else if (agent === "antigravity") {
       const sessionId = extractAgentSessionId(routedJob);
       // Shared project conversations must not receive concurrent invocations.
-      void agySessionQueue.enqueue(route.agyConversationId || sessionId, async () => {
+      const projectConversationQueueKey = route.agyConversationMode === "reuse-existing"
+        ? "project:" + route.projectId : sessionId;
+      void agySessionQueue.enqueue(projectConversationQueueKey, async () => {
         let conversationId = route.agyConversationId || null;
         let conversationSource = conversationId ? "project_reuse" : "follow_up";
-        if (!conversationId && routedJob.sessionAction === "prompted") {
+        if (route.agyConversationMode === "reuse-existing" && !conversationId) {
+          conversationId = await readAgyProjectConversation(route.projectId, workspace);
+          if (conversationId) conversationSource = "project_reuse";
+        }
+        if (!conversationId && route.agyConversationMode !== "reuse-existing" && routedJob.sessionAction === "prompted") {
           const prior = await jobStore.findLatestConversationBySessionId(sessionId, jobKey, workspace);
           conversationId = prior?.conversationId || null;
         }
         // Cross-session recovery is opt-in and never supersedes same-session continuity.
-        if (!conversationId && routedJob.sessionAction !== "prompted" && process.env.AGY_ISSUE_RECOVERY_ENABLED === "true") {
+        if (!conversationId && route.agyConversationMode !== "reuse-existing" && routedJob.sessionAction !== "prompted" && process.env.AGY_ISSUE_RECOVERY_ENABLED === "true") {
           const issueId = routedJob.issueMetadata?.id || routedJob.issueId || null;
           const prior = await jobStore.findLatestCompletedConversationByIssueId(issueId, sessionId, workspace, jobKey);
           if (prior) {
@@ -304,7 +340,13 @@ const server = http.createServer(async (request, response) => {
           }
         }
         await recordResumedConversation(jobStore, jobKey, conversationId, conversationSource);
-        await startAntigravity(routedJob, filename, workspace, jobKey, conversationId);
+        const actualConversationId = await startAntigravity(routedJob, filename, workspace, jobKey, conversationId);
+        if (route.agyConversationMode === "reuse-existing" && actualConversationId) {
+          await saveAgyProjectConversation(route.projectId, workspace, actualConversationId);
+          console.log(`[Antigravity] Project ${route.projectId} conversation: ${actualConversationId}`);
+        } else if (route.agyConversationMode === "reuse-existing") {
+          console.warn(`[Antigravity] Project ${route.projectId}: no verified conversation ID; next delivery will start fresh`);
+        }
       }).catch(async error => {
         console.error("AGY queued execution failed:", error);
         await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(console.error);
@@ -504,7 +546,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
       } else {
         await jobStore.transition(jobKey, code === 0 ? "completed" : "failed", { exitCode: code, signal, pid: null });
       }
-    })().then(resolve, error => { console.error("Antigravity completion handling failed:", error); reject(error); });
+    })().then(() => resolve(verifiedConversationId), error => { console.error("Antigravity completion handling failed:", error); reject(error); });
   });
   });
 }
@@ -791,11 +833,10 @@ async function resolveJobRoute(job) {
     if (!["reuse-existing", "new-per-issue"].includes(role.conversationMode)) {
       return { ok: false, error: `${name}.conversationMode must be reuse-existing or new-per-issue` };
     }
-    if (role.provider === "antigravity" &&
-        role.conversationMode === "reuse-existing" &&
+    if (role.provider === "antigravity" && role.conversationId !== undefined &&
         (typeof role.conversationId !== "string" ||
          !/^[a-zA-Z0-9_-]{8,128}$/.test(role.conversationId))) {
-      return { ok: false, error: `${name}.conversationId is required for Antigravity reuse-existing` };
+      return { ok: false, error: `${name}.conversationId must be a valid conversation ID when supplied` };
     }
     if (role.projectName !== undefined &&
         (typeof role.projectName !== "string" || !role.projectName.trim())) {
