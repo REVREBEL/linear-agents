@@ -10,6 +10,16 @@ const hosts = [
   ["Gemini", process.env.GEMINI_HOST || "gemini-agent.revrebel.io"],
   ["Mock", process.env.MOCK_HOST || "mock-agent.revrebel.io"],
 ];
+// Worker custom domains are distinct from the direct Tunnel hostnames.
+// Read the same per-agent prefixes used by wrangler.jsonc.
+const domain = process.env.DOMAIN || "revrebel.io";
+const workers = [
+  ["Antigravity", process.env.ANTIGRAVITY_WORKER_HOST || `linear-${process.env.ANTIGRAVITY_PREFIX || "antigravity"}.${domain}`],
+  ["ChatGPT", process.env.CHATGPT_WORKER_HOST || `linear-${process.env.CHATGPT_PREFIX || "chatgpt"}.${domain}`],
+  ["Trae", process.env.TRAE_WORKER_HOST || `linear-${process.env.TRAE_PREFIX || "trae"}.${domain}`],
+  ["Gemini", process.env.GEMINI_WORKER_HOST || `linear-${process.env.GEMINI_PREFIX || "gemini"}.${domain}`],
+  ["Mock", process.env.MOCK_WORKER_HOST || `linear-${process.env.MOCK_PREFIX || "mock"}.${domain}`],
+];
 const timeoutMs = 9000;
 let failures = 0;
 
@@ -52,13 +62,28 @@ if (!secret) {
   console.error("SKIP External probes: BRIDGE_SHARED_SECRET is absent from the local .env");
   process.exitCode = 1;
 } else {
+  for (const [label, workerHost] of workers) {
+    await check(`${label} Worker → Tunnel → bridge`, async () => {
+      const id = crypto.randomUUID();
+      const data = await request(`https://${workerHost}/diagnostics/probe`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${secret}`, "x-bridge-probe-id": id },
+      });
+      if (data?.ok !== true || data?.stage !== "bridge" ||
+          data?.probeId !== id || typeof data.worker !== "string" ||
+          data.bridge !== "local-linear-agent-router") {
+        throw Error(`Worker forwarding not confirmed (ok=${data?.ok}, stage=${data?.stage}, idMatch=${data?.probeId === id}, bridge=${data?.bridge})`);
+      }
+      return `Worker and bridge independently acknowledged ${id}`;
+    });
+  }
   for (const [label, host] of hosts) {
     await check(`${label} DNS`, async () => {
       const records = await dns.lookup(host, { all: true });
       if (!records.length) throw Error("No A/AAAA records");
       return `${records.length} address(es)`;
     });
-    await check(`${label} Worker`, async () => {
+    await check(`${label} Tunnel-host health`, async () => {
       const data = await request(`https://${host}/health`);
       if (data?.ok !== true) throw Error("Invalid Worker health response");
       return "public route healthy";
