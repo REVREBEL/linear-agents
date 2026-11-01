@@ -7,7 +7,7 @@ npm run bridge:status
 npm run bridge:doctor
 ```
 
-`bridge:status` remains fast and local. `bridge:doctor` reads the root `.env` using `scripts/bridge.sh`, checks the local router, resolves each configured agent hostname, queries the public Worker `/health`, then sends a unique probe through Worker `/diagnostics/probe` → Cloudflare Tunnel → local router `/diagnostics/probe`.
+`bridge:status` remains fast and local. `bridge:doctor` reads the root `.env` using `scripts/bridge.sh`, checks the local router, checks the distinct **Worker custom domains** (`linear-${PREFIX}.${DOMAIN}`), then checks the direct **Tunnel hostnames** (`${PREFIX}-agent.${DOMAIN}`). A unique authenticated probe is sent separately to each Worker and each Tunnel endpoint. Only the Worker response with `stage=bridge`, the matching UUID, and the local bridge service name proves Worker → Tunnel → bridge forwarding.
 
 Each probe requires the existing `BRIDGE_SHARED_SECRET` in an Authorization header, and a UUID in `x-bridge-probe-id`. Neither Worker nor bridge creates jobs, invokes agents, writes to the delivery ledger, or calls Linear for a probe. A response must echo the probe UUID. The CLI fails with a nonzero status when checks fail.
 
@@ -27,3 +27,9 @@ The public Worker `/health` endpoint tests Worker reachability, **not** the Tunn
 - All hostnames must be configured in the local root `.env` or the doctor falls back to the repository's example `*.revrebel.io` hostnames.
 - `BRIDGE_SHARED_SECRET` must match the deployed Worker and bridge. Do not print or paste its value.
 - The probe tests delivery through the configured public Worker and Tunnel. It does not create a new Linear Agent Session, task file, or job ledger record.
+
+## Independent hostname verification
+
+The five Worker custom domains are configured in each `linear-*-worker/wrangler.jsonc` and are **not** the same as the Tunnel hostnames. You may override them through `ANTIGRAVITY_WORKER_HOST`, `CHATGPT_WORKER_HOST`, `TRAE_WORKER_HOST`, `GEMINI_WORKER_HOST`, and `MOCK_WORKER_HOST`. Defaults use `linear-${PREFIX}.${DOMAIN}`, with per-agent `*_PREFIX` environment values. The separate direct Tunnel check tests the existing `*_HOST` endpoints.
+
+The Workers must first be deployed from this feature branch. A 404 from the Worker custom domain can indicate an older deployed Worker; a 403 can indicate Cloudflare WAF. Preserve the existing webhook IP restrictions and allow only authenticated diagnostic requests by a narrowly scoped rule.
