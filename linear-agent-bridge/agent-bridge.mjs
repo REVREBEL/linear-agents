@@ -123,6 +123,24 @@ const server = http.createServer(async (request, response) => {
       });
     }
 
+    // Probe is authenticated and side-effect free: no job IDs, ledger entries,
+    // workspace writes, or agent process launches.
+    if (request.method === "POST" && url.pathname === "/diagnostics/probe") {
+      if (!SHARED_SECRET || request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized" });
+      }
+      const probeId = request.headers["x-bridge-probe-id"];
+      if (typeof probeId !== "string" || !/^[a-f0-9-]{36}$/i.test(probeId)) {
+        return sendJson(response, 400, { ok: false, error: "Invalid probe ID" });
+      }
+      return sendJson(response, 200, {
+        ok: true,
+        probeId,
+        service: "local-linear-agent-router",
+        agent: agentForHost(host),
+      });
+    }
+
     if (request.method === "POST" && url.pathname === "/issue-completed") {
       if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized" });

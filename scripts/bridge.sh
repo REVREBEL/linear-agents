@@ -74,6 +74,10 @@ case "${1:-}" in
     launchctl kickstart -k "${SERVICE_TARGET}"
     ;;
 
+  doctor)
+    node "${REPO_ROOT}/scripts/bridge-doctor.mjs"
+    ;;
+
   status)
     echo "=== Launchctl Status ==="
     launchctl list | grep "${REVERSED_ID}" || echo "Service is not running in launchctl"
@@ -83,7 +87,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "Usage: $0 {load|unload|restart|status}"
+    echo "Usage: $0 {load|unload|restart|status|doctor}"
     exit 1
     ;;
 esac
