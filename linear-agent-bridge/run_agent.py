@@ -120,6 +120,14 @@ def event_conversation_id(events: list[dict]) -> str | None:
     return None
 
 
+async def read_bounded_stderr(stream: asyncio.StreamReader, limit: int = 8192) -> str:
+    """Drain stderr without buffering unlimited subprocess diagnostics."""
+    tail = b""
+    while chunk := await stream.read(4096):
+        tail = (tail + chunk)[-limit:]
+    return tail.decode("utf-8", errors="replace").strip()
+
+
 async def run_antigravity(prompt: str, conversation_id: str | None = None) -> str:
     if not os.path.isfile(ANTIGRAVITY_BIN) or not os.access(ANTIGRAVITY_BIN, os.X_OK):
         raise FileNotFoundError(f"Antigravity CLI not executable: {ANTIGRAVITY_BIN}")
@@ -151,7 +159,7 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
     process.stdin.write(input_message.encode("utf-8"))
     await process.stdin.drain()
     process.stdin.close()
-    stderr_task = asyncio.create_task(process.stderr.read())
+    stderr_task = asyncio.create_task(read_bounded_stderr(process.stderr))
     stdout_lines = deque(maxlen=30)
     events = deque(maxlen=30)
     result = None
@@ -165,7 +173,7 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
             continue
         if not isinstance(event, dict):
             continue
-        events.append(event)
+        events.append(event if len(line) <= 4000 else {"event": event.get("event"), "conversation_id": event.get("conversation_id")})
         observed_id = event_conversation_id([event])
         if observed_id and observed_id != announced_conversation_id:
             announced_conversation_id = observed_id
@@ -177,7 +185,7 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
             result = event["result"]
 
     await process.wait()
-    stderr = (await stderr_task).decode("utf-8", errors="replace").strip()
+    stderr = await stderr_task
     stdout = "\n".join(stdout_lines)
 
     # Never use -c or a workspace's "last conversation" in a multi-issue bridge.
