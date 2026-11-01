@@ -13,10 +13,21 @@ type StorageLike = DurableObjectStorage;
 const PREFIX = "pending:";
 const ACCEPTED = "accepted:";
 const RETRY_MAX_MS = 2 * 60 * 60 * 1000;
+export const WEBHOOK_FRESHNESS_WINDOW_MS = 60_000;
+
+export function validateWebhookFreshness(payload: Record<string, unknown>, header: string | null, now = Date.now()): boolean {
+  // The JSON body is HMAC-signed; the HTTP timestamp header is not.
+  const signed = payload.webhookTimestamp;
+  if (typeof signed !== "number" || !Number.isSafeInteger(signed) || signed <= 0) return false;
+  if (header !== null) {
+    if (!/^\d{13}$/.test(header) || Number(header) !== signed) return false;
+  }
+  return Math.abs(now - signed) <= WEBHOOK_FRESHNESS_WINDOW_MS;
+}
+
 
 async function deliveryKey(request: Request): Promise<string> {
-  const id = request.headers.get("linear-delivery");
-  if (id) return id;
+  // An unsigned delivery header must never define replay identity.
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(await request.clone().text()));
   return Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2, "0")).join("");
 }
@@ -116,12 +127,21 @@ export async function routeWebhookToCoordinator(
   } catch {
     return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
+  if (!validateWebhookFreshness(payload, request.headers.get("linear-timestamp"))) {
+    return Response.json({ ok: false, error: "Invalid or expired Linear webhook timestamp" }, { status: 401 });
+  }
   const org = payload.organizationId;
   if (typeof org !== "string" || !org || org.length > 256) {
     return Response.json({ ok: false, error: "Invalid organizationId" }, { status: 400 });
   }
+  // Normalize unsigned delivery identity before persistence and dispatch,
+  // so both Durable Object and Worker KV dedupe use the signed body.
+  const key = await deliveryKey(request);
+  const headers = new Headers(request.headers);
+  headers.set("linear-delivery", key);
+  const authenticated = new Request(request, { headers });
   const id = namespace.idFromName(`${serviceName}:${org}`);
-  return namespace.get(id).fetch(request);
+  return namespace.get(id).fetch(authenticated);
 }
 
 /** Route completion writes through the same organization-scoped coordinator
