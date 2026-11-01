@@ -156,33 +156,63 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
     assert process.stdin is not None
     assert process.stdout is not None
     assert process.stderr is not None
-    process.stdin.write(input_message.encode("utf-8"))
-    await process.stdin.drain()
-    process.stdin.close()
     stderr_task = asyncio.create_task(read_bounded_stderr(process.stderr))
+    async def send_prompt():
+        process.stdin.write(input_message.encode("utf-8"))
+        await process.stdin.drain()
+        process.stdin.close()
+
+    input_task = asyncio.create_task(send_prompt())
     stdout_lines = deque(maxlen=30)
     events = deque(maxlen=30)
     result = None
     announced_conversation_id = conversation_id
-    while line_bytes := await process.stdout.readline():
-        line = line_bytes.decode("utf-8", errors="replace").rstrip("\r\n")
-        stdout_lines.append(line[-4000:])
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(event, dict):
-            continue
-        events.append(event if len(line) <= 4000 else {"event": event.get("event"), "conversation_id": event.get("conversation_id")})
-        observed_id = event_conversation_id([event])
-        if observed_id and observed_id != announced_conversation_id:
-            announced_conversation_id = observed_id
-            print("AGY_BRIDGE_EVENT=" + json.dumps({
-                "event": "conversation_started",
-                "conversation_id": observed_id,
-            }), flush=True)
-        if event.get("event") == "result" and isinstance(event.get("result"), dict):
-            result = event["result"]
+    async def stream_lines():
+        # Read chunks rather than readline(), whose StreamReader limit rejects
+        # large JSONL events. Cap malformed/unbounded individual events.
+        pending = bytearray()
+        while chunk := await process.stdout.read(65536):
+            pending.extend(chunk)
+            if len(pending) > 32 * 1024 * 1024 and b"\\n" not in pending:
+                raise ValueError("AGY JSONL event exceeds 32 MiB")
+            while b"\\n" in pending:
+                index = pending.index(b"\\n")
+                if index > 32 * 1024 * 1024:
+                    raise ValueError("AGY JSONL event exceeds 32 MiB")
+                yield bytes(pending[:index])
+                del pending[:index + 1]
+        if pending:
+            yield bytes(pending)
+
+    try:
+        async for line_bytes in stream_lines():
+            line = line_bytes.decode("utf-8", errors="replace").rstrip("\r\n")
+            stdout_lines.append(line[-4000:])
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            events.append(event if len(line) <= 4000 else {"event": event.get("event"), "conversation_id": event.get("conversation_id")})
+            observed_id = event_conversation_id([event])
+            if observed_id and observed_id != announced_conversation_id:
+                announced_conversation_id = observed_id
+                print("AGY_BRIDGE_EVENT=" + json.dumps({
+                    "event": "conversation_started",
+                    "conversation_id": observed_id,
+                }), flush=True)
+            if event.get("event") == "result" and isinstance(event.get("result"), dict):
+                result = event["result"]
+
+        await input_task
+    except BaseException:
+        input_task.cancel()
+        if process.returncode is None:
+            process.kill()
+        await process.wait()
+        await asyncio.gather(input_task, stderr_task, return_exceptions=True)
+        raise
 
     await process.wait()
     stderr = await stderr_task
@@ -223,11 +253,6 @@ async def main() -> int:
             "thought",
             "Antigravity has initialized locally and is analyzing the task.",
         )
-        if resumed_conversation:
-            prompt = (
-                "Resume the existing Linear task where you stopped. Review the work already "
-                "completed and continue only the unfinished steps; do not repeat changes."
-            )
         response = await run_antigravity(prompt, resumed_conversation)
         print(response)
         post_worker_activity(session_id, completion_url, "response", f"Task completed.\n\n{response}")
