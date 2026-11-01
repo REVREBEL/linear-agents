@@ -141,7 +141,7 @@ for (const agent of agents) {
     const store = kv({ "installation:org": installed(Date.now() - 10000) });
     const config = env(store);
     config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
-    const request = await signedEvent("expired-token-" + agent);
+    let request = await signedEvent("expired-token-" + agent);
     const oldFetch = globalThis.fetch;
     try {
       globalThis.fetch = async url => {
@@ -167,6 +167,8 @@ for (const agent of agents) {
         }
         throw new Error("Unexpected external fetch: " + url);
       };
+      // Reauthorization may take longer than the replay window; model a fresh Linear delivery.
+      request = await signedEvent("expired-token-" + agent);
       const accepted = await worker.fetch(request(), config, {});
       assert.equal(accepted.status, 200);
       assert.equal(forwarded, 1);
