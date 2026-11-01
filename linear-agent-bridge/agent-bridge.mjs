@@ -279,6 +279,7 @@ const server = http.createServer(async (request, response) => {
       const sessionId = extractAgentSessionId(routedJob);
       void agySessionQueue.enqueue(sessionId, async () => {
         let conversationId = null;
+        let conversationSource = "follow_up";
         if (routedJob.sessionAction === "prompted") {
           const prior = await jobStore.findLatestConversationBySessionId(sessionId, jobKey, workspace);
           conversationId = prior?.conversationId || null;
@@ -289,14 +290,14 @@ const server = http.createServer(async (request, response) => {
           const prior = await jobStore.findLatestCompletedConversationByIssueId(issueId, sessionId, workspace, jobKey);
           if (prior) {
             conversationId = prior.conversationId;
+            conversationSource = "issue_recovery";
             await jobStore.transition(jobKey, "launching", {
-              conversationSource: "issue_recovery",
               recoveredFromAgentSessionId: prior.agentSessionId,
               recoveredFromJobKey: prior.key,
             });
           }
         }
-        await recordResumedConversation(jobStore, jobKey, conversationId);
+        await recordResumedConversation(jobStore, jobKey, conversationId, conversationSource);
         await startAntigravity(routedJob, filename, workspace, jobKey, conversationId);
       }).catch(async error => {
         console.error("AGY queued execution failed:", error);
