@@ -2,7 +2,8 @@
 # launchd bridge entrypoint: trusted environment, absolute Node and bridge path.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-ENV_FILE="${LINEAR_AGENTS_ENV_FILE:-${ROOT}/.env}"
+export REPO_ROOT="${ROOT}"
+ENV_FILE="${LINEAR_AGENTS_ENV_FILE:-${2:-${ROOT}/.env}}"
 if [[ ! -f "${ENV_FILE}" ]]; then echo "Missing bridge environment: ${ENV_FILE}" >&2; exit 1; fi
 set -a
 # shellcheck disable=SC1090
