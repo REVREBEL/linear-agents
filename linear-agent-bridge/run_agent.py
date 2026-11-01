@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import re
+import time
 from pathlib import Path
 from collections import deque
 from typing import Any
@@ -128,7 +129,11 @@ async def read_bounded_stderr(stream: asyncio.StreamReader, limit: int = 8192) -
     return tail.decode("utf-8", errors="replace").strip()
 
 
-async def run_antigravity(prompt: str, conversation_id: str | None = None) -> str:
+async def run_antigravity(
+    prompt: str,
+    conversation_id: str | None = None,
+    progress_callback=None,
+) -> str:
     if not os.path.isfile(ANTIGRAVITY_BIN) or not os.access(ANTIGRAVITY_BIN, os.X_OK):
         raise FileNotFoundError(f"Antigravity CLI not executable: {ANTIGRAVITY_BIN}")
     if not os.path.isdir(ANTIGRAVITY_WORKSPACE):
@@ -167,6 +172,16 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
     events = deque(maxlen=30)
     result = None
     announced_conversation_id = conversation_id
+    last_progress_at = 0.0
+    last_step_reported = -1
+    progress_tasks = set()
+
+    async def announce_progress(message: str):
+        if progress_callback is None:
+            return
+        task = asyncio.create_task(asyncio.to_thread(progress_callback, message))
+        progress_tasks.add(task)
+        task.add_done_callback(progress_tasks.discard)
     async def stream_lines():
         # Read chunks rather than readline(), whose StreamReader limit rejects
         # large JSONL events. Cap malformed/unbounded individual events.
@@ -202,6 +217,23 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
                     "event": "conversation_started",
                     "conversation_id": observed_id,
                 }), flush=True)
+            if event.get("event") == "step_update":
+                step = event.get("step_update") or {}
+                index = step.get("step_index")
+                state = step.get("state")
+                step_type = step.get("step_type")
+                now = time.monotonic()
+                if (isinstance(index, int) and index > last_step_reported and
+                    state == "ACTIVE" and now - last_progress_at >= 60):
+                    last_step_reported = index
+                    last_progress_at = now
+                    if step_type == "tool":
+                        tool = step.get("tool_name")
+                        safe_tool = tool if isinstance(tool, str) and re.fullmatch(r"[a-zA-Z0-9_.-]{1,60}", tool) else "tool"
+                        summary = f"Antigravity is working (step {index + 1}): running {safe_tool}."
+                    else:
+                        summary = f"Antigravity is working (step {index + 1})."
+                    await announce_progress(summary)
             if event.get("event") == "result" and isinstance(event.get("result"), dict):
                 result = event["result"]
 
@@ -215,6 +247,8 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
         raise
 
     await process.wait()
+    if progress_tasks:
+        await asyncio.gather(*progress_tasks, return_exceptions=True)
     stderr = await stderr_task
     stdout = "\n".join(stdout_lines)
 
@@ -253,7 +287,10 @@ async def main() -> int:
             "thought",
             "Antigravity has initialized locally and is analyzing the task.",
         )
-        response = await run_antigravity(prompt, resumed_conversation)
+        response = await run_antigravity(
+            prompt, resumed_conversation,
+            progress_callback=lambda message: post_worker_activity(session_id, completion_url, "thought", message),
+        )
         print(response)
         post_worker_activity(session_id, completion_url, "response", f"Task completed.\n\n{response}")
         return 0
