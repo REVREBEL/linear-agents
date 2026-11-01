@@ -148,7 +148,12 @@ curl -X POST "https://linear-trae.yourdomain.com/complete" \
   -d '{"agentSessionId":"ACTUAL_SESSION_ID","status":"completed"}'
 ```
 
-Valid intended statuses: `completed` → Linear `response` activity; `failed`/`error` → Linear `error` activity. The Worker resolves the organization from the session mapping (or request-provided organization ID) and uses the app OAuth installation to call `agentActivityCreate`.
+Valid intended statuses: `completed` → Linear `response` activity; `failed`/`error` → Linear `error` activity. A trusted local runner may instead send an explicit `activityType` of `thought`, `response`, `error`, or `elicitation`. The Worker resolves the organization from the session mapping (or request-provided organization ID) and uses the app OAuth installation to call `agentActivityCreate`; local runners must not call that mutation with a personal Linear API key.
+
+The Antigravity runner invokes AGY in sandboxed headless mode with a
+session-only allowlist for the read-only `github/list_commits` MCP operation.
+This avoids the print-mode soft denial that otherwise terminates a run with an
+empty response while preserving confirmation requirements for other tools.
 
 The current Worker adds **this instruction to forwarded task context**, not to the persistent Linear issue description and not to globally shared Linear agent instructions. This is why unrelated agents should not receive a global completion requirement.
 

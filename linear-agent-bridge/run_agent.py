@@ -11,11 +11,14 @@ from typing import Any
 import requests
 
 
-LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql"
 ANTIGRAVITY_BIN = os.path.expanduser(
     os.getenv("ANTIGRAVITY_BIN", "~/.local/bin/agy")
 )
 ANTIGRAVITY_PRINT_TIMEOUT = os.getenv("ANTIGRAVITY_PRINT_TIMEOUT", "30m")
+ANTIGRAVITY_SETTINGS = os.getenv(
+    "ANTIGRAVITY_SETTINGS",
+    json.dumps({"permissions": {"allow": ["mcp(github/list_commits)"]}}),
+)
 ANTIGRAVITY_WORKSPACE = os.path.abspath(
     os.path.expanduser(
         os.getenv("ANTIGRAVITY_WORKSPACE", os.getcwd())
@@ -23,108 +26,59 @@ ANTIGRAVITY_WORKSPACE = os.path.abspath(
 )
 
 
-def linear_authorization_header() -> str | None:
-    """
-    OAuth access tokens use Bearer. Linear personal API keys are sent directly.
-    Set LINEAR_ACCESS_TOKEN for OAuth, or LINEAR_API_KEY for a personal key.
-    """
-    access_token = os.getenv("LINEAR_ACCESS_TOKEN")
-    if access_token:
-        return f"Bearer {access_token}"
-
-    api_key = os.getenv("LINEAR_API_KEY")
-    if api_key:
-        return api_key
-
-    return None
-
-
-def update_linear_activity(
+def post_worker_activity(
     session_id: str,
+    completion_url: str,
     activity_type: str,
     message: str,
 ) -> bool:
-    authorization = linear_authorization_header()
+    shared_secret = os.getenv("BRIDGE_SHARED_SECRET")
 
-    if not authorization:
+    if not completion_url or not shared_secret:
         print(
-            "Missing LINEAR_ACCESS_TOKEN or LINEAR_API_KEY; "
-            "cannot send activity to Linear.",
+            "Missing completionUrl or BRIDGE_SHARED_SECRET; "
+            "cannot send activity through the Worker.",
             file=sys.stderr,
         )
         return False
 
-    mutation = """
-    mutation AgentActivityCreate($input: AgentActivityCreateInput!) {
-      agentActivityCreate(input: $input) {
-        success
-      }
-    }
-    """
-
-    variables = {
-        "input": {
-            "agentSessionId": session_id,
-            "content": {
-                "type": activity_type,
-                "body": message,
-            },
-        }
-    }
-
     try:
         response = requests.post(
-            LINEAR_GRAPHQL_URL,
+            completion_url,
             headers={
-                "Authorization": authorization,
+                "Authorization": f"Bearer {shared_secret}",
                 "Content-Type": "application/json",
             },
             json={
-                "query": mutation,
-                "variables": variables,
+                "agentSessionId": session_id,
+                "activityType": activity_type,
+                "body": message,
             },
             timeout=20,
         )
 
         response.raise_for_status()
         body: dict[str, Any] = response.json()
-
-        if body.get("errors"):
-            print(
-                f"Linear GraphQL errors: {json.dumps(body['errors'])}",
-                file=sys.stderr,
-            )
-            return False
-
-        success = bool(
-            body.get("data", {})
-            .get("agentActivityCreate", {})
-            .get("success")
-        )
-
-        if not success:
-            print(
-                "Linear returned success=false for agentActivityCreate.",
-                file=sys.stderr,
-            )
-
-        return success
+        return bool(body.get("ok"))
 
     except Exception as error:
         print(
-            f"Failed to emit activity to Linear: {type(error).__name__}: {error}",
+            f"Failed to emit activity through Worker: {type(error).__name__}: {error}",
             file=sys.stderr,
         )
         return False
 
 
-def load_prompt(json_file_path: str) -> str:
+def load_job_context(json_file_path: str) -> tuple[str, str]:
     with open(json_file_path, "r", encoding="utf-8") as handle:
         data = json.load(handle)
     prompt = data.get("payload", {}).get("data", {}).get("promptContext")
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("Missing payload.data.promptContext")
-    return prompt.strip()
+    completion_url = data.get("completionUrl") or data.get("payload", {}).get("data", {}).get("completionUrl")
+    if not isinstance(completion_url, str) or not completion_url.strip():
+        raise ValueError("Missing completionUrl")
+    return prompt.strip(), completion_url.strip()
 
 
 class QuotaExhausted(Exception):
@@ -166,6 +120,7 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
         ANTIGRAVITY_BIN, "--input-format", "stream-json",
         "--output-format", "stream-json",
         "--print-timeout", ANTIGRAVITY_PRINT_TIMEOUT, "--sandbox",
+        "--settings", ANTIGRAVITY_SETTINGS,
     ]
     if conversation_id:
         command.extend(["--conversation", conversation_id])
@@ -208,7 +163,11 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
         raise RuntimeError(f"AGY status {result.get('status')}: {error_text or stderr}")
     response = result.get("response")
     if not isinstance(response, str) or not response.strip():
-        raise RuntimeError("Antigravity CLI completed without a response.")
+        recent_events = json.dumps(events[-5:], ensure_ascii=False)[-2000:]
+        raise RuntimeError(
+            "Antigravity CLI completed without a response. "
+            f"Recent events: {recent_events}"
+        )
     return response.strip()
 
 
@@ -218,9 +177,14 @@ async def main() -> int:
         return 1
     session_id, json_file_path = sys.argv[1:3]
     resumed_conversation = sys.argv[3] if len(sys.argv) > 3 else None
-    update_linear_activity(session_id, "thought", "Antigravity has initialized locally and is analyzing the task.")
     try:
-        prompt = load_prompt(json_file_path)
+        prompt, completion_url = load_job_context(json_file_path)
+        post_worker_activity(
+            session_id,
+            completion_url,
+            "thought",
+            "Antigravity has initialized locally and is analyzing the task.",
+        )
         if resumed_conversation:
             prompt = (
                 "Resume the existing Linear task where you stopped. Review the work already "
@@ -228,17 +192,18 @@ async def main() -> int:
             )
         response = await run_antigravity(prompt, resumed_conversation)
         print(response)
-        update_linear_activity(session_id, "response", f"Task completed.\n\n{response}")
+        post_worker_activity(session_id, completion_url, "response", f"Task completed.\n\n{response}")
         return 0
     except QuotaExhausted as error:
         event = {"event": "on_exhaustion", "conversation_id": error.conversation_id}
         print("AGY_BRIDGE_EVENT=" + json.dumps(event), flush=True)
-        update_linear_activity(session_id, "thought", "Antigravity quota exhausted; a retry will be scheduled if the session can be identified.")
+        post_worker_activity(session_id, completion_url, "thought", "Antigravity quota exhausted; a retry will be scheduled if the session can be identified.")
         return 75
     except Exception as error:
         message = f"{type(error).__name__}: {error}"
         print(f"Execution failure: {message}", file=sys.stderr)
-        update_linear_activity(session_id, "error", f"Local execution failed.\n\n{message}")
+        if "completion_url" in locals():
+            post_worker_activity(session_id, completion_url, "error", f"Local execution failed.\n\n{message}")
         return 1
 
 

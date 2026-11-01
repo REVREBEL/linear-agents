@@ -40,6 +40,13 @@ The ledger is local durability, not a remote queue: webhook deliveries cannot be
 - Test the module with `node --test linear-agent-bridge/job-store.test.mjs`.
 - The bridge logs the count of interrupted records during startup. Inspect records under `linear-agent-bridge/linear-jobs/job-state/`.
 - Headless processes are marked completed by exit status; a zero exit is **not** proof the code changes are correct or that Linear was updated.
+- Antigravity headless sessions pass a session-only permission allowlist for
+  `mcp(github/list_commits)`, the read-only discovery call required by the
+  Linear issue workflow. Other unapproved MCP or unsandboxed actions remain
+  denied; do not replace this with `--dangerously-skip-permissions`.
+- The Antigravity runner posts `thought`, `response`, and `error` activities to
+  the authenticated Worker completion endpoint. It does not call
+  `agentActivityCreate` with a personal Linear API key.
 - Gemini Warp is marked awaiting external because the tracked process is only macOS `open`, not the Gemini CLI.
 - Deploy and restart during idle periods. Until automatic reconciliation is implemented, unfinished jobs require manual review.
 
