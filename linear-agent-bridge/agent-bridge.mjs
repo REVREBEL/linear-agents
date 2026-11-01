@@ -283,6 +283,19 @@ const server = http.createServer(async (request, response) => {
           const prior = await jobStore.findLatestConversationBySessionId(sessionId, jobKey, workspace);
           conversationId = prior?.conversationId || null;
         }
+        // Cross-session recovery is opt-in and never supersedes same-session continuity.
+        if (!conversationId && process.env.AGY_ISSUE_RECOVERY_ENABLED === "true") {
+          const issueId = routedJob.issueMetadata?.id || routedJob.issueId || null;
+          const prior = await jobStore.findLatestCompletedConversationByIssueId(issueId, sessionId, workspace, jobKey);
+          if (prior) {
+            conversationId = prior.conversationId;
+            await jobStore.transition(jobKey, "launching", {
+              conversationSource: "issue_recovery",
+              recoveredFromAgentSessionId: prior.agentSessionId,
+              recoveredFromJobKey: prior.key,
+            });
+          }
+        }
         await recordResumedConversation(jobStore, jobKey, conversationId);
         await startAntigravity(routedJob, filename, workspace, jobKey, conversationId);
       }).catch(async error => {
