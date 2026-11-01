@@ -262,6 +262,10 @@ const server = http.createServer(async (request, response) => {
         chatgptProjectUrl: route.chatgptProjectUrl || null,
         chatgptConversationMode: route.chatgptConversationMode || null,
         chatgptAutoSend: route.chatgptAutoSend === true,
+        agentRole: route.agentRole,
+        codeReviewRole: route.codeReviewRole,
+        agyConversationMode: route.agyConversationMode,
+        agyConversationId: route.agyConversationId,
       },
     }, null, 2), { mode: 0o600 });
 
@@ -279,9 +283,9 @@ const server = http.createServer(async (request, response) => {
     } else if (agent === "antigravity") {
       const sessionId = extractAgentSessionId(routedJob);
       void agySessionQueue.enqueue(sessionId, async () => {
-        let conversationId = null;
-        let conversationSource = "follow_up";
-        if (routedJob.sessionAction === "prompted") {
+        let conversationId = route.agyConversationId || null;
+        let conversationSource = conversationId ? "project_reuse" : "follow_up";
+        if (!conversationId && routedJob.sessionAction === "prompted") {
           const prior = await jobStore.findLatestConversationBySessionId(sessionId, jobKey, workspace);
           conversationId = prior?.conversationId || null;
         }
@@ -774,11 +778,36 @@ async function resolveJobRoute(job) {
   }
   const launchDirectory = project.launchFromScope === true ? actualScope : repositoryRoot;
   const scopeKey = String(projectId).replace(/[^a-zA-Z0-9_-]/g, "_");
-  const chatgptProjectUrl = project.chatgpt?.projectUrl;
-  const chatgptConversationMode = project.chatgpt?.conversationMode || "new-per-issue";
-  const chatgptAutoSend = project.chatgpt?.autoSend === true;
-  if (project.chatgpt?.autoSend !== undefined && typeof project.chatgpt.autoSend !== "boolean") return { ok: false, error: "chatgpt.autoSend must be boolean" };
-  if (chatgptAutoSend && chatgptConversationMode !== "reuse-existing") return { ok: false, error: "chatgpt.autoSend requires reuse-existing conversation mode" };
+  // Roles own their conversation settings; legacy chatgpt config remains supported.
+  const roleAgent = project.agent;
+  const roleReview = project.codeReview;
+  for (const [name, role] of [["agent", roleAgent], ["codeReview", roleReview]]) {
+    if (role === undefined) continue;
+    if (!role || typeof role !== "object" || Array.isArray(role) ||
+        !["antigravity", "chatgpt"].includes(role.agent)) {
+      return { ok: false, error: `${name}.agent must be chatgpt or antigravity` };
+    }
+    if (!["reuse-existing", "new-per-issue"].includes(role.conversationMode)) {
+      return { ok: false, error: `${name}.conversationMode must be reuse-existing or new-per-issue` };
+    }
+    if (role.agent === "antigravity" &&
+        role.conversationMode === "reuse-existing" &&
+        (typeof role.conversationId !== "string" ||
+         !/^[a-zA-Z0-9_-]{8,128}$/.test(role.conversationId))) {
+      return { ok: false, error: `${name}.conversationId is required for Antigravity reuse-existing` };
+    }
+    if (role.autoSend !== undefined && typeof role.autoSend !== "boolean") {
+      return { ok: false, error: `${name}.autoSend must be boolean` };
+    }
+  }
+  // Code-review roles are stored independently. Actual review-event dispatch
+  // still follows the installed Worker; do not redirect implementation jobs.
+  const chatgptRole = roleAgent?.agent === "chatgpt" ? roleAgent : null;
+  const chatgptConfig = chatgptRole || project.chatgpt || {};
+  const chatgptProjectUrl = chatgptConfig.conversationUrl || chatgptConfig.projectUrl;
+  const chatgptConversationMode = chatgptConfig.conversationMode || "new-per-issue";
+  const chatgptAutoSend = chatgptConfig.autoSend === true;
+  if (chatgptAutoSend && chatgptConversationMode !== "reuse-existing") return { ok: false, error: "ChatGPT autoSend requires reuse-existing conversation mode" };
   if (chatgptProjectUrl !== undefined) {
     try {
       const destination = new URL(chatgptProjectUrl);
@@ -793,13 +822,18 @@ async function resolveJobRoute(job) {
         : chatgptConversationMode === "new-per-issue" && isProjectPath;
       if (destination.protocol !== "https:" || destination.hostname !== "chatgpt.com" ||
           destination.search || destination.hash || !validPath) {
-        return { ok: false, error: `Invalid chatgpt.projectUrl or conversationMode for Linear project ${projectId}` };
+        return { ok: false, error: `Invalid ChatGPT URL or conversationMode for project ${projectId}` };
       }
     } catch {
-      return { ok: false, error: `Invalid chatgpt.projectUrl for Linear project ${projectId}` };
+      return { ok: false, error: `Invalid ChatGPT URL for project ${projectId}` };
     }
   }
-  return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId, chatgptProjectUrl, chatgptConversationMode, chatgptAutoSend };
+  const agyConfig = roleAgent?.agent === "antigravity" ? roleAgent : null;
+  return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId,
+    chatgptProjectUrl, chatgptConversationMode, chatgptAutoSend,
+    agentRole: roleAgent || null, codeReviewRole: roleReview || null,
+    agyConversationMode: agyConfig?.conversationMode || null,
+    agyConversationId: agyConfig?.conversationMode === "reuse-existing" ? agyConfig.conversationId : null };
 }
 
 function extractAgentSessionId(job) {
