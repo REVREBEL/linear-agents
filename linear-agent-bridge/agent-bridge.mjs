@@ -340,7 +340,12 @@ const server = http.createServer(async (request, response) => {
           }
         }
         await recordResumedConversation(jobStore, jobKey, conversationId, conversationSource);
-        const actualConversationId = await startAntigravity(routedJob, filename, workspace, jobKey, conversationId);
+        const actualConversationId = await startAntigravity(
+          routedJob, filename, workspace, jobKey, conversationId,
+          route.agyConversationMode === "reuse-existing"
+            ? async id => saveAgyProjectConversation(route.projectId, workspace, id)
+            : null
+        );
         if (route.agyConversationMode === "reuse-existing" && actualConversationId) {
           await saveAgyProjectConversation(route.projectId, workspace, actualConversationId);
           console.log(`[Antigravity] Project ${route.projectId} conversation: ${actualConversationId}`);
@@ -462,7 +467,7 @@ function scheduleAgyResume(jobKey, resumeAt) {
   agyResumeTimers.set(jobKey, timer);
 }
 
-function startAntigravity(job, filename, workspace, jobKey, conversationId = null) {
+function startAntigravity(job, filename, workspace, jobKey, conversationId = null, onVerifiedConversation = null) {
   return new Promise((resolve, reject) => {
   const sessionId = extractAgentSessionId(job);
 
@@ -502,6 +507,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
   let output = "";
   let exhaustionEvent = null;
   let verifiedConversationId = conversationId;
+  let conversationPersist = Promise.resolve();
   agentProcess.on("spawn", () => { void jobStore.transition(jobKey, "running", { pid: agentProcess.pid }).catch(console.error); });
   agentProcess.stdout.on("data", data => {
     output += String(data);
@@ -514,6 +520,10 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
           const parsed = JSON.parse(line.slice("AGY_BRIDGE_EVENT=".length));
           if (parsed.event === "conversation_started" && parsed.conversation_id) {
             verifiedConversationId = parsed.conversation_id;
+            if (onVerifiedConversation) {
+              conversationPersist = conversationPersist.then(() => onVerifiedConversation(verifiedConversationId));
+              conversationPersist.catch(error => console.error("AGY conversation persistence failed:", error));
+            }
             void jobStore.transition(jobKey, "running", { conversationId: verifiedConversationId, conversationVerifiedAt: new Date().toISOString() }).catch(console.error);
           } else if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
         } catch (error) { console.error("Invalid AGY exhaustion event:", error.message); }
@@ -524,6 +534,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
   agentProcess.on("error", error => { void jobStore.transition(jobKey, "failed", { error: error.message }).catch(console.error); reject(error); });
   agentProcess.on("close", (code, signal) => {
     void (async () => {
+      await conversationPersist;
       if (code === 75 && exhaustionEvent?.event === "on_exhaustion") {
         const conversationId = exhaustionEvent.conversation_id || verifiedConversationId;
         if (!conversationId) {
