@@ -308,7 +308,7 @@ test("all Workers reject invalid webhook freshness before Durable Object access"
       const timestamp = headerOverride ?? String(payload.webhookTimestamp ?? "");
       const response = await worker.fetch(new Request("https://worker.test/webhook", {
         method: "POST",
-        headers: { "linear-signature": signature, "linear-timestamp": timestamp },
+        headers: { "linear-signature": signature, ...(bodyOverride === "missing" ? {} : { "linear-timestamp": timestamp }) },
         body,
       }), config, {});
       assert.equal(response.status, 401, agent + ": " + description);
