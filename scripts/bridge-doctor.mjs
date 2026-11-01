@@ -63,19 +63,25 @@ if (!secret) {
       if (data?.ok !== true) throw Error("Invalid Worker health response");
       return "public route healthy";
     });
-    await check(`${label} Worker → Tunnel → bridge`, async () => {
+    await check(`${label} public probe`, async () => {
       const id = crypto.randomUUID();
       const data = await request(`https://${host}/diagnostics/probe`, {
         method: "POST",
         headers: { authorization: `Bearer ${secret}`, "x-bridge-probe-id": id },
       });
-      if (data?.ok !== true || data?.probeId !== id || data?.stage !== "bridge") {
+      if (data?.ok !== true || data?.probeId !== id) {
         const description = data && typeof data === "object"
           ? `ok=${data.ok ?? "missing"}, stage=${data.stage ?? "missing"}, probeIdMatch=${data.probeId === id}, worker=${data.worker ?? "missing"}, status=${data.status ?? "n/a"}`
           : "no JSON object";
         throw Error(`Probe was not acknowledged by the local bridge (${description})`);
       }
-      return `delivery confirmed (${id})`;
+      if (data.stage === "bridge" && typeof data.worker === "string") {
+        return `Worker → Tunnel → bridge confirmed (${id})`;
+      }
+      if (data.service === "local-linear-agent-router") {
+        return `Tunnel → bridge confirmed (${id}); public hostname appears to bypass Worker`;
+      }
+      throw Error("Probe ID acknowledged but response origin is not identifiable");
     });
   }
 }
