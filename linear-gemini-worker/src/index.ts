@@ -78,8 +78,10 @@ export default {
           },
           signal: AbortSignal.timeout(8000),
         });
-        const data = await bridgeResponse.json().catch(() => null);
-        if (!bridgeResponse.ok || data?.probeId !== probeId || data?.ok !== true) {
+        const payload: unknown = await bridgeResponse.json().catch(() => null);
+        const data = payload !== null && typeof payload === "object" && !Array.isArray(payload)
+          ? payload as Record<string, unknown> : null;
+        if (!bridgeResponse.ok || data?.probeId !== probeId || data?.ok !== true || data?.service !== "local-linear-agent-router") {
           return jsonResponse({ ok: false, stage: "bridge", status: bridgeResponse.status }, 502);
         }
         return jsonResponse({ ok: true, stage: "bridge", probeId, worker: env.SERVICE_NAME, bridge: data.service });
