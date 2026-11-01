@@ -173,10 +173,10 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
         pending = bytearray()
         while chunk := await process.stdout.read(65536):
             pending.extend(chunk)
-            if len(pending) > 32 * 1024 * 1024 and b"\\n" not in pending:
+            if len(pending) > 32 * 1024 * 1024 and b"\n" not in pending:
                 raise ValueError("AGY JSONL event exceeds 32 MiB")
-            while b"\\n" in pending:
-                index = pending.index(b"\\n")
+            while b"\n" in pending:
+                index = pending.index(b"\n")
                 if index > 32 * 1024 * 1024:
                     raise ValueError("AGY JSONL event exceeds 32 MiB")
                 yield bytes(pending[:index])
