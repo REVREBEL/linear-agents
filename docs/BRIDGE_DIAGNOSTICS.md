@@ -33,3 +33,10 @@ The public Worker `/health` endpoint tests Worker reachability, **not** the Tunn
 The five Worker custom domains are configured in each `linear-*-worker/wrangler.jsonc` and are **not** the same as the Tunnel hostnames. You may override them through `ANTIGRAVITY_WORKER_HOST`, `CHATGPT_WORKER_HOST`, `TRAE_WORKER_HOST`, `GEMINI_WORKER_HOST`, and `MOCK_WORKER_HOST`. Defaults use `linear-${PREFIX}.${DOMAIN}`, with per-agent `*_PREFIX` environment values. The separate direct Tunnel check tests the existing `*_HOST` endpoints.
 
 The Workers must first be deployed from this feature branch. A 404 from the Worker custom domain can indicate an older deployed Worker; a 403 can indicate Cloudflare WAF. Preserve the existing webhook IP restrictions and allow only authenticated diagnostic requests by a narrowly scoped rule.
+
+## Review hardening
+
+- `bridge:doctor` verifies the exact expected Worker `SERVICE_NAME` (using `*_PREFIX`) for both Worker `GET /health` and Worker forwarding results; it rejects a different Worker even if that Worker can reach the bridge.
+- The direct Tunnel probe also checks the reported local `agent` identity against its hostname, not just the echoed UUID.
+- The local health URL uses `BRIDGE_HOST` and `BRIDGE_PORT` from the trusted root environment.
+- The direct Tunnel `GET /health` request was removed. Only `POST /diagnostics/probe` must pass the narrow WAF rule on Tunnel hostnames. Worker custom domains need access to both `GET /health` and authenticated `POST /diagnostics/probe` from the trusted diagnostic caller.
