@@ -1,0 +1,67 @@
+#!/usr/bin/env node
+import crypto from "node:crypto";
+import dns from "node:dns/promises";
+
+const secret = process.env.BRIDGE_SHARED_SECRET;
+const hosts = [
+  ["Antigravity", process.env.ANTIGRAVITY_HOST || "antigravity-agent.revrebel.io"],
+  ["ChatGPT", process.env.CHATGPT_HOST || "chatgpt-agent.revrebel.io"],
+  ["Trae", process.env.TRAE_HOST || "trae-agent.revrebel.io"],
+  ["Gemini", process.env.GEMINI_HOST || "gemini-agent.revrebel.io"],
+  ["Mock", process.env.MOCK_HOST || "mock-agent.revrebel.io"],
+];
+const timeoutMs = 9000;
+let failures = 0;
+
+async function check(label, action) {
+  try {
+    const message = await action();
+    console.log(`PASS ${label}: ${message}`);
+  } catch (error) {
+    failures++;
+    console.error(`FAIL ${label}: ${error.message}`);
+  }
+}
+async function request(url, options = {}) {
+  const response = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw Error(`HTTP ${response.status}`);
+  return body;
+}
+
+await check("Local router", async () => {
+  const data = await request("http://127.0.0.1:8788/health");
+  if (!data?.ok || data.service !== "local-linear-agent-router") throw Error("Invalid health response");
+  return "healthy";
+});
+
+if (!secret) {
+  console.error("SKIP External probes: BRIDGE_SHARED_SECRET is absent from the local .env");
+  process.exitCode = 1;
+} else {
+  for (const [label, host] of hosts) {
+    await check(`${label} DNS`, async () => {
+      const records = await dns.lookup(host, { all: true });
+      if (!records.length) throw Error("No A/AAAA records");
+      return `${records.length} address(es)`;
+    });
+    await check(`${label} Worker`, async () => {
+      const data = await request(`https://${host}/health`);
+      if (data?.ok !== true) throw Error("Invalid Worker health response");
+      return "public route healthy";
+    });
+    await check(`${label} Worker → Tunnel → bridge`, async () => {
+      const id = crypto.randomUUID();
+      const data = await request(`https://${host}/diagnostics/probe`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${secret}`, "x-bridge-probe-id": id },
+      });
+      if (data?.ok !== true || data?.probeId !== id || data?.stage !== "bridge") {
+        throw Error("Probe was not acknowledged by the local bridge");
+      }
+      return `delivery confirmed (${id})`;
+    });
+  }
+}
+console.log(`\nDiagnostics: ${failures ? `${failures} check(s) failed` : "all checks passed"}`);
+if (failures) process.exitCode = 1;
