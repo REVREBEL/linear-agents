@@ -235,6 +235,7 @@ const server = http.createServer(async (request, response) => {
     // duplicates instructions and unnecessarily expands downstream context.
     const routedJob = {
       routing: job.routing,
+      issueId: job.issueMetadata?.id || job.issueId || null,
       issueMetadata: job.issueMetadata,
       source: job.source,
       sessionAction: job.sessionAction || "created",
