@@ -785,17 +785,25 @@ async function resolveJobRoute(job) {
   for (const [name, role] of [["agent", roleAgent], ["codeReview", roleReview]]) {
     if (role === undefined) continue;
     if (!role || typeof role !== "object" || Array.isArray(role) ||
-        !["antigravity", "chatgpt"].includes(role.agent)) {
-      return { ok: false, error: `${name}.agent must be chatgpt or antigravity` };
+        !["antigravity", "chatgpt"].includes(role.provider)) {
+      return { ok: false, error: `${name}.provider must be chatgpt or antigravity` };
     }
     if (!["reuse-existing", "new-per-issue"].includes(role.conversationMode)) {
       return { ok: false, error: `${name}.conversationMode must be reuse-existing or new-per-issue` };
     }
-    if (role.agent === "antigravity" &&
+    if (role.provider === "antigravity" &&
         role.conversationMode === "reuse-existing" &&
         (typeof role.conversationId !== "string" ||
          !/^[a-zA-Z0-9_-]{8,128}$/.test(role.conversationId))) {
       return { ok: false, error: `${name}.conversationId is required for Antigravity reuse-existing` };
+    }
+    if (role.projectName !== undefined &&
+        (typeof role.projectName !== "string" || !role.projectName.trim())) {
+      return { ok: false, error: `${name}.projectName must be a nonempty string` };
+    }
+    if (role.projectId !== undefined &&
+        (typeof role.projectId !== "string" || !role.projectId.trim())) {
+      return { ok: false, error: `${name}.projectId must be a nonempty string` };
     }
     if (role.autoSend !== undefined && typeof role.autoSend !== "boolean") {
       return { ok: false, error: `${name}.autoSend must be boolean` };
@@ -803,7 +811,7 @@ async function resolveJobRoute(job) {
   }
   // Code-review roles are stored independently. Actual review-event dispatch
   // still follows the installed Worker; do not redirect implementation jobs.
-  const chatgptRole = roleAgent?.agent === "chatgpt" ? roleAgent : null;
+  const chatgptRole = roleAgent?.provider === "chatgpt" ? roleAgent : null;
   const chatgptConfig = chatgptRole || project.chatgpt || {};
   const chatgptProjectUrl = chatgptConfig.conversationUrl || chatgptConfig.projectUrl;
   const chatgptConversationMode = chatgptConfig.conversationMode || "new-per-issue";
@@ -821,6 +829,9 @@ async function resolveJobRoute(job) {
       const validPath = chatgptConversationMode === "reuse-existing"
         ? isConversationPath
         : chatgptConversationMode === "new-per-issue" && isProjectPath;
+      if (chatgptConfig.projectId !== undefined && segments[1] !== chatgptConfig.projectId) {
+        return { ok: false, error: `ChatGPT projectId does not match conversation URL for project ${projectId}` };
+      }
       if (destination.protocol !== "https:" || destination.hostname !== "chatgpt.com" ||
           destination.search || destination.hash || !validPath) {
         return { ok: false, error: `Invalid ChatGPT URL or conversationMode for project ${projectId}` };
@@ -829,7 +840,7 @@ async function resolveJobRoute(job) {
       return { ok: false, error: `Invalid ChatGPT URL for project ${projectId}` };
     }
   }
-  const agyConfig = roleAgent?.agent === "antigravity" ? roleAgent : null;
+  const agyConfig = roleAgent?.provider === "antigravity" ? roleAgent : null;
   return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId,
     chatgptProjectUrl, chatgptConversationMode, chatgptAutoSend,
     agentRole: roleAgent || null, codeReviewRole: roleReview || null,
