@@ -94,8 +94,6 @@ async function signedEvent(id = "delivery-1") {
       "linear-delivery": id,
       "linear-event": "AgentSessionEvent",
       "linear-timestamp": String(JSON.parse(body).webhookTimestamp)
-      "linear-event": "AgentSessionEvent",
-      "linear-timestamp": String(JSON.parse(body).webhookTimestamp)
     },
     body
   });
