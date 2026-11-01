@@ -62,17 +62,19 @@ Replace the repository placeholder with the verified checkout name under `projec
 
 ### Role-based conversation settings (migration)
 
-A project can define independent `agent` and `codeReview` role settings. Each role has an `agent` provider (`antigravity` or `chatgpt`) and `conversationMode` (`reuse-existing` or `new-per-issue`). Use `conversationId` for Antigravity and `conversationUrl` for a ChatGPT conversation. ChatGPT's existing `projectUrl` is also supported.
+A project can define independent `agent` and `codeReview` role settings. Each role has a `provider` (`antigravity` or `chatgpt`) and `conversationMode` (`reuse-existing` or `new-per-issue`). Optional `projectName` records the provider-specific project name (metadata only for Antigravity); optional `projectId` records the provider project ID. For ChatGPT, when `projectId` is set, it must equal the project ID embedded in the URL. Use `conversationId` for Antigravity and `conversationUrl` for a ChatGPT conversation. ChatGPT's existing `projectUrl` is also supported.
 
 ```json
 {
   "agent": {
-    "agent": "antigravity",
+    "provider": "antigravity",
+    "projectName": "skills-rebuild",
     "conversationMode": "reuse-existing",
     "conversationId": "3f730eb2-d0a7-45e5-8ce5-ce07aeb0c9c9"
   },
   "codeReview": {
-    "agent": "chatgpt",
+    "provider": "chatgpt",
+    "projectId": "g-p-PROJECT_ID",
     "conversationMode": "reuse-existing",
     "conversationUrl": "https://chatgpt.com/g/g-p-PROJECT_ID/c/CONVERSATION_ID",
     "autoSend": false
@@ -80,9 +82,9 @@ A project can define independent `agent` and `codeReview` role settings. Each ro
 }
 ```
 
-The `agent` role's Antigravity conversation ID is reused by all Linear issues mapped to the project; such runs are queued by conversation ID to prevent concurrent use. Without an explicit Antigravity ID, the existing same-session and optional issue-recovery behavior remains in place. Legacy project-level `chatgpt` settings remain supported when `agent.agent` is not `chatgpt`.
+The `agent` role's Antigravity conversation ID is reused by all Linear issues mapped to the project; such runs are queued by conversation ID to prevent concurrent use. Without an explicit Antigravity ID, the existing same-session and optional issue-recovery behavior remains in place. Legacy project-level `chatgpt` settings remain supported when `agent.provider` is not `chatgpt`.
 
-**Current limitation:** The local bridge's execution provider is determined by the incoming Worker host. The `codeReview` role is parsed and persisted for routing metadata but does not yet dispatch code-review events to the configured provider. Likewise, setting `agent.agent` does not reassign the Linear issue to that provider. These require a separate event-routing integration.
+**Current limitation:** The local bridge's execution provider is determined by the incoming Worker host. The `codeReview` role is parsed and persisted for routing metadata but does not yet dispatch code-review events to the configured provider. Likewise, setting `agent.provider` does not reassign the Linear issue to that provider. These require a separate event-routing integration.
 
 ### Mappings requiring local verification
 
