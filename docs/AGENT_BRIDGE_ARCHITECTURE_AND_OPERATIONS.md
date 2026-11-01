@@ -271,3 +271,11 @@ Keep app OAuth credentials in Worker secrets and KV; do not expose them to the M
 **Cleanup record:** Removed `bridge_daemon.py` and `chatgpt-bridge.mjs` after confirming the canonical router replaced their receiver roles. Retained `run_agent.py` because `startAntigravity()` still launches a Python runner. No live Worker, router, Python runner or hook behavior was altered during cleanup.
 
 This document supersedes earlier conversation-only architecture notes where their assumptions conflict with the actual repository snapshot.
+
+### Agent Session identity and subprocess credential boundary (PR #18 clarification)
+
+Antigravity conversation reuse belongs to the exact Linear `agentSessionId` and matching repository workspace, **not** to the Linear issue ID. Unassigning and reassigning an agent produces a new Agent Session; the new session starts a fresh AGY conversation even if the issue and on-disk project files remain the same. A `prompted` event within the same session can resume the latest verified AGY conversation. A structured quota retry resumes the conversation recorded for that same session. See [job durability](JOB_DURABILITY.md) for ledger fields and the `waiting_quota` lifecycle.
+
+The Python wrapper `linear-agent-bridge/run_agent.py` keeps completion credentials in its parent process but removes `BRIDGE_SHARED_SECRET`, `LINEAR_API_KEY`, and `LINEAR_ACCESS_TOKEN` when constructing the `agy` child process environment. Do not interpret this as full environment sandboxing or as permission to include credentials in prompts.
+
+**Verification boundaries:** Passing `bridge:doctor` checks local routing, Worker health, authenticated Worker-to-bridge forwarding, and direct-Tunnel connectivity, not a real Linear-signed webhook or agent invocation. SQLite Durable Object alarms and an actual two-hour AGY quota exhaustion and resumption still require live observations before they can be marked production-proven.

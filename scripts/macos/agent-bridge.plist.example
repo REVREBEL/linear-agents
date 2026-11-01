@@ -7,8 +7,9 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>__REPO_ROOT__/scripts/with-env.sh</string>
-        <string>bridge</string>
+        <string>__REPO_ROOT__/linear-agent-bridge/start-bridge.sh</string>
+        <string>__NODE_BIN__</string>
+        <string>__ENV_FILE__</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__REPO_ROOT__</string>
