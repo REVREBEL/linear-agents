@@ -60,6 +60,30 @@ Replace the repository placeholder with the verified checkout name under `projec
 
 `launchFromScope: false` intentionally starts the agent at the **repository root** for Git/workspace trust and consistent CLI project memory. The task prompt still identifies the relevant app subfolder. Set `true` **only** if an agent's trusted session is specifically established at that subfolder.
 
+### Role-based conversation settings (migration)
+
+A project can define independent `agent` and `codeReview` role settings. Each role has an `agent` provider (`antigravity` or `chatgpt`) and `conversationMode` (`reuse-existing` or `new-per-issue`). Use `conversationId` for Antigravity and `conversationUrl` for a ChatGPT conversation. ChatGPT's existing `projectUrl` is also supported.
+
+```json
+{
+  "agent": {
+    "agent": "antigravity",
+    "conversationMode": "reuse-existing",
+    "conversationId": "3f730eb2-d0a7-45e5-8ce5-ce07aeb0c9c9"
+  },
+  "codeReview": {
+    "agent": "chatgpt",
+    "conversationMode": "reuse-existing",
+    "conversationUrl": "https://chatgpt.com/g/g-p-PROJECT_ID/c/CONVERSATION_ID",
+    "autoSend": false
+  }
+}
+```
+
+The `agent` role's Antigravity conversation ID is reused by all Linear issues mapped to the project; such runs are queued by conversation ID to prevent concurrent use. Without an explicit Antigravity ID, the existing same-session and optional issue-recovery behavior remains in place. Legacy project-level `chatgpt` settings remain supported when `agent.agent` is not `chatgpt`.
+
+**Current limitation:** The local bridge's execution provider is determined by the incoming Worker host. The `codeReview` role is parsed and persisted for routing metadata but does not yet dispatch code-review events to the configured provider. Likewise, setting `agent.agent` does not reassign the Linear issue to that provider. These require a separate event-routing integration.
+
 ### Mappings requiring local verification
 
 - Metrics: `Metrics-Core` is grounded in the sample Linear issue; Docs `apps/docs` is explicitly named there. Other Metrics projects are provisionally scoped to `.` until the correct monorepo subfolder is confirmed.
