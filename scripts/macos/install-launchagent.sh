@@ -82,6 +82,8 @@ npm_ready=false
     exit 1
   fi
 echo "Node.js dependencies ready."
+NODE_BIN="$(command -v node)"
+if [[ "${NODE_BIN}" != /* || ! -x "${NODE_BIN}" ]]; then echo "An absolute executable Node path is required" >&2; exit 1; fi
 
 # The Python runner lives beside agent-bridge.mjs, not in any routed project.
 # Create its venv on first install; refresh declared packages on later installs.
@@ -116,7 +118,7 @@ echo "Python environment ready: ${VENV}"
 mkdir -p "$(dirname "${TARGET}")"
 TEMP="$(mktemp)"
 trap 'rm -f "${TEMP}"' EXIT
-REPO_ROOT="${ROOT}" LABEL="${LABEL}" TEMPLATE="${TEMPLATE}" OUTPUT="${TEMP}" python3 - <<'PY'
+REPO_ROOT="${ROOT}" NODE_BIN="${NODE_BIN}" LABEL="${LABEL}" TEMPLATE="${TEMPLATE}" OUTPUT="${TEMP}" python3 - <<'PY'
 
 import os
 from pathlib import Path
@@ -124,6 +126,7 @@ from xml.sax.saxutils import escape
 template = Path(os.environ["TEMPLATE"]).read_text()
 template = template.replace("__REPO_ROOT__", escape(os.environ["REPO_ROOT"]))
 template = template.replace("__LAUNCHAGENT_LABEL__", escape(os.environ["LABEL"]))
+template = template.replace("__NODE_BIN__", escape(os.environ["NODE_BIN"]))
 
 Path(os.environ["OUTPUT"]).write_text(template)
 PY
