@@ -14,6 +14,9 @@ ENV_FILE="${LINEAR_AGENTS_ENV_FILE:-${ROOT}/.env}"
     exit 1
   fi
 
+# Use an absolute environment path so launchd does not depend on its cwd.
+ENV_FILE="$(cd "$(dirname "${ENV_FILE}")" && pwd -P)/$(basename "${ENV_FILE}")"
+
 # .env is a trusted, local Bash configuration file.
 
 export REPO_ROOT="${ROOT}"
@@ -118,7 +121,7 @@ echo "Python environment ready: ${VENV}"
 mkdir -p "$(dirname "${TARGET}")"
 TEMP="$(mktemp)"
 trap 'rm -f "${TEMP}"' EXIT
-REPO_ROOT="${ROOT}" NODE_BIN="${NODE_BIN}" LABEL="${LABEL}" TEMPLATE="${TEMPLATE}" OUTPUT="${TEMP}" python3 - <<'PY'
+REPO_ROOT="${ROOT}" NODE_BIN="${NODE_BIN}" ENV_FILE="${ENV_FILE}" LABEL="${LABEL}" TEMPLATE="${TEMPLATE}" OUTPUT="${TEMP}" python3 - <<'PY'
 
 import os
 from pathlib import Path
@@ -127,6 +130,7 @@ template = Path(os.environ["TEMPLATE"]).read_text()
 template = template.replace("__REPO_ROOT__", escape(os.environ["REPO_ROOT"]))
 template = template.replace("__LAUNCHAGENT_LABEL__", escape(os.environ["LABEL"]))
 template = template.replace("__NODE_BIN__", escape(os.environ["NODE_BIN"]))
+template = template.replace("__ENV_FILE__", escape(os.environ["ENV_FILE"]))
 
 Path(os.environ["OUTPUT"]).write_text(template)
 PY
