@@ -31,6 +31,7 @@
     "bridge:unload": "./scripts/bridge.sh unload",
     "bridge:restart": "./scripts/bridge.sh restart",
     "bridge:status": "./scripts/bridge.sh status",
+    "bridge:doctor": "./scripts/bridge.sh doctor",
     "bridge:test": "node --test linear-agent-bridge/*.test.mjs",
     "bridge:macos-setup": "bash scripts/macos/install-launchagent.sh",
     "log:messages": "npx wrangler tail linear-mock-agent --format pretty",
