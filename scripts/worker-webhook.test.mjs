@@ -325,3 +325,33 @@ test("freshness accepts boundary and rejects timestamp mismatch", async () => {
   assert.equal(validateWebhookFreshness({ webhookTimestamp: now + WEBHOOK_FRESHNESS_WINDOW_MS + 1 }, null, now), false);
   assert.equal(validateWebhookFreshness({ webhookTimestamp: now }, String(now + 1), now), false);
 });
+
+test("replayed signed body cannot bypass dedupe by changing unsigned delivery header", { concurrency: false }, async () => {
+  const workerModule = await loadWorker("mock");
+  const config = env(kv({ "installation:org": installed(Date.now() + 3600000) }));
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
+  const create = await signedEvent("original-header");
+  const oldFetch = globalThis.fetch;
+  let forwarded = 0;
+  try {
+    globalThis.fetch = async url => {
+      if (String(url).includes("api.linear.app/graphql")) {
+        return Response.json({ data: { agentActivityCreate: { success: true },
+          issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } } } });
+      }
+      if (String(url).includes("bridge.test")) {
+        forwarded++;
+        return Response.json({ ok: true, accepted: true }, { status: 202 });
+      }
+      throw new Error("Unexpected external fetch: " + url);
+    };
+    assert.equal((await workerModule.default.fetch(create(), config, {})).status, 200);
+    for (const alternate of ["attacker-modified", null]) {
+      const replay = create();
+      if (alternate === null) replay.headers.delete("linear-delivery");
+      else replay.headers.set("linear-delivery", alternate);
+      assert.equal((await workerModule.default.fetch(replay, config, {})).status, 200);
+    }
+    assert.equal(forwarded, 1);
+  } finally { globalThis.fetch = oldFetch; }
+});
