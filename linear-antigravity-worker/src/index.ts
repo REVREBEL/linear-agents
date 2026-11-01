@@ -55,6 +55,36 @@ export default {
         });
       }
 
+      // Authenticated synthetic transport check. Never routes through Linear's
+      // webhook handler, coordinator, job ledger, or agent dispatch.
+      if (request.method === "POST" && url.pathname === "/diagnostics/probe") {
+        if (!env.BRIDGE_SHARED_SECRET ||
+            request.headers.get("authorization") !== `Bearer ${env.BRIDGE_SHARED_SECRET}`) {
+          return jsonResponse({ ok: false, error: "Unauthorized" }, 401);
+        }
+        const probeId = request.headers.get("x-bridge-probe-id");
+        if (!probeId || !/^[a-f0-9-]{36}$/i.test(probeId)) {
+          return jsonResponse({ ok: false, error: "Invalid probe ID" }, 400);
+        }
+        const bridgeUrl = new URL(env.BRIDGE_URL);
+        bridgeUrl.pathname = "/diagnostics/probe";
+        bridgeUrl.search = "";
+        const bridgeResponse = await fetch(bridgeUrl.toString(), {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${env.BRIDGE_SHARED_SECRET}`,
+            "x-bridge-probe-id": probeId,
+            "x-bridge-worker": env.SERVICE_NAME,
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+        const data = await bridgeResponse.json().catch(() => null);
+        if (!bridgeResponse.ok || data?.probeId !== probeId || data?.ok !== true) {
+          return jsonResponse({ ok: false, stage: "bridge", status: bridgeResponse.status }, 502);
+        }
+        return jsonResponse({ ok: true, stage: "bridge", probeId, worker: env.SERVICE_NAME, bridge: data.service });
+      }
+
       if (request.method === "GET" && url.pathname === "/install") {
         return beginOAuth(env);
       }
