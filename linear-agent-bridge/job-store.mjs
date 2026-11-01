@@ -128,6 +128,31 @@ export function createJobStore(root) {
       matches.sort((left, right) => String(right.conversationVerifiedAt || right.updatedAt).localeCompare(String(left.conversationVerifiedAt || left.updatedAt)));
       return matches[0] || null;
     },
+    // Explicit cross-session recovery: only reuse verified, finished AGY conversations
+    // associated with the same Linear issue and exact resolved workspace.
+    async findLatestCompletedConversationByIssueId(issueId, sessionId, workspace, excludeKey = null) {
+      if (!issueId || !sessionId || !workspace) return null;
+      await fs.mkdir(ledger, { recursive: true, mode: 0o700 });
+      const entries = await fs.readdir(ledger, { withFileTypes: true });
+      const matches = [];
+      for (const item of entries) {
+        if (!item.isDirectory()) continue;
+        try {
+          const record = await read(path.join(ledger, item.name));
+          if (record.key !== excludeKey && record.agent === "antigravity" &&
+              record.issueId === issueId && record.agentSessionId &&
+              record.agentSessionId !== sessionId && record.workspace === workspace &&
+              record.state === "completed" && record.conversationId &&
+              record.conversationVerifiedAt) {
+            matches.push(record);
+          }
+        } catch (error) {
+          if (error.code !== "ENOENT") console.warn("Unreadable ledger entry:", error.message);
+        }
+      }
+      matches.sort((a, b) => String(b.conversationVerifiedAt).localeCompare(String(a.conversationVerifiedAt)));
+      return matches[0] || null;
+    },
     async get(key) { return read(entryPath(key)); },
   };
 }

@@ -76,3 +76,24 @@ test("workspace and verified timestamp scope conversation reuse", async t => {
   assert.equal((await store.findLatestConversationBySessionId("s", null, "/one")).conversationId, "conversation-one");
   assert.equal((await store.findLatestConversationBySessionId("s", null, "/other")), null);
 });
+
+test("issue recovery requires same issue and workspace, different session, verified completed AGY", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "linear-issue-recovery-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const store = createJobStore(root);
+  const add = async (key, fields, state = "completed") => {
+    await store.claim(key, { agent: "antigravity", issueId: "issue-1", workspace: "/repo", agentSessionId: key, ...fields });
+    await store.transition(key, state, { conversationId: key, conversationVerifiedAt: "2026-11-01T00:00:00Z" });
+  };
+  await add("session-old", {});
+  await add("session-active", {}, "running");
+  await add("session-other-issue", { issueId: "issue-2" });
+  await add("session-other-workspace", { workspace: "/other" });
+  await add("session-unverified", {});
+  await store.transition("session-unverified", "completed", { conversationVerifiedAt: null });
+  const found = await store.findLatestCompletedConversationByIssueId("issue-1", "new-session", "/repo");
+  assert.equal(found.key, "session-old");
+  assert.equal(await store.findLatestCompletedConversationByIssueId("issue-1", "session-old", "/repo"), null);
+  assert.equal(await store.findLatestCompletedConversationByIssueId("issue-1", "new-session", "/unknown"), null);
+  assert.equal(await store.findLatestCompletedConversationByIssueId(null, "new-session", "/repo"), null);
+});

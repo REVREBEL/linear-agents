@@ -35,3 +35,24 @@ test("fresh conversations are not falsely described as resumed", async t => {
   assert.equal(record.conversationId, undefined);
   assert.equal(record.resumedConversationId, undefined);
 });
+
+test("issue recovery records source and predecessor without claiming verification", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "agy-issue-resume-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const store = createJobStore(root);
+  await store.claim("antigravity:issue-recovery", {
+    agent: "antigravity", agentSessionId: "replacement-session",
+    issueId: "issue-1", workspace: "/repo",
+  });
+  await store.transition("antigravity:issue-recovery", "launching", {
+    recoveredFromAgentSessionId: "former-session",
+    recoveredFromJobKey: "antigravity:original",
+  });
+  await recordResumedConversation(store, "antigravity:issue-recovery", "verified-prior-conversation", "issue_recovery");
+  const record = await store.get("antigravity:issue-recovery");
+  assert.equal(record.conversationSource, "issue_recovery");
+  assert.equal(record.resumedConversationId, "verified-prior-conversation");
+  assert.equal(record.recoveredFromAgentSessionId, "former-session");
+  assert.equal(record.recoveredFromJobKey, "antigravity:original");
+  assert.equal(record.conversationVerifiedAt, undefined);
+});
