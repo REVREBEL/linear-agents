@@ -255,7 +255,13 @@ const server = http.createServer(async (request, response) => {
       await jobStore.transition(jobKey, "awaiting_external", { note: "Mock Agent queued; use mock-agent CLI to advance status or comment", taskFile: filename });
       console.log(`Mock Agent queued: ${filename}`);
     } else if (agent === "antigravity") {
-      startAntigravity(routedJob, filename, workspace, jobKey);
+      let conversationId = null;
+      const sessionId = extractAgentSessionId(routedJob);
+      if (routedJob.sessionAction === "prompted" && sessionId) {
+        const prior = await jobStore.findLatestConversationBySessionId(sessionId, jobKey);
+        if (prior?.workspace === workspace) conversationId = prior.conversationId;
+      }
+      startAntigravity(routedJob, filename, workspace, jobKey, conversationId);
     } else if (agent === "chatgpt") {
       if (!route.chatgptProjectUrl) {
         await jobStore.transition(jobKey, "failed", { error: "No chatgpt.projectUrl in Linear project mapping" });
@@ -375,16 +381,21 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
 
   console.log(`Antigravity Agent Session verified (${sessionId}). Spawning local engine...`);
 
+  // Linear Agent Activities require the app installation's OAuth token, which
+  // is intentionally held only by the Worker. Do not expose personal Linear
+  // credentials to AGY: its textual result is relayed through /complete below.
+  const antigravityEnv = { ...process.env };
+  delete antigravityEnv.LINEAR_API_KEY;
+  delete antigravityEnv.LINEAR_ACCESS_TOKEN;
+
   const agentProcess = spawn(
     PYTHON_BIN,
     [RUN_AGENT_PATH, sessionId, filename, ...(conversationId ? [conversationId] : [])],
     {
       cwd: PROJECT_DIR,
       env: {
-        ...process.env,
+        ...antigravityEnv,
         ANTIGRAVITY_WORKSPACE: workspace,
-        LINEAR_API_KEY,
-        LINEAR_ACCESS_TOKEN,
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -394,6 +405,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
   // Keep the same Linear agent session and explicitly resume the AGY conversation.
   let output = "";
   let exhaustionEvent = null;
+  let verifiedConversationId = conversationId;
   agentProcess.on("spawn", () => { void jobStore.transition(jobKey, "running", { pid: agentProcess.pid }).catch(console.error); });
   agentProcess.stdout.on("data", data => {
     output += String(data);
@@ -404,7 +416,10 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
       if (line.startsWith("AGY_BRIDGE_EVENT=")) {
         try {
           const parsed = JSON.parse(line.slice("AGY_BRIDGE_EVENT=".length));
-          if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
+          if (parsed.event === "conversation_started" && parsed.conversation_id) {
+            verifiedConversationId = parsed.conversation_id;
+            void jobStore.transition(jobKey, "running", { conversationId: verifiedConversationId }).catch(console.error);
+          } else if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
         } catch (error) { console.error("Invalid AGY exhaustion event:", error.message); }
       } else if (line) console.log("[Antigravity-Out]:", line);
     }
@@ -414,7 +429,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
   agentProcess.on("close", (code, signal) => {
     void (async () => {
       if (code === 75 && exhaustionEvent?.event === "on_exhaustion") {
-        const conversationId = exhaustionEvent.conversation_id;
+        const conversationId = exhaustionEvent.conversation_id || verifiedConversationId;
         if (!conversationId) {
           await jobStore.transition(jobKey, "failed", { error: "Quota exhausted but AGY conversation ID could not be established; automatic resume refused." });
           return;

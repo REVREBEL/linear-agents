@@ -46,3 +46,21 @@ test("startup reconciliation flags ambiguous work without re-executing it", asyn
   assert.equal((await store.get("gemini:done")).state, "completed");
   assert.equal((await store.get("chatgpt:external")).state, "awaiting_external");
 });
+
+test("conversation lookup resumes only the latest exact Linear session", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "linear-ledger-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const store = createJobStore(root);
+  await store.claim("antigravity:older", { agentSessionId: "session-1" });
+  await store.transition("antigravity:older", "completed", { conversationId: "conversation-old" });
+  await store.claim("antigravity:newer", { agentSessionId: "session-1" });
+  await store.transition("antigravity:newer", "running", { conversationId: "conversation-new" });
+  await store.claim("antigravity:other", { agentSessionId: "session-2" });
+  await store.transition("antigravity:other", "running", { conversationId: "conversation-other" });
+
+  assert.equal(
+    (await store.findLatestConversationBySessionId("session-1", "antigravity:newer")).conversationId,
+    "conversation-old",
+  );
+  assert.equal(await store.findLatestConversationBySessionId("missing"), null);
+});

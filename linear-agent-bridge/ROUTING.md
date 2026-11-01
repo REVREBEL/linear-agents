@@ -124,4 +124,4 @@ Set `autoSend: true` for a project that should automatically open its **existing
 
 ### AGY quota retry routing
 
-AGY exhaustion events must include a conversation ID tied to the exact dispatched job. The bridge persists a two-hour retry (`AGY_RETRY_DELAY_MS`, default `7200000`) and resumes with `--conversation <id>` in the same workspace. Do **not** use `agy -c` or a shared `.agents/last_session`, which may point to a different Linear issue. Without a verified ID, the retry fails safely. The implementation requires live CLI verification.
+The runner emits the verified AGY conversation ID as soon as it appears in the stream, and the bridge persists it against the exact Linear Agent Session and delivery. Follow-up prompts resume only that session's latest verified conversation in the same workspace. AGY exhaustion then persists a two-hour retry (`AGY_RETRY_DELAY_MS`, default `7200000`) and resumes with `--conversation <id>` in that workspace. Do **not** use `agy -c` or a shared `.agents/last_session`, which may point to a different Linear issue. Without a verified ID, follow-up and retry resumption fail safely. The implementation requires live CLI verification.

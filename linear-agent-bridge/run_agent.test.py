@@ -46,6 +46,18 @@ class RunAgentTests(unittest.TestCase):
             "permissions": {"allow": ["mcp(github/list_commits)"]},
         })
 
+    @mock.patch.dict(os.environ, {
+        "LINEAR_API_KEY": "personal-key",
+        "LINEAR_ACCESS_TOKEN": "local-token",
+        "UNRELATED_SETTING": "preserved",
+    }, clear=False)
+    def test_antigravity_subprocess_does_not_receive_linear_credentials(self):
+        environment = run_agent.antigravity_subprocess_env()
+
+        self.assertNotIn("LINEAR_API_KEY", environment)
+        self.assertNotIn("LINEAR_ACCESS_TOKEN", environment)
+        self.assertEqual(environment["UNRELATED_SETTING"], "preserved")
+
 
 if __name__ == "__main__":
     unittest.main()

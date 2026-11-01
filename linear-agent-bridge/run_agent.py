@@ -26,6 +26,14 @@ ANTIGRAVITY_WORKSPACE = os.path.abspath(
 )
 
 
+def antigravity_subprocess_env() -> dict[str, str]:
+    """Keep Linear app activity credentials out of the untrusted CLI child."""
+    environment = os.environ.copy()
+    environment.pop("LINEAR_API_KEY", None)
+    environment.pop("LINEAR_ACCESS_TOKEN", None)
+    return environment
+
+
 def post_worker_activity(
     session_id: str,
     completion_url: str,
@@ -130,16 +138,24 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
     ) + "\n"
 
     process = await asyncio.create_subprocess_exec(
-        *command, cwd=ANTIGRAVITY_WORKSPACE, env=os.environ.copy(),
+        *command, cwd=ANTIGRAVITY_WORKSPACE, env=antigravity_subprocess_env(),
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout_bytes, stderr_bytes = await process.communicate(input=input_message.encode("utf-8"))
-    stdout = stdout_bytes.decode("utf-8", errors="replace")
-    stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
+    assert process.stdin is not None
+    assert process.stdout is not None
+    assert process.stderr is not None
+    process.stdin.write(input_message.encode("utf-8"))
+    await process.stdin.drain()
+    process.stdin.close()
+    stderr_task = asyncio.create_task(process.stderr.read())
+    stdout_lines = []
     events = []
     result = None
-    for line in stdout.splitlines():
+    announced_conversation_id = conversation_id
+    while line_bytes := await process.stdout.readline():
+        line = line_bytes.decode("utf-8", errors="replace").rstrip("\r\n")
+        stdout_lines.append(line)
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
@@ -147,12 +163,23 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
         if not isinstance(event, dict):
             continue
         events.append(event)
+        observed_id = event_conversation_id([event])
+        if observed_id and observed_id != announced_conversation_id:
+            announced_conversation_id = observed_id
+            print("AGY_BRIDGE_EVENT=" + json.dumps({
+                "event": "conversation_started",
+                "conversation_id": observed_id,
+            }), flush=True)
         if event.get("event") == "result" and isinstance(event.get("result"), dict):
             result = event["result"]
 
+    await process.wait()
+    stderr = (await stderr_task).decode("utf-8", errors="replace").strip()
+    stdout = "\n".join(stdout_lines)
+
     # Never use -c or a workspace's "last conversation" in a multi-issue bridge.
     # Require the actual run to report its conversation ID.
-    resolved_id = conversation_id or event_conversation_id(events)
+    resolved_id = announced_conversation_id or event_conversation_id(events)
     error_text = str(result.get("error") or "") if result else ""
     diagnostic = "\n".join((error_text, stderr, stdout[-2000:]))
     if quota_exhausted(diagnostic) and (result is None or result.get("status") != "SUCCESS"):
