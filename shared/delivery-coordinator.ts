@@ -13,6 +13,18 @@ type StorageLike = DurableObjectStorage;
 const PREFIX = "pending:";
 const ACCEPTED = "accepted:";
 const RETRY_MAX_MS = 2 * 60 * 60 * 1000;
+export const WEBHOOK_FRESHNESS_WINDOW_MS = 60_000;
+
+export function validateWebhookFreshness(payload: Record<string, unknown>, header: string | null, now = Date.now()): boolean {
+  // The JSON body is HMAC-signed; the HTTP timestamp header is not.
+  const signed = payload.webhookTimestamp;
+  if (typeof signed !== "number" || !Number.isSafeInteger(signed) || signed <= 0) return false;
+  if (header !== null) {
+    if (!/^\\d{13}$/.test(header) || Number(header) !== signed) return false;
+  }
+  return Math.abs(now - signed) <= WEBHOOK_FRESHNESS_WINDOW_MS;
+}
+
 
 async function deliveryKey(request: Request): Promise<string> {
   const id = request.headers.get("linear-delivery");
@@ -115,6 +127,9 @@ export async function routeWebhookToCoordinator(
     payload = JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return Response.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+  }
+  if (!validateWebhookFreshness(payload, request.headers.get("linear-timestamp"))) {
+    return Response.json({ ok: false, error: "Invalid or expired Linear webhook timestamp" }, { status: 401 });
   }
   const org = payload.organizationId;
   if (typeof org !== "string" || !org || org.length > 256) {
