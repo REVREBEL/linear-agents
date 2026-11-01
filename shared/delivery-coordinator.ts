@@ -27,8 +27,7 @@ export function validateWebhookFreshness(payload: Record<string, unknown>, heade
 
 
 async function deliveryKey(request: Request): Promise<string> {
-  const id = request.headers.get("linear-delivery");
-  if (id) return id;
+  // An unsigned delivery header must never define replay identity.
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(await request.clone().text()));
   return Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2, "0")).join("");
 }
@@ -135,8 +134,14 @@ export async function routeWebhookToCoordinator(
   if (typeof org !== "string" || !org || org.length > 256) {
     return Response.json({ ok: false, error: "Invalid organizationId" }, { status: 400 });
   }
+  // Normalize unsigned delivery identity before persistence and dispatch,
+  // so both Durable Object and Worker KV dedupe use the signed body.
+  const key = await deliveryKey(request);
+  const headers = new Headers(request.headers);
+  headers.set("linear-delivery", key);
+  const authenticated = new Request(request, { headers });
   const id = namespace.idFromName(`${serviceName}:${org}`);
-  return namespace.get(id).fetch(request);
+  return namespace.get(id).fetch(authenticated);
 }
 
 /** Route completion writes through the same organization-scoped coordinator
