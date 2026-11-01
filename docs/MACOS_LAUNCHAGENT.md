@@ -1,8 +1,13 @@
 # macOS LaunchAgent setup
 
+## Updated checked-in LaunchAgent startup (proposed feature branch)
+
+The installer now renders an absolute Node executable path (resolved with `command -v node` in the installer's configured environment) into `scripts/macos/agent-bridge.plist.example`. The plist invokes `/bin/bash` and `linear-agent-bridge/start-bridge.sh` with that absolute Node path. The bridge-specific wrapper loads the trusted root `.env`, checks `BRIDGE_SHARED_SECRET`, and executes `linear-agent-bridge/agent-bridge.mjs`. It does not store secrets in the plist. The install action renders the plist without reloading the currently running LaunchAgent; a reinstallation followed by explicit launchctl reload is required for the new startup path to take effect. These changes require validation on macOS before merge.
+
+
 ## Verified startup configuration and PATH caveat (2026-10-28)
 
-**Current repository behavior:** `scripts/macos/agent-bridge.plist.example` still uses `/bin/bash __REPO_ROOT__/scripts/with-env.sh bridge` with the checkout root as `WorkingDirectory`. The installer currently renders **that** template. A dedicated `linear-agent-bridge/` startup wrapper and direct absolute-Node `ProgramArguments` have been proposed, but are **not** implemented in the checked-in installer/template. Do not treat them as the active launchd configuration.
+**Historical main-branch behavior before this feature:** the checked-in plist invoked `scripts/with-env.sh bridge`. The feature introduces a bridge-specific startup wrapper and a rendered absolute Node path; existing installed plist files are not automatically changed.
 
 On macOS, launchd does not load interactive zsh/NVM initialization. Before loading the plist, ensure the trusted root `.env` sets a usable `PATH` that includes the desired executable's directory (for example, `/usr/local/bin`, `/opt/homebrew/bin`, or an explicit absolute NVM Node version's `bin` directory); verify `node` and `npm` are resolvable **in the wrapper's environment**, not just an interactive shell. The existing `with-env.sh` wrapper loads root `.env` and must export `BRIDGE_SHARED_SECRET` to the Node process. If replacing the wrapper with a direct Node invocation in a **local custom plist**, first supply an equivalent trusted environment loader, use an absolute Node executable, and set `WorkingDirectory` consistently with the bridge's config and routing paths. Do **not** embed the secret in a plist or commit it.
 
