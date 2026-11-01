@@ -79,7 +79,7 @@ Linear start activities now have a separate coordinator-stored `activity:<delive
 
 ## AGY conversation identity and ledger fields (PR #18)
 
-Conversation continuity is scoped to the exact Linear **`agentSessionId`**, not the issue ID. An unassign/reassign cycle creates a different Agent Session and must not inherit the earlier AGY conversation, even if the Linear issue and repository workspace are unchanged. A `prompted` follow-up can reuse the latest verified conversation only for the matching session and workspace. This is a safety and isolation boundary, not an issue-wide conversation memory feature.
+By default, conversation continuity is scoped to the exact Linear **`agentSessionId`**, not the issue ID. An unassign/reassign cycle creates a different Agent Session and starts a fresh AGY conversation while issue-level recovery is disabled. A `prompted` follow-up uses the matching session and workspace, not an issue-wide fallback. When explicitly enabled, the separate issue-level recovery feature can inherit a previously verified, completed AGY conversation after reassignment, but only for the same issue and resolved workspace, as detailed below.
 
 Relevant ledger fields include `agentSessionId` (session identity), `workspace` (workspace isolation), `conversationId` (verified AGY CLI conversation identifier), `conversationVerifiedAt` (timestamp when the CLI conversation identifier was verified), `resumedConversationId` (identifier selected for an explicit resume), and `conversationSource` (continuation origin, such as `follow_up` or `quota_retry`). The quota state additionally carries `resumeAt` and `resumeAttempts`. These are diagnostic and lifecycle fields; they do not authorize reuse across different Agent Sessions.
 
