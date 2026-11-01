@@ -140,7 +140,7 @@ See [Linear Webhook Traffic Protection](docs/LINEAR_WEBHOOK_TRAFFIC_PROTECTION.m
 
 **Completion is not the same as issue status:** `/complete` emits a terminal Agent Activity, but the current Worker does not automatically update the Linear issue's workflow status to Done. The agent must update the issue separately.
 
-**Completion authentication:** the injected curl uses `$BRIDGE_SHARED_SECRET`, which must actually exist in the executing agent's environment. Missing shell expansion produces a 401; do not paste a live secret into an issue.
+**Completion authentication:** The trusted local Python runner reads `BRIDGE_SHARED_SECRET` to send authenticated activities to the Worker `/complete` endpoint. The AGY CLI subprocess does **not** receive this secret, `LINEAR_API_KEY`, or `LINEAR_ACCESS_TOKEN`. Never include secrets in agent prompts or issue text. Other agent handoff integrations may have separate callback requirements.
 
 ## Local service
 
