@@ -5,6 +5,7 @@ import os from "node:os";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { createJobStore } from "./job-store.mjs";
+import { createSessionQueue } from "./agy-session-queue.mjs";
 
 const PORT = Number(process.env.BRIDGE_PORT || 8788);
 const HOST = process.env.BRIDGE_HOST || "127.0.0.1";
@@ -19,6 +20,7 @@ const PROJECTS_ROOT =
   process.env.PROJECTS_ROOT || path.join(os.homedir(), "github-revrebel");
 const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs");
 const jobStore = createJobStore(JOBS_DIR);
+const agySessionQueue = createSessionQueue();
 // Serialize automated ChatGPT handoffs across the shared Chrome CDP browser.
 // Different conversations share the same browser process and visible tabs.
 let chatgptHandoffTail = Promise.resolve();
@@ -255,13 +257,18 @@ const server = http.createServer(async (request, response) => {
       await jobStore.transition(jobKey, "awaiting_external", { note: "Mock Agent queued; use mock-agent CLI to advance status or comment", taskFile: filename });
       console.log(`Mock Agent queued: ${filename}`);
     } else if (agent === "antigravity") {
-      let conversationId = null;
       const sessionId = extractAgentSessionId(routedJob);
-      if (routedJob.sessionAction === "prompted" && sessionId) {
-        const prior = await jobStore.findLatestConversationBySessionId(sessionId, jobKey);
-        if (prior?.workspace === workspace) conversationId = prior.conversationId;
-      }
-      startAntigravity(routedJob, filename, workspace, jobKey, conversationId);
+      void agySessionQueue.enqueue(sessionId, async () => {
+        let conversationId = null;
+        if (routedJob.sessionAction === "prompted") {
+          const prior = await jobStore.findLatestConversationBySessionId(sessionId, jobKey, workspace);
+          conversationId = prior?.conversationId || null;
+        }
+        await startAntigravity(routedJob, filename, workspace, jobKey, conversationId);
+      }).catch(async error => {
+        console.error("AGY queued execution failed:", error);
+        await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(console.error);
+      });
     } else if (agent === "chatgpt") {
       if (!route.chatgptProjectUrl) {
         await jobStore.transition(jobKey, "failed", { error: "No chatgpt.projectUrl in Linear project mapping" });
@@ -364,18 +371,20 @@ function scheduleAgyResume(jobKey, resumeAt) {
       }
       const job = JSON.parse(await fs.readFile(record.taskFile, "utf8"));
       const updated = await jobStore.transition(jobKey, "launching", { resumeAt: null });
-      startAntigravity(job, record.taskFile, record.workspace, jobKey, updated.conversationId);
+      await agySessionQueue.enqueue(record.agentSessionId, () => startAntigravity(job, record.taskFile, record.workspace, jobKey, updated.conversationId));
     })().catch(error => console.error("AGY scheduled resume failed:", error));
   }, Math.min(delay, 2147483647));
   agyResumeTimers.set(jobKey, timer);
 }
 
 function startAntigravity(job, filename, workspace, jobKey, conversationId = null) {
+  return new Promise((resolve, reject) => {
   const sessionId = extractAgentSessionId(job);
 
   if (!sessionId) {
     void jobStore.transition(jobKey, "failed", { error: "Missing Linear agent session ID" }).catch(console.error);
     console.log("Antigravity skipped. Missing Linear agent session ID.");
+    reject(new Error("Missing Linear agent session ID"));
     return;
   }
 
@@ -387,6 +396,8 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
   const antigravityEnv = { ...process.env };
   delete antigravityEnv.LINEAR_API_KEY;
   delete antigravityEnv.LINEAR_ACCESS_TOKEN;
+  // Python owns the completion callback; AGY itself must not inherit the secret.
+  // The Python runner strips BRIDGE_SHARED_SECRET from its own child process.
 
   const agentProcess = spawn(
     PYTHON_BIN,
@@ -418,14 +429,14 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
           const parsed = JSON.parse(line.slice("AGY_BRIDGE_EVENT=".length));
           if (parsed.event === "conversation_started" && parsed.conversation_id) {
             verifiedConversationId = parsed.conversation_id;
-            void jobStore.transition(jobKey, "running", { conversationId: verifiedConversationId }).catch(console.error);
+            void jobStore.transition(jobKey, "running", { conversationId: verifiedConversationId, conversationVerifiedAt: new Date().toISOString() }).catch(console.error);
           } else if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
         } catch (error) { console.error("Invalid AGY exhaustion event:", error.message); }
       } else if (line) console.log("[Antigravity-Out]:", line);
     }
   });
   agentProcess.stderr.on("data", data => console.error("[Antigravity-Err]:", String(data).trimEnd()));
-  agentProcess.on("error", error => { void jobStore.transition(jobKey, "failed", { error: error.message }).catch(console.error); });
+  agentProcess.on("error", error => { void jobStore.transition(jobKey, "failed", { error: error.message }).catch(console.error); reject(error); });
   agentProcess.on("close", (code, signal) => {
     void (async () => {
       if (code === 75 && exhaustionEvent?.event === "on_exhaustion") {
@@ -450,7 +461,8 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
       } else {
         await jobStore.transition(jobKey, code === 0 ? "completed" : "failed", { exitCode: code, signal, pid: null });
       }
-    })().catch(error => console.error("Antigravity completion handling failed:", error));
+    })().then(resolve, error => { console.error("Antigravity completion handling failed:", error); reject(error); });
+  });
   });
 }
 
