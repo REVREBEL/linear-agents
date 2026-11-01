@@ -51,16 +51,28 @@ test("conversation lookup resumes only the latest exact Linear session", async (
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "linear-ledger-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const store = createJobStore(root);
-  await store.claim("antigravity:older", { agentSessionId: "session-1" });
+  await store.claim("antigravity:older", { agent: "antigravity", workspace: "/repo", agentSessionId: "session-1" });
   await store.transition("antigravity:older", "completed", { conversationId: "conversation-old" });
-  await store.claim("antigravity:newer", { agentSessionId: "session-1" });
+  await store.claim("antigravity:newer", { agent: "antigravity", workspace: "/repo", agentSessionId: "session-1" });
   await store.transition("antigravity:newer", "running", { conversationId: "conversation-new" });
-  await store.claim("antigravity:other", { agentSessionId: "session-2" });
+  await store.claim("antigravity:other", { agent: "antigravity", workspace: "/repo", agentSessionId: "session-2" });
   await store.transition("antigravity:other", "running", { conversationId: "conversation-other" });
 
   assert.equal(
-    (await store.findLatestConversationBySessionId("session-1", "antigravity:newer")).conversationId,
+    (await store.findLatestConversationBySessionId("session-1", "antigravity:newer", "/repo")).conversationId,
     "conversation-old",
   );
   assert.equal(await store.findLatestConversationBySessionId("missing"), null);
+});
+
+test("workspace and verified timestamp scope conversation reuse", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "linear-ledger-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const store = createJobStore(root);
+  await store.claim("antigravity:first", { agent: "antigravity", workspace: "/one", agentSessionId: "s" });
+  await store.transition("antigravity:first", "running", { conversationId: "conversation-one", conversationVerifiedAt: "2026-01-02T00:00:00Z" });
+  await store.claim("antigravity:second", { agent: "antigravity", workspace: "/two", agentSessionId: "s" });
+  await store.transition("antigravity:second", "running", { conversationId: "conversation-two", conversationVerifiedAt: "2026-01-03T00:00:00Z" });
+  assert.equal((await store.findLatestConversationBySessionId("s", null, "/one")).conversationId, "conversation-one");
+  assert.equal((await store.findLatestConversationBySessionId("s", null, "/other")), null);
 });
