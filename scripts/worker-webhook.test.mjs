@@ -83,7 +83,8 @@ function env(store) {
 async function signedEvent(id = "delivery-1") {
   const body = JSON.stringify({
     organizationId: "org", type: "AgentSessionEvent", action: "created",
-    agentSessionId: "session-1", agentSession: { issueId: "issue-1" }, promptContext: "Test retry and duplicate delivery"
+    agentSessionId: "session-1", agentSession: { issueId: "issue-1" }, promptContext: "Test retry and duplicate delivery",
+    webhookTimestamp: Date.now()
   });
   const signature = crypto.createHmac("sha256", "webhook-secret").update(body).digest("hex");
   return () => new Request("https://worker.test/webhook", {
@@ -91,7 +92,8 @@ async function signedEvent(id = "delivery-1") {
     headers: {
       "linear-signature": signature,
       "linear-delivery": id,
-      "linear-event": "AgentSessionEvent"
+      "linear-event": "AgentSessionEvent",
+      "linear-timestamp": String(JSON.parse(body).webhookTimestamp)
     },
     body
   });
@@ -279,3 +281,47 @@ for (const agent of agents) {
     } finally { globalThis.fetch = oldFetch; }
   });
 }
+
+test("all Workers reject invalid webhook freshness before Durable Object access", { concurrency: false }, async () => {
+  for (const agent of agents) {
+    const workerModule = await loadWorker(agent);
+    const worker = workerModule.default;
+    const config = env(kv());
+    let calls = 0;
+    config.DELIVERY_COORDINATOR = {
+      idFromName() { calls++; throw Error("DO must not be reached"); },
+    };
+    for (const [description, offset, headerOverride, bodyOverride] of [
+      ["old", -60001, null, null],
+      ["future", 60001, null, null],
+      ["missing timestamp", 0, null, "missing"],
+      ["wrong header", 0, "1234567890123", null],
+      ["malformed header", 0, "not-a-timestamp", null],
+    ]) {
+      const payload = {
+        organizationId: "org", type: "AgentSessionEvent",
+        action: "created", agentSessionId: "session-1",
+      };
+      if (bodyOverride !== "missing") payload.webhookTimestamp = Date.now() + offset;
+      const body = JSON.stringify(payload);
+      const signature = crypto.createHmac("sha256", "webhook-secret").update(body).digest("hex");
+      const timestamp = headerOverride ?? String(payload.webhookTimestamp ?? "");
+      const response = await worker.fetch(new Request("https://worker.test/webhook", {
+        method: "POST",
+        headers: { "linear-signature": signature, "linear-timestamp": timestamp },
+        body,
+      }), config, {});
+      assert.equal(response.status, 401, agent + ": " + description);
+    }
+    assert.equal(calls, 0, agent + ": invalid delivery reached DO");
+  }
+});
+test("freshness accepts boundary and rejects timestamp mismatch", async () => {
+  const { validateWebhookFreshness, WEBHOOK_FRESHNESS_WINDOW_MS } = await import(deliveryUrl);
+  const now = 1760000000000;
+  assert.equal(validateWebhookFreshness({ webhookTimestamp: now }, String(now), now), true);
+  assert.equal(validateWebhookFreshness({ webhookTimestamp: now - WEBHOOK_FRESHNESS_WINDOW_MS }, String(now - WEBHOOK_FRESHNESS_WINDOW_MS), now), true);
+  assert.equal(validateWebhookFreshness({ webhookTimestamp: now + WEBHOOK_FRESHNESS_WINDOW_MS }, String(now + WEBHOOK_FRESHNESS_WINDOW_MS), now), true);
+  assert.equal(validateWebhookFreshness({ webhookTimestamp: now + WEBHOOK_FRESHNESS_WINDOW_MS + 1 }, null, now), false);
+  assert.equal(validateWebhookFreshness({ webhookTimestamp: now }, String(now + 1), now), false);
+});
