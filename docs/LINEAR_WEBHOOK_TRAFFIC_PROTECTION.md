@@ -131,7 +131,7 @@ These are source-level confirmations. Reconfirm against deployed Worker settings
 
 Current code: signature verification of raw body via `Linear-Signature` HMAC-SHA256 is present in the four Worker `src/index.ts` files. **Timestamp freshness validation was missing on main before this feature branch**. Linear recommends checking `webhookTimestamp` against the current time with approximately a 60-second tolerance. The `Linear-Timestamp` header also exists, but timestamp checks must be designed to match Linear's signed payload and replay defense. A WAF allowlist is defense in depth, not a substitute for signature and freshness validation.
 
-**Action required:** Add and test Worker timestamp freshness validation across all four agents before reporting the work order as fully complete. The current repository has *not* been changed to enforce freshness as part of this documentation review.
+**Current feature-branch status:** Signed-body timestamp freshness validation is implemented and covered by automated tests across all five Workers. Deployment and verification using live Linear webhook deliveries are still outstanding. Existing Durable Object alarm retries may execute after the ingress freshness window; new external requests outside that window are rejected, even if Linear retries them after an earlier attempt failed before persistence.
 
 ### Cloudflare dashboard verification checklist
 
@@ -156,4 +156,4 @@ Current code: signature verification of raw body via `Linear-Signature` HMAC-SHA
 
 - Live Cloudflare list ID, actual list entries, zone WAF ruleset/rule ID, enabled state and rule ordering: **not verified**.
 - Deployed Worker `workers.dev` and preview settings: **not verified**.
-- Worker timestamp validation: **confirmed absent in checked-in source**.
+- Worker timestamp validation: **implemented in this feature branch; production deployment and live verification are outstanding**.
