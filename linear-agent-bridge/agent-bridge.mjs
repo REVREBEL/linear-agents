@@ -282,7 +282,8 @@ const server = http.createServer(async (request, response) => {
       console.log(`Mock Agent queued: ${filename}`);
     } else if (agent === "antigravity") {
       const sessionId = extractAgentSessionId(routedJob);
-      void agySessionQueue.enqueue(sessionId, async () => {
+      // Shared project conversations must not receive concurrent invocations.
+      void agySessionQueue.enqueue(route.agyConversationId || sessionId, async () => {
         let conversationId = route.agyConversationId || null;
         let conversationSource = conversationId ? "project_reuse" : "follow_up";
         if (!conversationId && routedJob.sessionAction === "prompted") {
