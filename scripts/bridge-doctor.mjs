@@ -20,6 +20,7 @@ const workers = [
   ["Gemini", process.env.GEMINI_WORKER_HOST || `linear-${process.env.GEMINI_PREFIX || "gemini"}.${domain}`],
   ["Mock", process.env.MOCK_WORKER_HOST || `linear-${process.env.MOCK_PREFIX || "mock"}.${domain}`],
 ];
+const agentIds = { Antigravity: "antigravity", ChatGPT: "chatgpt", Trae: "trae", Gemini: "gemini", Mock: "mock" };
 const timeoutMs = 9000;
 let failures = 0;
 
@@ -53,7 +54,9 @@ async function request(url, options = {}) {
 }
 
 await check("Local router", async () => {
-  const data = await request("http://127.0.0.1:8788/health");
+  const bridgeHost = process.env.BRIDGE_HOST || "127.0.0.1";
+  const bridgePort = Number(process.env.BRIDGE_PORT || 8788);
+  const data = await request(`http://${bridgeHost.includes(":") ? `[${bridgeHost}]` : bridgeHost}:${bridgePort}/health`);
   if (!data?.ok || data.service !== "local-linear-agent-router") throw Error("Invalid health response");
   return "healthy";
 });
@@ -63,6 +66,13 @@ if (!secret) {
   process.exitCode = 1;
 } else {
   for (const [label, workerHost] of workers) {
+    await check(`${label} Worker health`, async () => {
+      const data = await request(`https://${workerHost}/health`);
+      if (data?.ok !== true || data.service !== `linear-${process.env[`${agentIds[label].toUpperCase()}_PREFIX`] || agentIds[label]}-agent`) {
+        throw Error(`Unexpected Worker health identity: ${data?.service ?? "missing"}`);
+      }
+      return `Worker ${data.service} reachable`;
+    });
     await check(`${label} Worker → Tunnel → bridge`, async () => {
       const id = crypto.randomUUID();
       const data = await request(`https://${workerHost}/diagnostics/probe`, {
@@ -70,9 +80,9 @@ if (!secret) {
         headers: { authorization: `Bearer ${secret}`, "x-bridge-probe-id": id },
       });
       if (data?.ok !== true || data?.stage !== "bridge" ||
-          data?.probeId !== id || typeof data.worker !== "string" ||
+          data?.probeId !== id || data.worker !== `linear-${process.env[`${agentIds[label].toUpperCase()}_PREFIX`] || agentIds[label]}-agent` ||
           data.bridge !== "local-linear-agent-router") {
-        throw Error(`Worker forwarding not confirmed (ok=${data?.ok}, stage=${data?.stage}, idMatch=${data?.probeId === id}, bridge=${data?.bridge})`);
+        throw Error(`Worker forwarding not confirmed (ok=${data?.ok}, stage=${data?.stage}, idMatch=${data?.probeId === id}, worker=${data?.worker}, bridge=${data?.bridge})`);
       }
       return `Worker and bridge independently acknowledged ${id}`;
     });
@@ -82,11 +92,6 @@ if (!secret) {
       const records = await dns.lookup(host, { all: true });
       if (!records.length) throw Error("No A/AAAA records");
       return `${records.length} address(es)`;
-    });
-    await check(`${label} Tunnel-host health`, async () => {
-      const data = await request(`https://${host}/health`);
-      if (data?.ok !== true) throw Error("Invalid Worker health response");
-      return "public route healthy";
     });
     await check(`${label} public probe`, async () => {
       const id = crypto.randomUUID();
@@ -100,13 +105,13 @@ if (!secret) {
           : "no JSON object";
         throw Error(`Probe was not acknowledged by the local bridge (${description})`);
       }
-      if (data.stage === "bridge" && typeof data.worker === "string") {
+      if (data.stage === "bridge" && data.worker === `linear-${process.env[`${agentIds[label].toUpperCase()}_PREFIX`] || agentIds[label]}-agent`) {
         return `Worker → Tunnel → bridge confirmed (${id})`;
       }
-      if (data.service === "local-linear-agent-router") {
+      if (data.service === "local-linear-agent-router" && data.agent === agentIds[label]) {
         return `Tunnel → bridge confirmed (${id}); public hostname appears to bypass Worker`;
       }
-      throw Error("Probe ID acknowledged but response origin is not identifiable");
+      throw Error(`Probe identity mismatch: expected agent=${agentIds[label]}, got agent=${data.agent ?? "missing"}, worker=${data.worker ?? "missing"}`);
     });
   }
 }
