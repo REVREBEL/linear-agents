@@ -20,7 +20,7 @@ export function validateWebhookFreshness(payload: Record<string, unknown>, heade
   const signed = payload.webhookTimestamp;
   if (typeof signed !== "number" || !Number.isSafeInteger(signed) || signed <= 0) return false;
   if (header !== null) {
-    if (!/^\\d{13}$/.test(header) || Number(header) !== signed) return false;
+    if (!/^\d{13}$/.test(header) || Number(header) !== signed) return false;
   }
   return Math.abs(now - signed) <= WEBHOOK_FRESHNESS_WINDOW_MS;
 }
