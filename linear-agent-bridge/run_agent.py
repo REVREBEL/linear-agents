@@ -6,6 +6,7 @@ import os
 import sys
 import re
 from pathlib import Path
+from collections import deque
 from typing import Any
 
 import requests
@@ -31,6 +32,7 @@ def antigravity_subprocess_env() -> dict[str, str]:
     environment = os.environ.copy()
     environment.pop("LINEAR_API_KEY", None)
     environment.pop("LINEAR_ACCESS_TOKEN", None)
+    environment.pop("BRIDGE_SHARED_SECRET", None)
     return environment
 
 
@@ -141,6 +143,7 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
         *command, cwd=ANTIGRAVITY_WORKSPACE, env=antigravity_subprocess_env(),
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        limit=1024 * 1024,
     )
     assert process.stdin is not None
     assert process.stdout is not None
@@ -149,13 +152,13 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
     await process.stdin.drain()
     process.stdin.close()
     stderr_task = asyncio.create_task(process.stderr.read())
-    stdout_lines = []
-    events = []
+    stdout_lines = deque(maxlen=30)
+    events = deque(maxlen=30)
     result = None
     announced_conversation_id = conversation_id
     while line_bytes := await process.stdout.readline():
         line = line_bytes.decode("utf-8", errors="replace").rstrip("\r\n")
-        stdout_lines.append(line)
+        stdout_lines.append(line[-4000:])
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
@@ -179,7 +182,7 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
 
     # Never use -c or a workspace's "last conversation" in a multi-issue bridge.
     # Require the actual run to report its conversation ID.
-    resolved_id = announced_conversation_id or event_conversation_id(events)
+    resolved_id = announced_conversation_id or event_conversation_id(list(events))
     error_text = str(result.get("error") or "") if result else ""
     diagnostic = "\n".join((error_text, stderr, stdout[-2000:]))
     if quota_exhausted(diagnostic) and (result is None or result.get("status") != "SUCCESS"):
@@ -190,7 +193,7 @@ async def run_antigravity(prompt: str, conversation_id: str | None = None) -> st
         raise RuntimeError(f"AGY status {result.get('status')}: {error_text or stderr}")
     response = result.get("response")
     if not isinstance(response, str) or not response.strip():
-        recent_events = json.dumps(events[-5:], ensure_ascii=False)[-2000:]
+        recent_events = json.dumps(list(events)[-5:], ensure_ascii=False)[-2000:]
         raise RuntimeError(
             "Antigravity CLI completed without a response. "
             f"Recent events: {recent_events}"
