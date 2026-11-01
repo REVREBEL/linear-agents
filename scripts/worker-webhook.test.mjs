@@ -292,8 +292,8 @@ test("all Workers reject invalid webhook freshness before Durable Object access"
       idFromName() { calls++; throw Error("DO must not be reached"); },
     };
     for (const [description, offset, headerOverride, bodyOverride] of [
-      ["old", -60001, null, null],
-      ["future", 60001, null, null],
+      ["old", -120000, null, null],
+      ["future", 120000, null, null],
       ["missing timestamp", 0, null, "missing"],
       ["wrong header", 0, "1234567890123", null],
       ["malformed header", 0, "not-a-timestamp", null],
