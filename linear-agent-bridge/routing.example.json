@@ -22,12 +22,14 @@
       "scope": ".",
       "launchFromScope": false,
       "agent": {
-        "agent": "antigravity",
+        "provider": "antigravity",
+        "projectName": "skills-rebuild",
         "conversationMode": "reuse-existing",
         "conversationId": "REPLACE_WITH_EXISTING_AGY_CONVERSATION_ID"
       },
       "codeReview": {
-        "agent": "chatgpt",
+        "provider": "chatgpt",
+        "projectId": "g-p-REPLACE_WITH_PROJECT_ID",
         "conversationMode": "reuse-existing",
         "conversationUrl": "https://chatgpt.com/g/g-p-REPLACE_WITH_PROJECT_ID/c/REPLACE_WITH_CONVERSATION_ID",
         "autoSend": false
