@@ -2,16 +2,16 @@
 
 ## Updated checked-in LaunchAgent startup (proposed feature branch)
 
-The installer now renders an absolute Node executable path (resolved with `command -v node` in the installer's configured environment) into `scripts/macos/agent-bridge.plist.example`. The plist invokes `/bin/bash` and `linear-agent-bridge/start-bridge.sh` with that absolute Node path. The bridge-specific wrapper loads the trusted root `.env`, checks `BRIDGE_SHARED_SECRET`, and executes `linear-agent-bridge/agent-bridge.mjs`. It does not store secrets in the plist. The install action renders the plist without reloading the currently running LaunchAgent; a reinstallation followed by explicit launchctl reload is required for the new startup path to take effect. These changes require validation on macOS before merge.
+The installer now renders an absolute Node executable path (resolved with `command -v node` in the installer's configured environment) into `scripts/macos/agent-bridge.plist.example`. The plist invokes `/bin/bash` and `linear-agent-bridge/start-bridge.sh` with that absolute Node path. The bridge-specific wrapper loads the trusted selected environment file (defaulting to root `.env`), exports `REPO_ROOT`, checks `BRIDGE_SHARED_SECRET`, and executes `linear-agent-bridge/agent-bridge.mjs`. It does not store secrets in the plist. The install action renders the plist without reloading the currently running LaunchAgent; a reinstallation followed by explicit launchctl reload is required for the new startup path to take effect. The new custom environment-path propagation requires testing on macOS before merge.
 
 
 ## Verified startup configuration and PATH caveat (2026-10-28)
 
 **Historical main-branch behavior before this feature:** the checked-in plist invoked `scripts/with-env.sh bridge`. The feature introduces a bridge-specific startup wrapper and a rendered absolute Node path; existing installed plist files are not automatically changed.
 
-On macOS, launchd does not load interactive zsh/NVM initialization. Before loading the plist, ensure the trusted root `.env` sets a usable `PATH` that includes the desired executable's directory (for example, `/usr/local/bin`, `/opt/homebrew/bin`, or an explicit absolute NVM Node version's `bin` directory); verify `node` and `npm` are resolvable **in the wrapper's environment**, not just an interactive shell. The existing `with-env.sh` wrapper loads root `.env` and must export `BRIDGE_SHARED_SECRET` to the Node process. If replacing the wrapper with a direct Node invocation in a **local custom plist**, first supply an equivalent trusted environment loader, use an absolute Node executable, and set `WorkingDirectory` consistently with the bridge's config and routing paths. Do **not** embed the secret in a plist or commit it.
+On macOS, launchd does not load interactive zsh/NVM initialization. The installer resolves Node using `command -v node` and places its absolute executable path in the plist. The installed bridge-specific wrapper exports `REPO_ROOT`, loads the selected trusted environment file, verifies `BRIDGE_SHARED_SECRET`, and execs Node. The environment-file path is recorded in `ProgramArguments`, not the secret values. The fallback environment file is the checkout root's `.env`.
 
-A repeating launchd exit code 1 may come from missing `BRIDGE_SHARED_SECRET`, bad routing configuration, missing Node on `PATH`, or another startup error; inspect `linear-agent-bridge/bridge-error.log` rather than assuming a single cause. This documentation change **does not change the plist or installer**. A future code change should implement and test the proposed bridge-specific wrapper before promoting it as the standard install.
+A repeating launchd exit code 1 can indicate a missing or invalid environment file, `BRIDGE_SHARED_SECRET`, a missing Node binary, or bad routing configuration. Inspect `linear-agent-bridge/bridge-error.log`; do not assume a single cause.
 
 ---
 
@@ -20,17 +20,17 @@ The `<reverse-DOMAIN>.agent-bridge` LaunchAgent starts the local Linear bridge a
 
 ## Template placeholders
 
-[`scripts/macos/agent-bridge.plist.example`](../scripts/macos/agent-bridge.plist.example) is a valid XML property list **template**. Its `__REPO_ROOT__` and `__LAUNCHAGENT_LABEL__` tokens are not macOS or `launchd` variables: they are replacement markers consumed by [`scripts/macos/install-launchagent.sh`](../scripts/macos/install-launchagent.sh). Do **not** copy the unrendered template into `~/Library/LaunchAgents`.
+[`scripts/macos/agent-bridge.plist.example`](../scripts/macos/agent-bridge.plist.example) is a valid XML property list **template**. Its `__REPO_ROOT__`, `__LAUNCHAGENT_LABEL__`, `__NODE_BIN__`, and `__ENV_FILE__` tokens are not macOS or `launchd` variables: they are replacement markers consumed by [`scripts/macos/install-launchagent.sh`](../scripts/macos/install-launchagent.sh). Do **not** copy the unrendered template into `~/Library/LaunchAgents`.
 
-The installer reads `DOMAIN` from the trusted root `.env`, reverses its DNS labels (for example, `example.com` becomes `com.example.agent-bridge`), and uses that value for both the service label and plist filename. It discovers the absolute repo location, expands the template markers, checks the XML with `plutil -lint`, backs up any existing plist, and writes a valid plist to `~/Library/LaunchAgents/<reverse-DOMAIN>.agent-bridge.plist`. It does **not** restart the service. Before writing the plist, it installs the shared root npm workspace dependencies and sets up the bridge-local Python virtual environment.
+The installer reads `DOMAIN` from the selected trusted environment file (`LINEAR_AGENTS_ENV_FILE` or root `.env`), reverses its DNS labels (for example, `example.com` becomes `com.example.agent-bridge`), and uses that value for both the service label and plist filename. It discovers the absolute repo location, expands the template markers, checks the XML with `plutil -lint`, backs up any existing plist, and writes a valid plist to `~/Library/LaunchAgents/<reverse-DOMAIN>.agent-bridge.plist`. It does **not** restart the service. Before writing the plist, it installs the shared root npm workspace dependencies and sets up the bridge-local Python virtual environment.
 
 The template uses:
 
-- `/bin/bash` to invoke `scripts/with-env.sh bridge`
+- `/bin/bash` to invoke `linear-agent-bridge/start-bridge.sh` with the absolute Node executable and selected environment-file path
 - checkout root for `WorkingDirectory`
 - `linear-agent-bridge/bridge.log` and `bridge-error.log` for logging
 - `RunAtLoad` and `KeepAlive` to supervise the bridge
-- **No `EnvironmentVariables` dictionary**: the wrapper loads values from the local root `.env`
+- **No `EnvironmentVariables` dictionary**: the wrapper loads values from the selected trusted environment file
 
 These defaults work regardless of whether the repo is cloned into `linear-agents/`, `.linear-agents/`, or another directory.
 
@@ -45,7 +45,7 @@ ls ~/Library/LaunchAgents/*agent-bridge.plist
 # Inspect the generated plist that matches your DOMAIN.
 ```
 
-The bridge wrapper exports `REPO_ROOT` and sources the trusted local `.env`. In particular, confirm `ROUTING_CONFIG_FILE` points to the actual routing JSON. The central example still requires configuring that file and all mandatory secret values.
+The bridge wrapper exports `REPO_ROOT` before sourcing the selected trusted environment file (default root `.env`). When using a custom file, install with `LINEAR_AGENTS_ENV_FILE=/absolute/path/to/config.env bash scripts/macos/install-launchagent.sh`; the rendered plist preserves that path. In particular, confirm `ROUTING_CONFIG_FILE` points to the actual routing JSON. The central example still requires configuring that file and all mandatory secret values.
 
 **Migration from an existing install:** If your previous service has a different label, installing the new plist does **not** unload or replace the old service. Unload and remove the old plist only after recording its settings and verifying the replacement, to avoid two bridges competing for port 8788. Stop active agent jobs first. The installer backs up your current plist but writes a replacement that launches the bridge from the **current Git checkout**, not an older `~/.linear-agent-bridge` copy. Before loading the replacement, verify the required Node.js executable, Python environment, Antigravity runner, Gemini and Trae binaries, routing file, and the root `.env` file all work from this checkout.
 
@@ -93,7 +93,7 @@ The health response must indicate `ok: true`, the intended `projectsRoot`, and `
 
 - `DOMAIN` must be set in `.env` to a valid DNS name before running the installer. Never include a hardcoded company domain in the reusable template.
 - `launchd` does not expand `$HOME`, `${REPO_ROOT}`, or `~` in a plist's `ProgramArguments`. The installer substitutes a real absolute path.
-- Executing `node agent-bridge.mjs` directly does not load the root `.env`. Use `bash scripts/with-env.sh bridge` or launch through the installed plist.
+- Executing `node agent-bridge.mjs` directly does not load the root `.env`. Use `bash scripts/with-env.sh bridge` or use `bash linear-agent-bridge/start-bridge.sh /absolute/path/to/node /absolute/path/to/config.env` or launch through the installed plist.
 - Changes to `.env` require restarting the service; `launchd` does not monitor the file.
 - Keep `.env` ignored by Git, protect it with appropriate permissions (e.g. `chmod 600 .env`) and rotate previously exposed shared secrets.
 - Do not run two bridges bound to port `8788` concurrently. A checkout upgrade is separate from updating Cloudflare Workers and routing config.
