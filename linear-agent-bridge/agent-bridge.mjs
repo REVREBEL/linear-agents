@@ -805,6 +805,31 @@ async function resolveJobRoute(job) {
         (typeof role.projectId !== "string" || !role.projectId.trim())) {
       return { ok: false, error: `${name}.projectId must be a nonempty string` };
     }
+    if (role.provider === "chatgpt") {
+      const url = role.conversationUrl || role.projectUrl;
+      if (role.projectId !== undefined && !/^g-p-[a-zA-Z0-9_-]+$/.test(role.projectId)) {
+        return { ok: false, error: `${name}.projectId must be a ChatGPT Project ID` };
+      }
+      if (url !== undefined) {
+        try {
+          const parsed = new URL(url);
+          const parts = parsed.pathname.split("/").filter(Boolean);
+          const validProject = parts.length === 2 && parts[0] === "g" && parts[1].startsWith("g-p-");
+          const validConversation = parts.length === 4 && parts[0] === "g" && parts[1].startsWith("g-p-") &&
+            parts[2] === "c" && Boolean(parts[3]);
+          if (parsed.protocol !== "https:" || parsed.hostname !== "chatgpt.com" ||
+              parsed.search || parsed.hash ||
+              (role.conversationMode === "reuse-existing" ? !validConversation : !validProject)) {
+            return { ok: false, error: `${name} requires a valid ChatGPT URL for its conversationMode` };
+          }
+          if (role.projectId && role.projectId !== parts[1]) {
+            return { ok: false, error: `${name}.projectId does not match the ChatGPT URL` };
+          }
+        } catch {
+          return { ok: false, error: `${name} contains an invalid ChatGPT URL` };
+        }
+      }
+    }
     if (role.autoSend !== undefined && typeof role.autoSend !== "boolean") {
       return { ok: false, error: `${name}.autoSend must be boolean` };
     }
