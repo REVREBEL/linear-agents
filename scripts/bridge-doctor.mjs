@@ -23,9 +23,22 @@ async function check(label, action) {
   }
 }
 async function request(url, options = {}) {
-  const response = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
-  const body = await response.json().catch(() => null);
-  if (!response.ok) throw Error(`HTTP ${response.status}`);
+  const response = await fetch(url, {
+    ...options, redirect: "manual", signal: AbortSignal.timeout(timeoutMs),
+  });
+  const contentType = response.headers.get("content-type") || "missing";
+  const ray = response.headers.get("cf-ray");
+  const details = `HTTP ${response.status}, content-type=${contentType}${ray ? `, cf-ray=${ray}` : ""}`;
+  if (response.status >= 300 && response.status < 400) {
+    // Do not echo redirected URLs; they may contain authentication state.
+    throw Error(`${details}; redirected (possible Cloudflare Access login)`);
+  }
+  const body = contentType.includes("application/json")
+    ? await response.json().catch(() => null) : null;
+  if (!response.ok) throw Error(details);
+  if (body === null) {
+    throw Error(`${details}; expected JSON (possible WAF challenge or proxy response)`);
+  }
   return body;
 }
 
@@ -57,7 +70,10 @@ if (!secret) {
         headers: { authorization: `Bearer ${secret}`, "x-bridge-probe-id": id },
       });
       if (data?.ok !== true || data?.probeId !== id || data?.stage !== "bridge") {
-        throw Error("Probe was not acknowledged by the local bridge");
+        const description = data && typeof data === "object"
+          ? `ok=${data.ok ?? "missing"}, stage=${data.stage ?? "missing"}, probeIdMatch=${data.probeId === id}, worker=${data.worker ?? "missing"}, status=${data.status ?? "n/a"}`
+          : "no JSON object";
+        throw Error(`Probe was not acknowledged by the local bridge (${description})`);
       }
       return `delivery confirmed (${id})`;
     });
