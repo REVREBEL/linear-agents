@@ -111,6 +111,23 @@ export function createJobStore(root) {
       }
       return null;
     },
+    async findLatestConversationBySessionId(sessionId, excludeKey = null, workspace = null) {
+      const entries = await fs.readdir(ledger, { withFileTypes: true });
+      const matches = [];
+      for (const item of entries) {
+        if (!item.isDirectory()) continue;
+        try {
+          const record = await read(path.join(ledger, item.name));
+          if (record.key !== excludeKey && record.agent === "antigravity" && record.agentSessionId === sessionId && record.conversationId && (!workspace || record.workspace === workspace)) {
+            matches.push(record);
+          }
+        } catch (error) {
+          if (error.code !== "ENOENT") console.warn("Unreadable ledger entry:", error.message);
+        }
+      }
+      matches.sort((left, right) => String(right.conversationVerifiedAt || right.updatedAt).localeCompare(String(left.conversationVerifiedAt || left.updatedAt)));
+      return matches[0] || null;
+    },
     async get(key) { return read(entryPath(key)); },
   };
 }
