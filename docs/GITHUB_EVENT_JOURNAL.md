@@ -39,3 +39,17 @@ Pull changes and deploy `linear-chatgpt` and `linear-antigravity` Workers, then 
 ## Next phase
 
 Route only selected pull_request actions to the reviewing agent, map repository/PR to a Linear project and existing ChatGPT conversation, enqueue the macOS Shortcuts handoff, and track browser submission and review completion separately. Keep event journal publishing decoupled from webhook acknowledgement; GitHub push failures should not cause GitHub to resend valid events.
+
+## ChatGPT PR-review handoff contract (planned dispatcher)
+
+The intended review sequence is: agent opens a GitHub PR → GitHub webhook → verified Worker → local bridge event journal → PR-to-project/conversation lookup → macOS Shortcut → existing ChatGPT conversation. ChatGPT will use its existing context, GitHub integration, and Linear MCP for the review and follow-up. A brief PR reference in the prompt is enough; the bridge does not need to include full issue history.
+
+The ChatGPT Shortcut consumes exactly `conversationUrl`, `prompt`, and `handoffId` in the handoff JSON file. Its GET callback is a plain localhost URL, for example:
+
+```text
+http://127.0.0.1:8788/github/handoff-result&handoffid=550e8400-e29b-41d4-a716-446655440000?success
+```
+
+Use `?cancelled` or `?error` for other outcomes. See [ChatGPT Apple Shortcuts handoff](CHATGPT_SHORTCUTS_HANDOFF.md) for the full contract and working setup.
+
+**Implementation status:** incoming PR events are authenticated, deduplicated, and journaled. They **do not yet trigger Shortcuts**. The existing Shortcut handoff-file generator is used for ChatGPT jobs arriving through Linear. Shortcut callbacks are logged separately and are not yet reconciled against a GitHub PR-review job. Do not infer that a PR was reviewed merely because a webhook was accepted or a Shortcut returned success.
