@@ -175,7 +175,7 @@ const server = http.createServer(async (request, response) => {
 
     // Shortcuts may construct a URL with &handoffid= before the ?result suffix.
     // Accept that legacy format as well as normal URL query parameters.
-    const shortcutLegacyMatch = /^\\/github\\/handoff-result&handoffid=([a-zA-Z0-9_-]{8,128})$/.exec(url.pathname);
+    const shortcutLegacyMatch = new RegExp("^/github/handoff-result&handoffid=([a-zA-Z0-9_-]{8,128})$").exec(url.pathname);
     if (request.method === "GET" && (url.pathname === "/github/handoff-result" || shortcutLegacyMatch)) {
       const handoffId = shortcutLegacyMatch?.[1] || url.searchParams.get("handoffid") || url.searchParams.get("handoffId");
       const allowed = { "success": "success", "cancelled": "cancelled", "error": "error",
