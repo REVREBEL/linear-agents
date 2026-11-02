@@ -14,6 +14,7 @@ interface Env {
   BRIDGE_URL: string;
   BRIDGE_SHARED_SECRET: string;
   SERVICE_NAME: string;
+  GITHUB_WEBHOOK_SECRET?: string;
 }
 
 interface LinearTokenResponse {
@@ -43,6 +44,35 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       const url = new URL(request.url);
+
+      // GitHub App traffic uses a dedicated hostname and webhook secret.
+      // Never interpret GitHub requests as Linear OAuth or Linear webhooks.
+      if (url.hostname.startsWith("github-")) {
+        if (request.method === "POST" && url.pathname === "/webhook") {
+          if (!env.GITHUB_WEBHOOK_SECRET) return jsonResponse({ ok: false, error: "GitHub webhook secret not configured" }, 503);
+          const signature = request.headers.get("x-hub-signature-256") || "";
+          const event = request.headers.get("x-github-event");
+          const delivery = request.headers.get("x-github-delivery");
+          if (!/^sha256=[0-9a-f]{64}$/.test(signature) || !event || !delivery) {
+            return jsonResponse({ ok: false, error: "Invalid GitHub webhook headers" }, 401);
+          }
+          const body = await request.arrayBuffer();
+          const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.GITHUB_WEBHOOK_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+          const digest = await crypto.subtle.sign("HMAC", key, body);
+          const expected = new Uint8Array(digest);
+          const supplied = new Uint8Array(signature.slice(7).match(/../g)!.map(part => parseInt(part, 16)));
+          let mismatch = 0;
+          for (let i = 0; i < expected.length; i++) mismatch |= expected[i] ^ supplied[i];
+          if (mismatch !== 0) return jsonResponse({ ok: false, error: "Invalid GitHub webhook signature" }, 401);
+          // Ingress verified. Do not acknowledge a review job until a durable
+          // PR-review dispatcher is installed; GitHub can redeliver failures.
+          return jsonResponse({ ok: false, error: "GitHub review dispatch not yet configured", event, delivery }, 503);
+        }
+        if (url.pathname === "/oauth/callback") {
+          return jsonResponse({ ok: false, error: "GitHub OAuth callback not configured; App installation tokens do not require user OAuth" }, 501);
+        }
+        return jsonResponse({ ok: false, error: "Not found" }, 404);
+      }
 
       if (request.method === "GET" && url.pathname === "/") {
         return htmlResponse(homePage(url.origin, env.SERVICE_NAME));
