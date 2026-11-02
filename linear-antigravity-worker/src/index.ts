@@ -76,6 +76,9 @@ export default {
           if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
             return jsonResponse({ ok: false, error: "Invalid GitHub event" }, 400);
           }
+          if (event === "pull_request" && !["opened", "reopened", "synchronize", "ready_for_review", "closed", "converted_to_draft", "edited"].includes((payload as { action?: string }).action || "")) {
+            return jsonResponse({ ok: true, ignored: true, event, delivery }, 200);
+          }
           if (event !== "pull_request" && event !== "ping") {
             return jsonResponse({ ok: true, ignored: true, event }, 200);
           }
