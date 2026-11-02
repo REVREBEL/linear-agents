@@ -460,7 +460,11 @@ const server = http.createServer(async (request, response) => {
           // This supervised test requires an attached terminal, and must not consume the daemon stdin.
           // Queue a ready-to-run handoff command as a local file instead of launching UI automation from launchd.
           const handoffFile = filename + ".chatgpt-handoff.json";
-          await fs.writeFile(handoffFile, JSON.stringify({ handoffId: safeJobId, projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, autoSend: route.chatgptAutoSend === true, prompt: promptContext, jobFile: filename }, null, 2), { mode: 0o600 });
+          const handoffId = safeJobId;
+          const handoffPayload = useShortcuts
+            ? { conversationUrl: route.chatgptProjectUrl, prompt: promptContext, handoffId }
+            : { projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, autoSend: route.chatgptAutoSend === true, prompt: promptContext, jobFile: filename };
+          await fs.writeFile(handoffFile, JSON.stringify(handoffPayload, null, 2), { mode: 0o600 });
           if (route.chatgptAutoSend === true) {
             const handoffController = useShortcuts ? "Apple Shortcut" : "Playwright";
             await jobStore.transition(jobKey, "awaiting_external", { handoffFile, handoffId, note: `Automatic ${handoffController} submission launched; response processing not implemented` });

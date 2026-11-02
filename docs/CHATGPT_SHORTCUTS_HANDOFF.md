@@ -9,8 +9,8 @@ The bridge creates a private `*.chatgpt-handoff.json` file alongside the local j
 ```json
 {
   "conversationUrl": "https://chatgpt.com/g/g-p-PROJECT/c/CONVERSATION",
-  "prompt": "Please review REVREBEL/example PR #154.",
-  "handoffId": "550e8400-e29b-41d4-a716-446655440000"
+  "prompt": "Text to submit",
+  "handoffId": "BRIDGE_JOB_ID"
 }
 ```
 
@@ -24,18 +24,17 @@ The bridge presently also writes `projectUrl`, `conversationMode`, `autoSend`, a
 
 Name it **Linear ChatGPT Handoff** (or set `CHATGPT_SHORTCUT_NAME` accordingly). Configure **Receive** to accept **Files** from **Nowhere**, with no-input behavior **Stop and Respond**.
 
-1. **Get Contents of File** from **Shortcut Input**.
-2. **Get Dictionary from Input** to parse the JSON.
-3. **Get Dictionary Value** `conversationUrl` → `ChatGPT_URL`.
-4. **Get Dictionary Value** `prompt` → `ChatGPT_Prompt`.
-5. **Get Dictionary Value** `handoffId` → `ChatGPT_handoffId`.
-6. **Open URL** with `ChatGPT_URL`, then use the tested macOS application activation/wait sequence.
-7. **Copy to Clipboard** the `ChatGPT_Prompt`; run the tested AppleScript paste/submit sequence.
-8. Call the localhost callback with the result and the **same** `ChatGPT_handoffId`.
+1. **Run Shell Script** with `cat`, input **Shortcut Input**, and **Pass Input: to stdin**.
+2. **Get Dictionary from Input** using **Shell Script Result**.
+3. **Get Dictionary Value** for `conversationUrl`; set variable `ChatGPT_URL`.
+4. **Get Dictionary Value** for `prompt` from the same Dictionary; set variable `ChatGPT_Prompt`.
+5. **Get Dictionary Value** for `handoffId` from the same Dictionary; set variable `ChatGPT_handoffId`.
+6. **Open URLs** with `ChatGPT_URL`.
+7. **Copy to Clipboard** with `ChatGPT_Prompt`.
 
 Do not paste into an arbitrary active conversation. Verify that the intended ChatGPT conversation opened before enabling unattended submission.
 
-## Simple Shortcut result callback
+The command-line runner supplies a **file**, not positional text arguments. `cat` streams that file to the shell result, which the shortcut then decodes as JSON before asking for its three dictionary values.
 
 The bridge accepts plain **GET** requests at `http://127.0.0.1:8788/github/handoff-result`. No JSON body or Authorization header is required for this local reporting path.
 

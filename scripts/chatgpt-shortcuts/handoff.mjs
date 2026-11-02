@@ -23,17 +23,14 @@ if (!handoffFile || !shortcutName || args.includes("--help")) usage();
 
 const handoffPath = resolve(handoffFile);
 const handoff = JSON.parse(await readFile(handoffPath, "utf8"));
-const projectUrl = new URL(handoff.conversationUrl || handoff.projectUrl || "https://invalid.local");
+const conversationUrl = new URL(handoff.conversationUrl || "https://invalid.local");
 if (typeof handoff.handoffId !== "string" || !/^[a-zA-Z0-9_-]{8,128}$/.test(handoff.handoffId)) {
   throw new Error("Shortcut handoff requires a valid handoffId.");
 }
 
-if (projectUrl.protocol !== "https:" || projectUrl.hostname !== "chatgpt.com" ||
-    !/^\/g\/g-p-[^/]+\/c\/[^/]+\/?$/.test(projectUrl.pathname)) {
+if (conversationUrl.protocol !== "https:" || conversationUrl.hostname !== "chatgpt.com" ||
+    !/^\/g\/g-p-[^/]+\/c\/[^/]+\/?$/.test(conversationUrl.pathname)) {
   throw new Error("Shortcut handoff requires a validated existing ChatGPT Project conversation URL.");
-}
-if (handoff.conversationMode !== "reuse-existing") {
-  throw new Error("Shortcut handoff requires conversationMode reuse-existing.");
 }
 if (typeof handoff.prompt !== "string" || !handoff.prompt.trim()) {
   throw new Error("Shortcut handoff requires a nonempty prompt.");
@@ -43,7 +40,7 @@ if (handoff.prompt.length > 8000) {
 }
 
 if (dryRun) {
-  console.log(`Validated shortcut handoff ${handoff.handoffId} for ${projectUrl.href}`);
+  console.log(`Validated shortcut handoff ${handoff.handoffId} for ${conversationUrl.href}`);
   process.exit(0);
 }
 
