@@ -321,7 +321,7 @@ async def run_antigravity(
                 state = step.get("state")
                 now = time.monotonic()
                 if (isinstance(index, int) and index > last_step_reported and
-                    state == "ACTIVE" and now - last_progress_at >= AGY_PROGRESS_INTERVAL_SECS):
+                    state == "ACTIVE" and now - last_progress_at >= ANTIGRAVITY_PROGRESS_INTERVAL_SECS):
                     last_step_reported = index
                     last_progress_at = now
                     summary = format_step_summary(step, ANTIGRAVITY_WORKSPACE)
