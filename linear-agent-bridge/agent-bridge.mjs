@@ -140,6 +140,7 @@ const server = http.createServer(async (request, response) => {
         geminiHost: GEMINI_HOST,
         python: PYTHON_BIN,
         antigravityWorkspace: ANTIGRAVITY_WORKSPACE,
+        antigravityMode: process.env.ANTIGRAVITY_MODE || "cli",
         chatgptWorkspace: CHATGPT_WORKSPACE,
         traeBin: TRAE_BIN || null,
         traeWorkspace: TRAE_WORKSPACE,
@@ -425,6 +426,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Trae host: ${TRAE_HOST}`);
   console.log(`Gemini host: ${GEMINI_HOST}`);
   console.log(`Antigravity workspace: ${ANTIGRAVITY_WORKSPACE}`);
+  console.log(`Antigravity mode: ${process.env.ANTIGRAVITY_MODE || "cli"}`);
   console.log(`ChatGPT workspace: ${CHATGPT_WORKSPACE}`);
   console.log(`Trae runner: ${TRAE_BIN || "not configured"}`);
   console.log(`Trae workspace: ${TRAE_WORKSPACE}`);

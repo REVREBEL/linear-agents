@@ -17,15 +17,34 @@ ANTIGRAVITY_BIN = os.path.expanduser(
     os.getenv("ANTIGRAVITY_BIN", "~/.local/bin/agy")
 )
 ANTIGRAVITY_PRINT_TIMEOUT = os.getenv("ANTIGRAVITY_PRINT_TIMEOUT", "30m")
-ANTIGRAVITY_SETTINGS = os.getenv(
-    "ANTIGRAVITY_SETTINGS",
-    json.dumps({"permissions": {"allow": ["mcp(github/list_commits)"]}}),
-)
+ANTIGRAVITY_SETTINGS = os.getenv("ANTIGRAVITY_SETTINGS", "").strip()
+ANTIGRAVITY_SANDBOX = os.getenv("ANTIGRAVITY_SANDBOX", "false").strip().lower() in ("1", "true", "yes")
+ANTIGRAVITY_MODE = os.getenv("ANTIGRAVITY_MODE", "cli").strip().lower()
+ANTIGRAVITY_DESKTOP_APP = os.getenv("ANTIGRAVITY_DESKTOP_APP", "Antigravity").strip()
 ANTIGRAVITY_WORKSPACE = os.path.abspath(
     os.path.expanduser(
         os.getenv("ANTIGRAVITY_WORKSPACE", os.getcwd())
     )
 )
+
+
+def open_desktop_workspace(workspace: str) -> bool:
+    """Launch or focus Antigravity Desktop on the target workspace in desktop mode."""
+    if ANTIGRAVITY_MODE != "desktop":
+        return False
+    if not sys.platform.startswith("darwin"):
+        return False
+    try:
+        import subprocess
+        subprocess.run(
+            ["open", "-a", ANTIGRAVITY_DESKTOP_APP, workspace],
+            check=False,
+            capture_output=True,
+        )
+        return True
+    except Exception as error:
+        print(f"Warning: Failed to launch Antigravity Desktop: {error}", file=sys.stderr)
+        return False
 
 
 def antigravity_subprocess_env() -> dict[str, str]:
@@ -139,12 +158,18 @@ async def run_antigravity(
     if not os.path.isdir(ANTIGRAVITY_WORKSPACE):
         raise NotADirectoryError(ANTIGRAVITY_WORKSPACE)
 
+    open_desktop_workspace(ANTIGRAVITY_WORKSPACE)
+
     command = [
-        ANTIGRAVITY_BIN, "--input-format", "stream-json",
+        ANTIGRAVITY_BIN,
+        "--input-format", "stream-json",
         "--output-format", "stream-json",
-        "--print-timeout", ANTIGRAVITY_PRINT_TIMEOUT, "--sandbox",
-        "--settings", ANTIGRAVITY_SETTINGS,
+        "--print-timeout", ANTIGRAVITY_PRINT_TIMEOUT,
     ]
+    if ANTIGRAVITY_SANDBOX:
+        command.append("--sandbox")
+    if ANTIGRAVITY_SETTINGS:
+        command.extend(["--settings", ANTIGRAVITY_SETTINGS])
     if conversation_id:
         command.extend(["--conversation", conversation_id])
     input_message = json.dumps(
@@ -263,7 +288,23 @@ async def run_antigravity(
         raise RuntimeError(f"AGY exited {process.returncode} without terminal result: {stderr[-1500:]}")
     if process.returncode != 0 or result.get("status") != "SUCCESS":
         raise RuntimeError(f"AGY status {result.get('status')}: {error_text or stderr}")
-    response = result.get("response")
+    denied_actions = result.get("denied_actions") if isinstance(result, dict) else None
+    if denied_actions and isinstance(denied_actions, list) and len(denied_actions) > 0:
+        denied_summaries = []
+        for action in denied_actions:
+            if isinstance(action, dict):
+                act_type = action.get("action", "action")
+                disp = action.get("display_name") or action.get("tool_name") or action.get("name") or "unspecified"
+                denied_summaries.append(f"{act_type}: {disp}")
+            else:
+                denied_summaries.append(str(action))
+        summary_str = ", ".join(denied_summaries)
+        raise RuntimeError(
+            f"Antigravity execution BLOCKED: Tool permissions were denied ({summary_str}). "
+            "Please check settings.json or project permissions."
+        )
+
+    response = result.get("response") if isinstance(result, dict) else ""
     if not isinstance(response, str) or not response.strip():
         recent_events = json.dumps(list(events)[-5:], ensure_ascii=False)[-2000:]
         raise RuntimeError(

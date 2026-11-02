@@ -41,10 +41,29 @@ class RunAgentTests(unittest.TestCase):
             "body": "Started",
         })
 
-    def test_default_headless_settings_are_narrow(self):
-        self.assertEqual(json.loads(run_agent.ANTIGRAVITY_SETTINGS), {
-            "permissions": {"allow": ["mcp(github/list_commits)"]},
-        })
+    def test_default_settings_and_sandbox_inherit_native_permissions(self):
+        self.assertEqual(run_agent.ANTIGRAVITY_SETTINGS, "")
+        self.assertFalse(run_agent.ANTIGRAVITY_SANDBOX)
+        self.assertEqual(run_agent.ANTIGRAVITY_MODE, "cli")
+
+    @mock.patch("subprocess.run")
+    def test_open_desktop_workspace_in_desktop_mode(self, mock_run):
+        with mock.patch.object(run_agent, "ANTIGRAVITY_MODE", "desktop"), \
+             mock.patch.object(run_agent.sys, "platform", "darwin"):
+            result = run_agent.open_desktop_workspace("/tmp/test-workspace")
+            self.assertTrue(result)
+            mock_run.assert_called_once_with(
+                ["open", "-a", "Antigravity", "/tmp/test-workspace"],
+                check=False,
+                capture_output=True,
+            )
+
+    @mock.patch("subprocess.run")
+    def test_open_desktop_workspace_in_cli_mode_is_silent(self, mock_run):
+        with mock.patch.object(run_agent, "ANTIGRAVITY_MODE", "cli"):
+            result = run_agent.open_desktop_workspace("/tmp/test-workspace")
+            self.assertFalse(result)
+            mock_run.assert_not_called()
 
     @mock.patch.dict(os.environ, {
         "LINEAR_API_KEY": "personal-key",
