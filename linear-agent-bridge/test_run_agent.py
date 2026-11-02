@@ -1,3 +1,5 @@
+import ast
+import inspect
 import json
 import os
 import tempfile
@@ -8,6 +10,14 @@ import run_agent
 
 
 class RunAgentTests(unittest.TestCase):
+    def test_streaming_progress_interval_references_defined_constant(self):
+        # Regression: a step_update at runtime previously raised NameError
+        # because the streaming condition referenced AGY_PROGRESS_INTERVAL_SECS.
+        tree = ast.parse(inspect.getsource(run_agent))
+        names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+        self.assertIn("ANTIGRAVITY_PROGRESS_INTERVAL_SECS", names)
+        self.assertNotIn("AGY_PROGRESS_INTERVAL_SECS", names)
+
     def test_load_job_context_requires_and_returns_completion_url(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
             json.dump({
