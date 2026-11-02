@@ -460,10 +460,21 @@ const server = http.createServer(async (request, response) => {
           // This supervised test requires an attached terminal, and must not consume the daemon stdin.
           // Queue a ready-to-run handoff command as a local file instead of launching UI automation from launchd.
           const handoffFile = filename + ".chatgpt-handoff.json";
-          await fs.writeFile(handoffFile, JSON.stringify({ projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, autoSend: route.chatgptAutoSend === true, prompt: promptContext, jobFile: filename }, null, 2), { mode: 0o600 });
+          const handoffId = crypto.randomUUID();
+          const handoffPayload = {
+            conversationUrl: route.chatgptProjectUrl,
+            prompt: promptContext,
+            handoffId,
+            // Compatibility with the existing Playwright launcher.
+            projectUrl: route.chatgptProjectUrl,
+            conversationMode: route.chatgptConversationMode,
+            autoSend: route.chatgptAutoSend === true,
+            jobFile: filename,
+          };
+          await fs.writeFile(handoffFile, JSON.stringify(handoffPayload, null, 2), { mode: 0o600 });
           if (route.chatgptAutoSend === true) {
             const handoffController = useShortcuts ? "Apple Shortcut" : "Playwright";
-            await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: `Automatic ${handoffController} submission launched; response processing not implemented` });
+            await jobStore.transition(jobKey, "awaiting_external", { handoffFile, handoffId, note: `Automatic ${handoffController} submission launched; response processing not implemented` });
             void enqueueChatgptHandoff(() => new Promise((resolve, reject) => {
               const childArgs = useShortcuts
                 ? [script, "--handoff-file", handoffFile]
@@ -481,7 +492,7 @@ const server = http.createServer(async (request, response) => {
             });
           } else {
             const handoffController = useShortcuts ? "Apple Shortcut" : "Playwright";
-            await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: `Supervised ${handoffController} handoff ready; run manually` });
+            await jobStore.transition(jobKey, "awaiting_external", { handoffFile, handoffId, note: `Supervised ${handoffController} handoff ready; run manually` });
             console.log(`ChatGPT ${handoffController} handoff ready: ${handoffFile}`);
             console.log(`Run: node ${script} --handoff-file ${handoffFile}`);
           }
