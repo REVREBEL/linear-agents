@@ -328,7 +328,7 @@ const server = http.createServer(async (request, response) => {
           conversationId = prior?.conversationId || null;
         }
         // Cross-session recovery is opt-in and never supersedes same-session continuity.
-        if (!conversationId && route.agyConversationMode !== "reuse-existing" && routedJob.sessionAction !== "prompted" && process.env.AGY_ISSUE_RECOVERY_ENABLED === "true") {
+        if (!conversationId && route.agyConversationMode !== "reuse-existing" && routedJob.sessionAction !== "prompted" && process.env.ANTIGRAVITY_ISSUE_RECOVERY_ENABLED === "true") {
           const issueId = routedJob.issueMetadata?.id || routedJob.issueId || null;
           const prior = await jobStore.findLatestCompletedConversationByIssueId(issueId, sessionId, workspace, jobKey);
           if (prior) {
