@@ -173,6 +173,23 @@ const server = http.createServer(async (request, response) => {
       });
     }
 
+    if (url.pathname === "/github/handoff-result" && request.method === "GET") {
+      // Shortcuts can open a localhost URL without JSON or Authorization.
+      // This is a local, informational acknowledgement, not proof of a completed review.
+      const allowed = { "x-success": "success", "x-cancelled": "cancelled", "x-error": "error" };
+      const flags = [...url.searchParams.keys()];
+      if (flags.length !== 1 || !(flags[0] in allowed)) {
+        return sendJson(response, 400, { ok: false, error: "Use ?x-success, ?x-cancelled or ?x-error" });
+      }
+      const status = allowed[flags[0]];
+      const record = { at: new Date().toISOString(), status, source: "shortcuts", stage: "handoff" };
+      const resultDir = path.join(JOBS_DIR, "chatgpt", "handoff-results");
+      await fs.mkdir(resultDir, { recursive: true, mode: 0o700 });
+      await fs.appendFile(path.join(resultDir, "results.jsonl"), JSON.stringify(record) + "\n", { mode: 0o600 });
+      console.log(`ChatGPT Shortcut signal: ${status}`);
+      return sendJson(response, 200, { ok: true, status });
+    }
+
     if (url.pathname === "/github/handoff-result") {
       if (request.method !== "POST") {
         response.setHeader("Allow", "POST");
