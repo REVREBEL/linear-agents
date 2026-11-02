@@ -173,6 +173,41 @@ const server = http.createServer(async (request, response) => {
       });
     }
 
+    if (url.pathname === "/github/handoff-result") {
+      if (request.method !== "POST") {
+        response.setHeader("Allow", "POST");
+        return sendJson(response, 405, { ok: false, error: "Use POST to report a Shortcut handoff result" });
+      }
+      const callbackToken = process.env.CHATGPT_HANDOFF_CALLBACK_TOKEN;
+      if (!callbackToken) return sendJson(response, 503, { ok: false, error: "Shortcut callback token not configured" });
+      const supplied = request.headers.authorization;
+      const expected = `Bearer ${callbackToken}`;
+      if (typeof supplied !== "string" ||
+          Buffer.byteLength(supplied) !== Buffer.byteLength(expected) ||
+          !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized" });
+      }
+      let payload;
+      try { payload = JSON.parse(await readBody(request)); }
+      catch { return sendJson(response, 400, { ok: false, error: "Invalid JSON payload" }); }
+      const handoffId = payload?.handoffId;
+      const status = payload?.status;
+      const stage = payload?.stage;
+      if (typeof handoffId !== "string" || !/^[a-zA-Z0-9_-]{8,128}$/.test(handoffId) ||
+          !["success", "error"].includes(status) ||
+          typeof stage !== "string" || !/^[a-zA-Z0-9_-]{1,64}$/.test(stage) ||
+          (payload.error !== undefined && (typeof payload.error !== "string" || payload.error.length > 500))) {
+        return sendJson(response, 400, { ok: false, error: "Invalid handoff result" });
+      }
+      const record = { at: new Date().toISOString(), handoffId, status, stage,
+        ...(status === "error" && payload.error ? { error: payload.error } : {}) };
+      const resultDir = path.join(JOBS_DIR, "chatgpt", "handoff-results");
+      await fs.mkdir(resultDir, { recursive: true, mode: 0o700 });
+      await fs.appendFile(path.join(resultDir, "results.jsonl"), JSON.stringify(record) + "\n", { mode: 0o600 });
+      console.log(`ChatGPT Shortcut handoff result: ${handoffId} ${status} ${stage}`);
+      return sendJson(response, 202, { ok: true, accepted: true, handoffId, status });
+    }
+
     if (request.method === "POST" && url.pathname === "/github/events") {
       if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized" });
