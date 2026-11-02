@@ -35,5 +35,8 @@ if (!config.includes(routePlaceholder) || !config.includes('"custom_domain": tru
   throw new Error("Expected templated custom-domain route in wrangler.jsonc");
 }
 config = config.replace(routePlaceholder, `linear-${prefix}.${domain}`);
+// GitHub App custom domains are optional in older agent templates.
+const githubRoutePlaceholder = 'github-${' + key + '_PREFIX}.${DOMAIN}';
+config = config.replaceAll(githubRoutePlaceholder, `github-${prefix}.${domain}`);
 if (config.includes('${')) throw new Error('Unresolved environment template variable in generated Wrangler config');
 writeFileSync(output,config,{mode:0o600,flag:"wx"});
