@@ -173,21 +173,25 @@ const server = http.createServer(async (request, response) => {
       });
     }
 
-    if (url.pathname === "/github/handoff-result" && request.method === "GET") {
-      // Shortcuts can open a localhost URL without JSON or Authorization.
-      // This is a local, informational acknowledgement, not proof of a completed review.
-      const allowed = { "x-success": "success", "x-cancelled": "cancelled", "x-error": "error" };
-      const flags = [...url.searchParams.keys()];
-      if (flags.length !== 1 || !(flags[0] in allowed)) {
-        return sendJson(response, 400, { ok: false, error: "Use ?x-success, ?x-cancelled or ?x-error" });
+    // Shortcuts may construct a URL with &handoffid= before the ?result suffix.
+    // Accept that legacy format as well as normal URL query parameters.
+    const shortcutLegacyMatch = /^\\/github\\/handoff-result&handoffid=([a-zA-Z0-9_-]{8,128})$/.exec(url.pathname);
+    if (request.method === "GET" && (url.pathname === "/github/handoff-result" || shortcutLegacyMatch)) {
+      const handoffId = shortcutLegacyMatch?.[1] || url.searchParams.get("handoffid") || url.searchParams.get("handoffId");
+      const allowed = { "success": "success", "cancelled": "cancelled", "error": "error",
+        "x-success": "success", "x-cancelled": "cancelled", "x-error": "error" };
+      const outcomeFlags = [...url.searchParams.keys()].filter(key => Object.hasOwn(allowed, key));
+      if (outcomeFlags.length !== 1 || (handoffId !== null && !/^[a-zA-Z0-9_-]{8,128}$/.test(handoffId))) {
+        return sendJson(response, 400, { ok: false, error: "Use ?success, ?cancelled or ?error, optionally with handoffid" });
       }
-      const status = allowed[flags[0]];
-      const record = { at: new Date().toISOString(), status, source: "shortcuts", stage: "handoff" };
+      const status = allowed[outcomeFlags[0]];
+      const record = { at: new Date().toISOString(), status, source: "shortcuts", stage: "handoff",
+        ...(handoffId ? { handoffId } : {}) };
       const resultDir = path.join(JOBS_DIR, "chatgpt", "handoff-results");
       await fs.mkdir(resultDir, { recursive: true, mode: 0o700 });
       await fs.appendFile(path.join(resultDir, "results.jsonl"), JSON.stringify(record) + "\n", { mode: 0o600 });
-      console.log(`ChatGPT Shortcut signal: ${status}`);
-      return sendJson(response, 200, { ok: true, status });
+      console.log(`ChatGPT Shortcut signal: ${status} ${handoffId || "(unassigned)"}`);
+      return sendJson(response, 200, { ok: true, status, ...(handoffId ? { handoffId } : {}) });
     }
 
     if (url.pathname === "/github/handoff-result") {
