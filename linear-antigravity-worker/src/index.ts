@@ -68,9 +68,35 @@ export default {
           let mismatch = 0;
           for (let i = 0; i < expected.length; i++) mismatch |= expected[i] ^ supplied[i];
           if (mismatch !== 0) return jsonResponse({ ok: false, error: "Invalid GitHub webhook signature" }, 401);
-          // Ingress verified. Do not acknowledge a review job until a durable
-          // PR-review dispatcher is installed; GitHub can redeliver failures.
-          return jsonResponse({ ok: false, error: "GitHub review dispatch not yet configured", event, delivery }, 503);
+          // Forward only the authenticated event and minimum required metadata.
+          // Do not expose GitHub webhook secrets or installation credentials to the bridge.
+          let payload: unknown;
+          try { payload = JSON.parse(new TextDecoder().decode(body)); }
+          catch { return jsonResponse({ ok: false, error: "Invalid GitHub JSON" }, 400); }
+          if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+            return jsonResponse({ ok: false, error: "Invalid GitHub event" }, 400);
+          }
+          if (event !== "pull_request" && event !== "ping") {
+            return jsonResponse({ ok: true, ignored: true, event }, 200);
+          }
+          const bridgeUrl = new URL(env.BRIDGE_URL);
+          bridgeUrl.pathname = "/github/events";
+          bridgeUrl.search = "";
+          let upstream: Response;
+          try {
+            upstream = await fetch(bridgeUrl.toString(), {
+              method: "POST",
+              headers: { "content-type": "application/json", "authorization": `Bearer ${env.BRIDGE_SHARED_SECRET}`, "x-github-agent": "antigravity" },
+              body: JSON.stringify({ event, delivery, payload }),
+              signal: AbortSignal.timeout(10000),
+            });
+          } catch {
+            return jsonResponse({ ok: false, error: "GitHub event bridge unavailable" }, 503);
+          }
+          if (!upstream.ok) {
+            return jsonResponse({ ok: false, error: "GitHub event bridge rejected delivery", status: upstream.status }, 503);
+          }
+          return jsonResponse({ ok: true, accepted: true, event, delivery }, 202);
         }
         if (url.pathname === "/oauth/callback") {
           return jsonResponse({ ok: false, error: "GitHub OAuth callback not configured; App installation tokens do not require user OAuth" }, 501);
