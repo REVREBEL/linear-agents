@@ -79,6 +79,52 @@ class RunAgentTests(unittest.TestCase):
         self.assertNotIn("BRIDGE_SHARED_SECRET", environment)
         self.assertEqual(environment["UNRELATED_SETTING"], "preserved")
 
+    def test_format_step_summary_various_tools(self):
+        ws = "/path/to/repo"
+
+        # 1. run_command with toolSummary
+        step_cmd_summary = {
+            "tool_calls": [{"name": "run_command", "args": {"toolSummary": "Git status check", "CommandLine": "git status"}}]
+        }
+        self.assertEqual(run_agent.format_step_summary(step_cmd_summary, ws), "running: Git status check")
+
+        # 2. run_command without toolSummary
+        step_cmd_raw = {
+            "tool_calls": [{"name": "run_command", "args": {"CommandLine": "npm test -- --watchAll=false"}}]
+        }
+        self.assertEqual(run_agent.format_step_summary(step_cmd_raw, ws), "running command: `npm test -- --watchAll=false`")
+
+        # 3. read_file with relative path resolution
+        step_read = {
+            "tool_calls": [{"name": "read_file", "args": {"Path": "/path/to/repo/src/index.ts"}}]
+        }
+        self.assertEqual(run_agent.format_step_summary(step_read, ws), "reading `src/index.ts`")
+
+        # 4. edit_file
+        step_edit = {
+            "tool_calls": [{"name": "edit_file", "args": {"Path": "/path/to/repo/src/index.ts"}}]
+        }
+        self.assertEqual(run_agent.format_step_summary(step_edit, ws), "editing `src/index.ts`")
+
+        # 5. call_mcp_tool
+        step_mcp = {
+            "tool_calls": [{"name": "call_mcp_tool", "args": {"ServerName": "github", "ToolName": "create_pull_request"}}]
+        }
+        self.assertEqual(run_agent.format_step_summary(step_mcp, ws), "calling MCP github/create_pull_request")
+
+        # 6. search_web
+        step_search = {
+            "tool_calls": [{"name": "search_web", "args": {"query": "Linear agent webhooks"}}]
+        }
+        self.assertEqual(run_agent.format_step_summary(step_search, ws), 'searching web for "Linear agent webhooks"')
+
+        # 7. thought without tool calls
+        step_thought = {
+            "thinking": "Analyzing the implementation requirements...",
+            "tool_calls": []
+        }
+        self.assertEqual(run_agent.format_step_summary(step_thought, ws), "analyzing task context")
+
 
 if __name__ == "__main__":
     unittest.main()

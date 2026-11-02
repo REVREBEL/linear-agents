@@ -17,6 +17,7 @@ ANTIGRAVITY_BIN = os.path.expanduser(
     os.getenv("ANTIGRAVITY_BIN", "~/.local/bin/agy")
 )
 ANTIGRAVITY_PRINT_TIMEOUT = os.getenv("ANTIGRAVITY_PRINT_TIMEOUT", "30m")
+ANTIGRAVITY_PROGRESS_INTERVAL_SECS = float(os.getenv("AGY_PROGRESS_INTERVAL_SECS", "15"))
 ANTIGRAVITY_SETTINGS = os.getenv("ANTIGRAVITY_SETTINGS", "").strip()
 ANTIGRAVITY_SANDBOX = os.getenv("ANTIGRAVITY_SANDBOX", "false").strip().lower() in ("1", "true", "yes")
 ANTIGRAVITY_MODE = os.getenv("ANTIGRAVITY_MODE", "cli").strip().lower()
@@ -26,6 +27,78 @@ ANTIGRAVITY_WORKSPACE = os.path.abspath(
         os.getenv("ANTIGRAVITY_WORKSPACE", os.getcwd())
     )
 )
+
+
+def format_step_summary(step: dict, workspace: str = "") -> str:
+    """Format a human-readable, detailed progress summary for Linear."""
+    step_type = step.get("step_type")
+    tool_name = step.get("tool_name") or ""
+    tool_args = step.get("tool_args") or step.get("args") or step.get("tool_call", {}).get("args") or {}
+
+    tool_calls = step.get("tool_calls")
+    if isinstance(tool_calls, list) and tool_calls:
+        first_tc = tool_calls[0]
+        if isinstance(first_tc, dict):
+            if not tool_name:
+                tool_name = first_tc.get("name") or first_tc.get("tool_name") or ""
+            if not tool_args:
+                tool_args = first_tc.get("args") or first_tc.get("arguments") or {}
+
+    if not isinstance(tool_args, dict):
+        tool_args = {}
+
+    summary = step.get("summary") or tool_args.get("toolSummary") or tool_args.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        clean_sum = summary.strip().strip('"\'')
+        if clean_sum:
+            return f"running: {clean_sum}"
+
+    if tool_name == "run_command":
+        cmd = tool_args.get("CommandLine") or tool_args.get("command") or ""
+        cmd_clean = str(cmd).strip().strip('"\'')
+        if cmd_clean:
+            if len(cmd_clean) > 70:
+                cmd_clean = cmd_clean[:67] + "..."
+            return f"running command: `{cmd_clean}`"
+        return "running terminal command"
+
+    if tool_name in ("read_file", "edit_file", "write_file"):
+        path_val = tool_args.get("Path") or tool_args.get("path") or ""
+        path_clean = str(path_val).strip().strip('"\'')
+        if path_clean:
+            if workspace and path_clean.startswith(workspace):
+                rel = os.path.relpath(path_clean, workspace)
+            else:
+                rel = os.path.basename(path_clean) or path_clean
+            action = "editing" if tool_name == "edit_file" else ("writing" if tool_name == "write_file" else "reading")
+            return f"{action} `{rel}`"
+        return f"file operation ({tool_name})"
+
+    if tool_name == "call_mcp_tool":
+        server = str(tool_args.get("ServerName") or tool_args.get("server") or "").strip().strip('"\'')
+        mcp_tool = str(tool_args.get("ToolName") or tool_args.get("tool") or "").strip().strip('"\'')
+        if server and mcp_tool:
+            return f"calling MCP {server}/{mcp_tool}"
+        if mcp_tool:
+            return f"calling MCP tool `{mcp_tool}`"
+        return "calling MCP tool"
+
+    if tool_name == "search_web":
+        query = str(tool_args.get("query") or "").strip().strip('"\'')
+        if query:
+            if len(query) > 60:
+                query = query[:57] + "..."
+            return f'searching web for "{query}"'
+        return "searching the web"
+
+    if tool_name:
+        safe_tool = tool_name if re.fullmatch(r"[a-zA-Z0-9_.-]{1,60}", tool_name) else "tool"
+        return f"executing {safe_tool}"
+
+    if step.get("thinking") or step_type in ("thought", "plan", "PLANNER_RESPONSE"):
+        return "analyzing task context"
+
+    return "Working on task..."
 
 
 def open_desktop_workspace(workspace: str) -> bool:
@@ -246,18 +319,12 @@ async def run_antigravity(
                 step = event.get("step_update") or {}
                 index = step.get("step_index")
                 state = step.get("state")
-                step_type = step.get("step_type")
                 now = time.monotonic()
                 if (isinstance(index, int) and index > last_step_reported and
-                    state == "ACTIVE" and now - last_progress_at >= 60):
+                    state == "ACTIVE" and now - last_progress_at >= AGY_PROGRESS_INTERVAL_SECS):
                     last_step_reported = index
                     last_progress_at = now
-                    if step_type == "tool":
-                        tool = step.get("tool_name")
-                        safe_tool = tool if isinstance(tool, str) and re.fullmatch(r"[a-zA-Z0-9_.-]{1,60}", tool) else "tool"
-                        summary = f"Antigravity is working (step {index + 1}): running {safe_tool}."
-                    else:
-                        summary = f"Antigravity is working (step {index + 1})."
+                    summary = format_step_summary(step, ANTIGRAVITY_WORKSPACE)
                     await announce_progress(summary)
             if event.get("event") == "result" and isinstance(event.get("result"), dict):
                 result = event["result"]
