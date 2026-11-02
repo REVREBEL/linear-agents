@@ -4,6 +4,7 @@ The bridge can pass an existing ChatGPT conversation URL and prompt to one macOS
 
 ```json
 {
+  "handoffId": "BRIDGE_JOB_ID",
   "projectUrl": "https://chatgpt.com/g/g-p-PROJECT/c/CONVERSATION",
   "conversationMode": "reuse-existing",
   "prompt": "Text to submit"
@@ -18,10 +19,11 @@ Add these actions before the existing, tested browser/paste actions:
 
 1. **Get Contents of File** from **Shortcut Input**.
 2. **Get Dictionary from Input** using the file contents.
-3. **Get Dictionary Value** for `projectUrl`; set variable `Conversation URL`.
-4. **Get Dictionary Value** for `prompt` from the same Dictionary; set variable `Prompt`.
-5. **Open URLs** with `Conversation URL`.
-6. **Copy to Clipboard** with `Prompt`.
+3. **Get Dictionary Value** for `projectUrl`; set variable `ChatGPT_URL`.
+4. **Get Dictionary Value** for `prompt` from the same Dictionary; set variable `ChatGPT_Prompt`.
+5. **Get Dictionary Value** for `handoffId` from the same Dictionary; set variable `ChatGPT_handoffId`.
+6. **Open URLs** with `ChatGPT_URL`.
+7. **Copy to Clipboard** with `ChatGPT_Prompt`.
 
 Then keep the tested wait and AppleScript paste/submit actions. Remove the hard-coded project folder, `text-file.txt`, answer-copying, and outbox-save actions unless a separate response-capture workflow still needs them. The bridge does not treat browser text selection as a verified ChatGPT response.
 
