@@ -1,3 +1,4 @@
+import { sanitizeGithubEvent, recordGithubEvent } from "./github-events.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -170,6 +171,36 @@ const server = http.createServer(async (request, response) => {
         service: "local-linear-agent-router",
         agent: agentForHost(host),
       });
+    }
+
+    if (request.method === "POST" && url.pathname === "/github/events") {
+      if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized" });
+      }
+      const source = request.headers["x-github-agent"];
+      if (source !== "chatgpt" && source !== "antigravity") {
+        return sendJson(response, 400, { ok: false, error: "Unknown GitHub agent" });
+      }
+      let event;
+      try { event = sanitizeGithubEvent(JSON.parse(await readBody(request))); }
+      catch (error) { return sendJson(response, 400, { ok: false, error: error.message }); }
+      const eventDir = path.join(JOBS_DIR, "github-events");
+      // Atomic create prevents duplicate webhook retries from being journaled twice.
+      await fs.mkdir(eventDir, { recursive: true, mode: 0o700 });
+      const claimFile = path.join(eventDir, `${source}-${event.delivery}.claim`);
+      try { await fs.writeFile(claimFile, event.delivery, { flag: "wx", mode: 0o600 }); }
+      catch (error) {
+        if (error.code === "EEXIST") return sendJson(response, 202, { ok: true, duplicate: true, delivery: event.delivery });
+        throw error;
+      }
+      try {
+        await recordGithubEvent(JOBS_DIR, event, source);
+      } catch (error) {
+        await fs.unlink(claimFile).catch(() => {});
+        throw error;
+      }
+      console.log(`GitHub event recorded: ${source} ${event.event} ${event.action} ${event.repository || ""} ${event.number || ""}`);
+      return sendJson(response, 202, { ok: true, accepted: true, delivery: event.delivery });
     }
 
     if (request.method === "POST" && url.pathname === "/issue-completed") {
