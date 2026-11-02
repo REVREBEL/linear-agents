@@ -427,38 +427,46 @@ const server = http.createServer(async (request, response) => {
       if (!route.chatgptProjectUrl) {
         await jobStore.transition(jobKey, "failed", { error: "No chatgpt.projectUrl in Linear project mapping" });
         console.error("ChatGPT handoff stopped: project mapping has no chatgpt.projectUrl");
-      } else if (process.env.CHATGPT_HANDOFF_MODE === "supervised-playwright" || route.chatgptAutoSend === true) {
+      } else if (["supervised-playwright", "shortcuts"].includes(process.env.CHATGPT_HANDOFF_MODE) || route.chatgptAutoSend === true) {
         const promptContext = extractPromptContext(routedJob);
         if (!promptContext) {
           await jobStore.transition(jobKey, "failed", { error: "Missing ChatGPT promptContext" });
         } else {
-          const script = path.resolve(PROJECT_DIR, "../scripts/chatgpt-playwright/handoff-test.mjs");
+          const useShortcuts = process.env.CHATGPT_HANDOFF_MODE === "shortcuts";
+          const script = path.resolve(PROJECT_DIR, useShortcuts
+            ? "../scripts/chatgpt-shortcuts/handoff.mjs"
+            : "../scripts/chatgpt-playwright/handoff-test.mjs");
           // This supervised test requires an attached terminal, and must not consume the daemon stdin.
           // Queue a ready-to-run handoff command as a local file instead of launching UI automation from launchd.
           const handoffFile = filename + ".chatgpt-handoff.json";
           await fs.writeFile(handoffFile, JSON.stringify({ projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, autoSend: route.chatgptAutoSend === true, prompt: promptContext, jobFile: filename }, null, 2), { mode: 0o600 });
           if (route.chatgptAutoSend === true) {
-            await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: "Automatic Playwright submission launched; response processing not implemented" });
+            const handoffController = useShortcuts ? "Apple Shortcut" : "Playwright";
+            await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: `Automatic ${handoffController} submission launched; response processing not implemented` });
             void enqueueChatgptHandoff(() => new Promise((resolve, reject) => {
-              const child = spawn(process.execPath, [script, "--handoff-file", handoffFile, "--auto-send", "--keep-open"], {
+              const childArgs = useShortcuts
+                ? [script, "--handoff-file", handoffFile]
+                : [script, "--handoff-file", handoffFile, "--auto-send", "--keep-open"];
+              const child = spawn(process.execPath, childArgs, {
                 cwd: path.resolve(PROJECT_DIR, ".."), env: process.env, stdio: ["ignore", "pipe", "pipe"],
               });
               child.stdout?.on("data", chunk => console.log("[ChatGPT handoff] " + String(chunk).trimEnd()));
               child.stderr?.on("data", chunk => console.error("[ChatGPT handoff] " + String(chunk).trimEnd()));
               child.once("error", reject);
-              child.once("close", code => code === 0 ? resolve() : reject(new Error("Playwright handoff exited with code " + code)));
+              child.once("close", code => code === 0 ? resolve() : reject(new Error(`${handoffController} handoff exited with code ${code}`)));
             })).catch(async error => {
               console.error("Automatic ChatGPT handoff failed:", error);
               await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(e => console.error("Unable to record ChatGPT handoff failure:", e));
             });
           } else {
-            await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: "Supervised Playwright handoff ready; run manually" });
-            console.log(`ChatGPT Playwright handoff ready: ${handoffFile}`);
+            const handoffController = useShortcuts ? "Apple Shortcut" : "Playwright";
+            await jobStore.transition(jobKey, "awaiting_external", { handoffFile, note: `Supervised ${handoffController} handoff ready; run manually` });
+            console.log(`ChatGPT ${handoffController} handoff ready: ${handoffFile}`);
             console.log(`Run: node ${script} --handoff-file ${handoffFile}`);
           }
         }
       } else {
-        await jobStore.transition(jobKey, "awaiting_external", { note: "ChatGPT task saved; set CHATGPT_HANDOFF_MODE=supervised-playwright to prepare browser handoff" });
+        await jobStore.transition(jobKey, "awaiting_external", { note: "ChatGPT task saved; set CHATGPT_HANDOFF_MODE=supervised-playwright or shortcuts to prepare a browser handoff" });
       }
     } else if (agent === "trae") {
       startTrae(routedJob, filename, workspace, jobKey);

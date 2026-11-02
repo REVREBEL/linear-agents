@@ -24,7 +24,7 @@ All five checked-in Workers accept created agent sessions and `AgentSessionEvent
 
 Routed task JSON is kept under the target repository's `.linear-agent/projects/<project-uuid>/inbox/`. The Worker sends a signed/authenticated issue-completed notification to the bridge when the Linear issue reaches a completed workflow state; the bridge's `POST /issue-completed` endpoint removes associated inbox JSON then. A `/complete` session callback alone does **not** delete the inbox. On the AGY path, a structured quota-exhaustion event with a conversation ID can transition the persisted ledger to `waiting_quota`, set a default two-hour `resumeAt`, and schedule continuation of that same conversation with a cap on retries (see [job durability](JOB_DURABILITY.md)). This is implemented in source; a real production quota-exhaustion recovery has **not** been verified in this review.
 
-For ChatGPT, see [the Playwright handoff](CHATGPT_PLAYWRIGHT_HANDOFF.md). For macOS startup, see [LaunchAgent setup](MACOS_LAUNCHAGENT.md). This audit checked checked-in code, not live OAuth installations, Cloudflare WAF rules, the Mac's launchd state, or end-to-end Linear agent behavior.
+For ChatGPT, see [the Playwright handoff](CHATGPT_PLAYWRIGHT_HANDOFF.md) or the native [Apple Shortcuts handoff](CHATGPT_SHORTCUTS_HANDOFF.md). For macOS startup, see [LaunchAgent setup](MACOS_LAUNCHAGENT.md). This audit checked checked-in code, not live OAuth installations, Cloudflare WAF rules, the Mac's launchd state, or end-to-end Linear agent behavior.
 
 ---
 

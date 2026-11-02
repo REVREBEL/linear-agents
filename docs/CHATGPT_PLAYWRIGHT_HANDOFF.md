@@ -1,5 +1,7 @@
 # ChatGPT Playwright handoff
 
+For the alternative native macOS Shortcut controller, see [ChatGPT Apple Shortcuts handoff](CHATGPT_SHORTCUTS_HANDOFF.md).
+
 **Implementation reference, 2026-10-28.** The checked-in bridge supports automated prompt submission to an **existing** ChatGPT conversation when explicitly enabled. Browser control uses Playwright; it is not a ChatGPT API integration and does not verify that an LLM completed a task.
 
 ## Setup
