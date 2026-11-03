@@ -1,4 +1,4 @@
-import { sanitizeGithubEvent, recordGithubEvent } from "./github-events.mjs";
+import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt } from "./github-events.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -32,6 +32,58 @@ function enqueueChatgptHandoff(task) {
     console.error("ChatGPT handoff queue error:", error);
   });
   return running;
+}
+
+async function prepareGithubShortcutHandoff(event, source) {
+  if (!shouldDispatchGithubReview(event, source)) return null;
+  if (process.env.CHATGPT_HANDOFF_MODE !== "shortcuts") {
+    throw new Error("GitHub PR review dispatch requires CHATGPT_HANDOFF_MODE=shortcuts");
+  }
+  const config = JSON.parse(await fs.readFile(ROUTING_CONFIG_FILE, "utf8"));
+  const destination = resolveGithubReviewDestination(config, event.repository);
+  if (!destination.ok) throw new Error(destination.error);
+  const handoffId = crypto.createHash("sha256").update(`github:${source}:${event.delivery}`).digest("hex");
+  const handoffDir = path.join(JOBS_DIR, "github-events", "handoffs");
+  const handoffFile = path.join(handoffDir, `${source}-${event.delivery}.chatgpt-handoff.json`);
+  await fs.mkdir(handoffDir, { recursive: true, mode: 0o700 });
+  await fs.writeFile(handoffFile, JSON.stringify({
+    conversationUrl: destination.conversationUrl,
+    prompt: buildGithubReviewPrompt(event),
+    handoffId,
+  }, null, 2), { mode: 0o600 });
+  return { handoffFile, handoffId };
+}
+
+async function claimGithubReviewDispatch(event, source) {
+  if (!shouldDispatchGithubReview(event, source)) return null;
+  const eventDir = path.join(JOBS_DIR, "github-events");
+  await fs.mkdir(eventDir, { recursive: true, mode: 0o700 });
+  const dispatchClaim = path.join(eventDir, `${source}-${event.delivery}.review.claim`);
+  try { await fs.writeFile(dispatchClaim, event.delivery, { flag: "wx", mode: 0o600 }); }
+  catch (error) {
+    if (error.code === "EEXIST") return { duplicate: true };
+    throw error;
+  }
+  try {
+    const handoff = await prepareGithubShortcutHandoff(event, source);
+    return { ...handoff, dispatchClaim };
+  } catch (error) {
+    await fs.unlink(dispatchClaim).catch(() => {});
+    throw error;
+  }
+}
+
+function launchGithubShortcutHandoff(handoff) {
+  const script = path.resolve(PROJECT_DIR, "../scripts/chatgpt-shortcuts/handoff.mjs");
+  void enqueueChatgptHandoff(() => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [script, "--handoff-file", handoff.handoffFile], {
+      cwd: path.resolve(PROJECT_DIR, ".."), env: process.env, stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout?.on("data", chunk => console.log("[GitHub ChatGPT handoff] " + String(chunk).trimEnd()));
+    child.stderr?.on("data", chunk => console.error("[GitHub ChatGPT handoff] " + String(chunk).trimEnd()));
+    child.once("error", reject);
+    child.once("close", code => code === 0 ? resolve() : reject(new Error(`GitHub Shortcut handoff exited with code ${code}`)));
+  })).catch(error => console.error("GitHub ChatGPT handoff failed:", error));
 }
 
 const ROUTING_CONFIG_FILE = process.env.ROUTING_CONFIG_FILE || path.join(PROJECT_DIR, "routing.json");
@@ -246,17 +298,35 @@ const server = http.createServer(async (request, response) => {
       const claimFile = path.join(eventDir, `${source}-${event.delivery}.claim`);
       try { await fs.writeFile(claimFile, event.delivery, { flag: "wx", mode: 0o600 }); }
       catch (error) {
-        if (error.code === "EEXIST") return sendJson(response, 202, { ok: true, duplicate: true, delivery: event.delivery });
+        if (error.code === "EEXIST") {
+          try {
+            const recovered = await claimGithubReviewDispatch(event, source);
+            if (recovered && !recovered.duplicate) {
+              launchGithubShortcutHandoff(recovered);
+              return sendJson(response, 202, { ok: true, duplicate: true, recoveredReviewDispatch: true,
+                delivery: event.delivery, handoffId: recovered.handoffId, reviewDispatched: true });
+            }
+            return sendJson(response, 202, { ok: true, duplicate: true, delivery: event.delivery,
+              reviewDispatched: recovered?.duplicate === true });
+          } catch (recoveryError) {
+            return sendJson(response, 422, { ok: false, duplicate: true, error: recoveryError.message });
+          }
+        }
         throw error;
       }
+      let handoff;
       try {
+        handoff = await claimGithubReviewDispatch(event, source);
         await recordGithubEvent(JOBS_DIR, event, source);
+        if (handoff && !handoff.duplicate) launchGithubShortcutHandoff(handoff);
+        console.log(`GitHub event recorded: ${source} ${event.event} ${event.action} ${event.repository || ""} ${event.number || ""}`);
+        return sendJson(response, 202, { ok: true, accepted: true, delivery: event.delivery,
+          ...(handoff && !handoff.duplicate ? { handoffId: handoff.handoffId, reviewDispatched: true } : { reviewDispatched: handoff?.duplicate === true }) });
       } catch (error) {
         await fs.unlink(claimFile).catch(() => {});
-        throw error;
+        if (handoff?.dispatchClaim) await fs.unlink(handoff.dispatchClaim).catch(() => {});
+        return sendJson(response, 422, { ok: false, error: error.message });
       }
-      console.log(`GitHub event recorded: ${source} ${event.event} ${event.action} ${event.repository || ""} ${event.number || ""}`);
-      return sendJson(response, 202, { ok: true, accepted: true, delivery: event.delivery });
     }
 
     if (request.method === "POST" && url.pathname === "/issue-completed") {

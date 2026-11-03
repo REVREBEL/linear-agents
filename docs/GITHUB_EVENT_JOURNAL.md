@@ -19,7 +19,7 @@ The value must **exactly match the GitHub App's webhook secret** used to sign th
 
 After deploying, verify with `wrangler secret list --name linear-chatgpt-agent` (names only), then redeliver the failed event in GitHub App Settings → Advanced → Recent Deliveries. HTTP 202 indicates the Worker and bridge accepted the event, not that a review completed.
 
-Inbound events currently recorded: `ping`, and `pull_request` actions `opened`, `reopened`, `synchronize`, `ready_for_review`, `closed`, `converted_to_draft`, `edited`. Unknown event families/actions are acknowledged and ignored.
+Inbound events recorded are `ping`, and `pull_request` actions `opened`, `reopened`, `synchronize`, `ready_for_review`, `closed`, `converted_to_draft`, `edited`. Unknown event families/actions are acknowledged and ignored. For the ChatGPT GitHub source, a non-draft `opened` event or `ready_for_review` event also dispatches the configured macOS Shortcut when the repository has exactly one distinct automatic ChatGPT code-review conversation across its mapped Linear projects.
 
 The bridge requires `Authorization: Bearer <BRIDGE_SHARED_SECRET>` and `x-github-agent`. The local endpoint is **not** a public, unauthenticated webhook.
 
@@ -47,11 +47,11 @@ This explicitly installs and starts the LaunchAgent. Confirm Git authentication 
 
 ## Deployment
 
-Pull changes and deploy `linear-chatgpt` and `linear-antigravity` Workers, then restart the local bridge. No Chrome, Shortcuts, or PR-review execution is triggered by this initial ingress milestone. A successful HTTP 202 acknowledges durable journal acceptance, **not** that a review started or completed.
+Pull changes and deploy `linear-chatgpt` and `linear-antigravity` Workers, then restart the local bridge. With `CHATGPT_HANDOFF_MODE=shortcuts`, an actionable ChatGPT PR event writes a private handoff file and queues `Linear ChatGPT Handoff`. The bridge response reports `reviewDispatched: true` and the handoff ID. This confirms local dispatch only, **not** that ChatGPT submitted or completed the review; the Shortcut callback is tracked separately.
 
-## Next phase
+## Dispatch and deduplication
 
-Route only selected pull_request actions to the reviewing agent, map repository/PR to a Linear project and existing ChatGPT conversation, enqueue the macOS Shortcuts handoff, and track browser submission and review completion separately. Keep event journal publishing decoupled from webhook acknowledgement; GitHub push failures should not cause GitHub to resend valid events.
+GitHub delivery claims remain the duplicate-submission boundary: the bridge prepares the handoff before journaling, removes the claim if preparation or journaling fails, and never launches a second Shortcut for the same accepted `source:delivery`. Journal publishing remains decoupled from webhook acknowledgement; GitHub push failures do not cause GitHub to resend valid events.
 
 ## ChatGPT PR-review handoff contract (planned dispatcher)
 

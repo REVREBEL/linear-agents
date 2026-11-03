@@ -17,7 +17,9 @@ ANTIGRAVITY_BIN = os.path.expanduser(
     os.getenv("ANTIGRAVITY_BIN", "~/.local/bin/agy")
 )
 ANTIGRAVITY_PRINT_TIMEOUT = os.getenv("ANTIGRAVITY_PRINT_TIMEOUT", "30m")
-ANTIGRAVITY_PROGRESS_INTERVAL_SECS = float(os.getenv("AGY_PROGRESS_INTERVAL_SECS", "15"))
+ANTIGRAVITY_PROGRESS_INTERVAL_SECS = float(
+    os.getenv("AGY_PROGRESS_INTERVAL_SECS", os.getenv("ANTIGRAVITY_PROGRESS_INTERVAL_SECS", "10"))
+)
 ANTIGRAVITY_SETTINGS = os.getenv("ANTIGRAVITY_SETTINGS", "").strip()
 ANTIGRAVITY_SANDBOX = os.getenv("ANTIGRAVITY_SANDBOX", "false").strip().lower() in ("1", "true", "yes")
 ANTIGRAVITY_MODE = os.getenv("ANTIGRAVITY_MODE", "cli").strip().lower()
@@ -29,74 +31,229 @@ ANTIGRAVITY_WORKSPACE = os.path.abspath(
 )
 
 
-def format_step_summary(step: dict, workspace: str = "") -> str:
-    """Format a human-readable, detailed progress summary for Linear."""
-    step_type = step.get("step_type")
-    tool_name = step.get("tool_name") or ""
-    tool_args = step.get("tool_args") or step.get("args") or step.get("tool_call", {}).get("args") or {}
+def extract_tool_info(step: dict) -> tuple[str, dict]:
+    """Extract tool name and normalized parameters dict across all AGY schemas."""
+    tool_name = str(
+        step.get("tool_name")
+        or step.get("tool")
+        or step.get("name")
+        or ""
+    ).strip()
+    params = {}
 
+    # 1. tool_info (AGY stream-json standard)
+    tool_info = step.get("tool_info")
+    if isinstance(tool_info, dict):
+        if not tool_name:
+            tool_name = str(tool_info.get("name") or tool_info.get("tool_name") or "").strip()
+        raw_params = tool_info.get("parameters") or tool_info.get("args") or tool_info.get("arguments") or {}
+        if isinstance(raw_params, dict):
+            params.update(raw_params)
+        elif isinstance(raw_params, str):
+            try:
+                parsed = json.loads(raw_params)
+                if isinstance(parsed, dict):
+                    params.update(parsed)
+            except Exception:
+                pass
+
+    # 2. tool_calls list (transcript and OpenAI format)
     tool_calls = step.get("tool_calls")
     if isinstance(tool_calls, list) and tool_calls:
-        first_tc = tool_calls[0]
-        if isinstance(first_tc, dict):
+        first = tool_calls[0]
+        if isinstance(first, dict):
             if not tool_name:
-                tool_name = first_tc.get("name") or first_tc.get("tool_name") or ""
-            if not tool_args:
-                tool_args = first_tc.get("args") or first_tc.get("arguments") or {}
+                tool_name = str(
+                    first.get("name")
+                    or first.get("tool_name")
+                    or first.get("function", {}).get("name")
+                    or ""
+                ).strip()
+            raw_args = (
+                first.get("args")
+                or first.get("arguments")
+                or first.get("parameters")
+                or first.get("function", {}).get("arguments")
+                or {}
+            )
+            if isinstance(raw_args, dict):
+                params.update(raw_args)
+            elif isinstance(raw_args, str):
+                try:
+                    parsed = json.loads(raw_args)
+                    if isinstance(parsed, dict):
+                        params.update(parsed)
+                except Exception:
+                    pass
 
-    if not isinstance(tool_args, dict):
-        tool_args = {}
+    # 3. Direct step attributes (tool_args, args, parameters)
+    for key in ("tool_args", "args", "parameters", "arguments"):
+        raw = step.get(key)
+        if isinstance(raw, dict):
+            params.update(raw)
+        elif isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    params.update(parsed)
+            except Exception:
+                pass
 
+    # Clean string values (strip surrounding quotes if duplicated)
+    cleaned_params = {}
+    for k, v in params.items():
+        if isinstance(v, str):
+            v_str = v.strip()
+            if (v_str.startswith('"') and v_str.endswith('"')) or (v_str.startswith("'") and v_str.endswith("'")):
+                v_str = v_str[1:-1].strip()
+            cleaned_params[k] = v_str
+        else:
+            cleaned_params[k] = v
+
+    return tool_name, cleaned_params
+
+
+def format_step_summary(step: dict, workspace: str = "") -> str:
+    """Format a human-readable, highly detailed progress summary for Linear."""
+    step_type = str(step.get("step_type") or "").strip()
+    tool_name, tool_args = extract_tool_info(step)
+
+    # Clean summary / toolSummary if provided by agent
     summary = step.get("summary") or tool_args.get("toolSummary") or tool_args.get("summary")
+    clean_sum = ""
     if isinstance(summary, str) and summary.strip():
         clean_sum = summary.strip().strip('"\'')
+
+    # 1. Shell commands (run_command, bash, exec)
+    if tool_name in ("run_command", "bash", "exec"):
+        cmd = str(tool_args.get("CommandLine") or tool_args.get("command") or tool_args.get("cmd") or "").strip()
+        if (cmd.startswith('"') and cmd.endswith('"')) or (cmd.startswith("'") and cmd.endswith("'")):
+            cmd = cmd[1:-1].strip()
+
+        cmd_display = cmd
+        if len(cmd_display) > 65:
+            cmd_display = cmd_display[:62] + "..."
+
+        if clean_sum and cmd_display:
+            if clean_sum.lower() in cmd_display.lower():
+                return f"Running: `{cmd_display}`"
+            return f"Running: {clean_sum} (`{cmd_display}`)"
         if clean_sum:
-            return f"running: {clean_sum}"
+            return f"Running: {clean_sum}"
+        if cmd_display:
+            return f"Running command: `{cmd_display}`"
+        return "Running terminal command"
 
-    if tool_name == "run_command":
-        cmd = tool_args.get("CommandLine") or tool_args.get("command") or ""
-        cmd_clean = str(cmd).strip().strip('"\'')
-        if cmd_clean:
-            if len(cmd_clean) > 70:
-                cmd_clean = cmd_clean[:67] + "..."
-            return f"running command: `{cmd_clean}`"
-        return "running terminal command"
-
-    if tool_name in ("read_file", "edit_file", "write_file"):
-        path_val = tool_args.get("Path") or tool_args.get("path") or ""
-        path_clean = str(path_val).strip().strip('"\'')
-        if path_clean:
-            if workspace and path_clean.startswith(workspace):
-                rel = os.path.relpath(path_clean, workspace)
+    # 2. File reads
+    if tool_name in ("read_file", "view_file"):
+        path_val = str(tool_args.get("Path") or tool_args.get("path") or tool_args.get("file_path") or tool_args.get("file") or "").strip()
+        if path_val:
+            if workspace and path_val.startswith(workspace):
+                rel = os.path.relpath(path_val, workspace)
             else:
-                rel = os.path.basename(path_clean) or path_clean
-            action = "editing" if tool_name == "edit_file" else ("writing" if tool_name == "write_file" else "reading")
+                rel = os.path.basename(path_val) or path_val
+            start_l = tool_args.get("StartLine")
+            end_l = tool_args.get("EndLine")
+            if start_l and end_l:
+                return f"Reading `{rel}` (lines {start_l}-{end_l})"
+            return f"Reading `{rel}`"
+        return "Reading file"
+
+    # 3. File edits / writes
+    if tool_name in ("edit_file", "write_file", "replace_file_content", "multi_replace_file_content", "sed_file", "write_to_file"):
+        path_val = str(tool_args.get("Path") or tool_args.get("path") or tool_args.get("file_path") or tool_args.get("file") or "").strip()
+        if path_val:
+            if workspace and path_val.startswith(workspace):
+                rel = os.path.relpath(path_val, workspace)
+            else:
+                rel = os.path.basename(path_val) or path_val
+            action = "Editing" if "edit" in tool_name or "replace" in tool_name or "sed" in tool_name else "Writing"
             return f"{action} `{rel}`"
-        return f"file operation ({tool_name})"
+        return f"File operation ({tool_name})"
 
+    # 4. Background tasks management (manage_task)
+    if tool_name == "manage_task":
+        action = str(tool_args.get("Action") or tool_args.get("action") or "").strip()
+        task_id = str(tool_args.get("TaskId") or tool_args.get("taskId") or "").strip()
+        short_id = task_id.split("/")[-1] if "/" in task_id else task_id
+        if action == "list":
+            return "Listing background tasks"
+        if action == "status":
+            return f"Checking background task status ({short_id or 'all'})"
+        if action == "kill":
+            return f"Cancelling background task ({short_id or 'active'})"
+        if action == "send_input":
+            return f"Sending input to background task ({short_id})"
+        if action:
+            return f"Task manager: {action}"
+        return "Managing background tasks"
+
+    # 5. MCP tool calls (call_mcp_tool)
     if tool_name == "call_mcp_tool":
-        server = str(tool_args.get("ServerName") or tool_args.get("server") or "").strip().strip('"\'')
-        mcp_tool = str(tool_args.get("ToolName") or tool_args.get("tool") or "").strip().strip('"\'')
+        server = str(tool_args.get("ServerName") or tool_args.get("server") or "").strip()
+        mcp_tool = str(tool_args.get("ToolName") or tool_args.get("tool") or "").strip()
+        if server.startswith("linear"):
+            return f"Calling Linear MCP: `{mcp_tool or server}`"
+        if server == "github":
+            return f"Calling GitHub MCP: `{mcp_tool or server}`"
         if server and mcp_tool:
-            return f"calling MCP {server}/{mcp_tool}"
+            return f"Calling MCP: `{server}/{mcp_tool}`"
         if mcp_tool:
-            return f"calling MCP tool `{mcp_tool}`"
-        return "calling MCP tool"
+            return f"Calling MCP tool: `{mcp_tool}`"
+        return "Calling MCP tool"
 
-    if tool_name == "search_web":
-        query = str(tool_args.get("query") or "").strip().strip('"\'')
+    # 6. Web searches
+    if tool_name in ("search_web", "web_search"):
+        query = str(tool_args.get("query") or "").strip()
         if query:
             if len(query) > 60:
                 query = query[:57] + "..."
-            return f'searching web for "{query}"'
-        return "searching the web"
+            return f'Searching web for "{query}"'
+        return "Searching the web"
 
+    # 7. Code search / navigation (grep_search, find_by_name, list_dir)
+    if tool_name == "grep_search":
+        query = str(tool_args.get("query") or "").strip()
+        return f'Searching codebase for "{query}"' if query else "Searching codebase"
+    if tool_name == "find_by_name":
+        pattern = str(tool_args.get("pattern") or "").strip()
+        return f'Finding files matching "{pattern}"' if pattern else "Finding files"
+    if tool_name == "list_dir":
+        dir_path = str(tool_args.get("dir_path") or tool_args.get("path") or "").strip()
+        if dir_path:
+            rel = os.path.relpath(dir_path, workspace) if (workspace and dir_path.startswith(workspace)) else os.path.basename(dir_path) or dir_path
+            return f"Listing directory `{rel}`"
+        return "Listing directory"
+
+    # 8. Subagent invocations & messaging
+    if tool_name in ("invoke_subagent", "define_subagent"):
+        role = str(tool_args.get("Role") or tool_args.get("TypeName") or tool_args.get("Name") or "subagent").strip()
+        return f"Invoking subagent: {role}"
+    if tool_name == "send_message":
+        recip = str(tool_args.get("Recipient") or "agent").strip()
+        return f"Messaging subagent ({recip})"
+    if tool_name == "manage_subagents":
+        action = str(tool_args.get("Action") or "status").strip()
+        return f"Managing subagents ({action})"
+
+    # 9. Generic tool fallback
     if tool_name:
         safe_tool = tool_name if re.fullmatch(r"[a-zA-Z0-9_.-]{1,60}", tool_name) else "tool"
-        return f"executing {safe_tool}"
+        return f"Executing {safe_tool}"
 
-    if step.get("thinking") or step_type in ("thought", "plan", "PLANNER_RESPONSE"):
-        return "analyzing task context"
+    # 10. Agent thought or text generation
+    thinking = str(step.get("thinking") or "").strip()
+    if thinking:
+        first_line = thinking.splitlines()[0].strip().lstrip("#*- ")
+        if len(first_line) > 60:
+            first_line = first_line[:57] + "..."
+        return f"Reasoning: {first_line}"
+
+    if step_type in ("agent_response", "PLANNER_RESPONSE"):
+        return "Generating response..."
+
+    if step_type in ("thought", "plan"):
+        return "Analyzing repository and planning next steps"
 
     return "Working on task..."
 
@@ -272,6 +429,7 @@ async def run_antigravity(
     announced_conversation_id = conversation_id
     last_progress_at = 0.0
     last_step_reported = -1
+    last_reported_summary = ""
     progress_tasks = set()
 
     async def announce_progress(message: str):
@@ -320,12 +478,13 @@ async def run_antigravity(
                 index = step.get("step_index")
                 state = step.get("state")
                 now = time.monotonic()
-                if (isinstance(index, int) and index > last_step_reported and
-                    state == "ACTIVE" and now - last_progress_at >= ANTIGRAVITY_PROGRESS_INTERVAL_SECS):
-                    last_step_reported = index
-                    last_progress_at = now
+                if isinstance(index, int) and state == "ACTIVE":
                     summary = format_step_summary(step, ANTIGRAVITY_WORKSPACE)
-                    await announce_progress(summary)
+                    if summary and summary != last_reported_summary and (now - last_progress_at >= ANTIGRAVITY_PROGRESS_INTERVAL_SECS or index > last_step_reported + 1):
+                        last_step_reported = index
+                        last_progress_at = now
+                        last_reported_summary = summary
+                        await announce_progress(summary)
             if event.get("event") == "result" and isinstance(event.get("result"), dict):
                 result = event["result"]
 

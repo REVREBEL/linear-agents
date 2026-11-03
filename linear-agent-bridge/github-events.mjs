@@ -29,3 +29,39 @@ export async function recordGithubEvent(baseDir, event, source) {
   await fs.appendFile(journal, JSON.stringify(record) + "\n", { mode: 0o600 });
   return { journal, record };
 }
+
+export function resolveGithubReviewDestination(config, repository) {
+  if (!config || typeof config !== "object" || !config.projects || typeof repository !== "string") {
+    return { ok: false, error: "Invalid GitHub review routing input" };
+  }
+  const candidates = [];
+  for (const [projectId, project] of Object.entries(config.projects)) {
+    if (!project || typeof project !== "object") continue;
+    const mappedRepository = project.repository || config.initiatives?.[project.initiativeId]?.repository;
+    const review = project.codeReview;
+    if (mappedRepository !== repository || !review || review.provider !== "chatgpt") continue;
+    const conversationUrl = review.conversationUrl || review.projectUrl;
+    if (review.conversationMode !== "reuse-existing" || review.autoSend !== true || typeof conversationUrl !== "string") continue;
+    try {
+      const parsed = new URL(conversationUrl);
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      if (parsed.protocol !== "https:" || parsed.hostname !== "chatgpt.com" || parsed.search || parsed.hash ||
+          parts.length !== 4 || parts[0] !== "g" || !parts[1].startsWith("g-p-") || parts[2] !== "c" || !parts[3]) continue;
+    } catch { continue; }
+    candidates.push({ projectId, conversationUrl });
+  }
+  if (candidates.length === 0) return { ok: false, error: `No automatic ChatGPT code-review route for ${repository}` };
+  const destinations = [...new Set(candidates.map(candidate => candidate.conversationUrl))];
+  if (destinations.length !== 1) return { ok: false, error: `Ambiguous ChatGPT code-review routes for ${repository}` };
+  return { ok: true, conversationUrl: destinations[0], projectIds: candidates.map(candidate => candidate.projectId) };
+}
+
+export function shouldDispatchGithubReview(event, source) {
+  return source === "chatgpt" && event?.event === "pull_request" &&
+    ((event.action === "opened" && event.draft !== true) || event.action === "ready_for_review");
+}
+
+export function buildGithubReviewPrompt(event) {
+  if (!event || event.event !== "pull_request") throw Error("Pull request event required");
+  return `Please review ${event.repository} PR #${event.number}.\n\nPR URL: ${event.url}\nHead SHA: ${event.headSha}`;
+}

@@ -92,48 +92,115 @@ class RunAgentTests(unittest.TestCase):
     def test_format_step_summary_various_tools(self):
         ws = "/path/to/repo"
 
-        # 1. run_command with toolSummary
-        step_cmd_summary = {
-            "tool_calls": [{"name": "run_command", "args": {"toolSummary": "Git status check", "CommandLine": "git status"}}]
+        # 1. AGY stream-json format: run_command with CommandLine and toolSummary
+        step_agy_cmd = {
+            "step_type": "tool",
+            "tool_name": "run_command",
+            "tool_info": {
+                "name": "run_command",
+                "parameters": {"CommandLine": "git status", "toolSummary": "Check git status"}
+            }
         }
-        self.assertEqual(run_agent.format_step_summary(step_cmd_summary, ws), "running: Git status check")
+        self.assertEqual(run_agent.format_step_summary(step_agy_cmd, ws), "Running: Check git status (`git status`)")
 
-        # 2. run_command without toolSummary
+        # 2. AGY stream-json format: run_command raw
         step_cmd_raw = {
-            "tool_calls": [{"name": "run_command", "args": {"CommandLine": "npm test -- --watchAll=false"}}]
+            "step_type": "tool",
+            "tool_name": "run_command",
+            "tool_info": {
+                "name": "run_command",
+                "parameters": {"CommandLine": "npm test -- --watchAll=false"}
+            }
         }
-        self.assertEqual(run_agent.format_step_summary(step_cmd_raw, ws), "running command: `npm test -- --watchAll=false`")
+        self.assertEqual(run_agent.format_step_summary(step_cmd_raw, ws), "Running command: `npm test -- --watchAll=false`")
 
-        # 3. read_file with relative path resolution
+        # 3. AGY stream-json format: read_file with line ranges
         step_read = {
-            "tool_calls": [{"name": "read_file", "args": {"Path": "/path/to/repo/src/index.ts"}}]
+            "step_type": "tool",
+            "tool_name": "read_file",
+            "tool_info": {
+                "name": "read_file",
+                "parameters": {"Path": "/path/to/repo/src/index.ts", "StartLine": 1, "EndLine": 50}
+            }
         }
-        self.assertEqual(run_agent.format_step_summary(step_read, ws), "reading `src/index.ts`")
+        self.assertEqual(run_agent.format_step_summary(step_read, ws), "Reading `src/index.ts` (lines 1-50)")
 
-        # 4. edit_file
+        # 4. AGY stream-json format: edit_file
         step_edit = {
-            "tool_calls": [{"name": "edit_file", "args": {"Path": "/path/to/repo/src/index.ts"}}]
+            "step_type": "tool",
+            "tool_name": "edit_file",
+            "tool_info": {
+                "name": "edit_file",
+                "parameters": {"Path": "/path/to/repo/src/index.ts"}
+            }
         }
-        self.assertEqual(run_agent.format_step_summary(step_edit, ws), "editing `src/index.ts`")
+        self.assertEqual(run_agent.format_step_summary(step_edit, ws), "Editing `src/index.ts`")
 
-        # 5. call_mcp_tool
-        step_mcp = {
-            "tool_calls": [{"name": "call_mcp_tool", "args": {"ServerName": "github", "ToolName": "create_pull_request"}}]
+        # 5. AGY stream-json format: manage_task
+        step_task_list = {
+            "step_type": "tool",
+            "tool_name": "manage_task",
+            "tool_info": {
+                "name": "manage_task",
+                "parameters": {"Action": "list"}
+            }
         }
-        self.assertEqual(run_agent.format_step_summary(step_mcp, ws), "calling MCP github/create_pull_request")
+        self.assertEqual(run_agent.format_step_summary(step_task_list, ws), "Listing background tasks")
 
-        # 6. search_web
+        step_task_status = {
+            "step_type": "tool",
+            "tool_name": "manage_task",
+            "tool_info": {
+                "name": "manage_task",
+                "parameters": {"Action": "status", "TaskId": "task-45"}
+            }
+        }
+        self.assertEqual(run_agent.format_step_summary(step_task_status, ws), "Checking background task status (task-45)")
+
+        # 6. AGY stream-json format: MCP tool
+        step_mcp_gh = {
+            "step_type": "tool",
+            "tool_name": "call_mcp_tool",
+            "tool_info": {
+                "name": "call_mcp_tool",
+                "parameters": {"ServerName": "github", "ToolName": "create_pull_request"}
+            }
+        }
+        self.assertEqual(run_agent.format_step_summary(step_mcp_gh, ws), "Calling GitHub MCP: `create_pull_request`")
+
+        step_mcp_linear = {
+            "step_type": "tool",
+            "tool_name": "call_mcp_tool",
+            "tool_info": {
+                "name": "call_mcp_tool",
+                "parameters": {"ServerName": "linear_linear", "ToolName": "get_issue"}
+            }
+        }
+        self.assertEqual(run_agent.format_step_summary(step_mcp_linear, ws), "Calling Linear MCP: `get_issue`")
+
+        # 7. AGY stream-json format: search_web
         step_search = {
-            "tool_calls": [{"name": "search_web", "args": {"query": "Linear agent webhooks"}}]
+            "step_type": "tool",
+            "tool_name": "search_web",
+            "tool_info": {
+                "name": "search_web",
+                "parameters": {"query": "Linear agent webhooks"}
+            }
         }
-        self.assertEqual(run_agent.format_step_summary(step_search, ws), 'searching web for "Linear agent webhooks"')
+        self.assertEqual(run_agent.format_step_summary(step_search, ws), 'Searching web for "Linear agent webhooks"')
 
-        # 7. thought without tool calls
+        # 8. Transcript / tool_calls format compatibility
+        step_tc = {
+            "tool_calls": [{"name": "read_file", "args": {"Path": "/path/to/repo/README.md"}}]
+        }
+        self.assertEqual(run_agent.format_step_summary(step_tc, ws), "Reading `README.md`")
+
+        # 9. Thought reasoning
         step_thought = {
-            "thinking": "Analyzing the implementation requirements...",
+            "thinking": "Analyzing the implementation requirements and reviewing files...\nExtra details",
             "tool_calls": []
         }
-        self.assertEqual(run_agent.format_step_summary(step_thought, ws), "analyzing task context")
+        self.assertEqual(run_agent.format_step_summary(step_thought, ws), "Reasoning: Analyzing the implementation requirements and reviewing f...")
 
 
 if __name__ == "__main__":
