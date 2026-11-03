@@ -116,7 +116,16 @@ case "${1:-}" in
         printf '%s' "${!sourced_key}" | "${wrangler_bin}" secret put "${key}" --config "${temp_config}"
       done
       printf '%s' "${BRIDGE_SHARED_SECRET}" | "${wrangler_bin}" secret put BRIDGE_SHARED_SECRET --config "${temp_config}"
-      echo "Synced four secrets for ${agent}."
+      # Optional GitHub App webhook secret. Do not upload the OAuth client secret.
+      # GitHub webhook handlers expect this Cloudflare binding to be named GITHUB_WEBHOOK_SECRET.
+      sourced_key="${prefix}_GITHUB_WEBHOOK_SECRET"
+      if [[ -n "${!sourced_key:-}" ]]; then
+        printf '%s' "${!sourced_key}" | "${wrangler_bin}" secret put GITHUB_WEBHOOK_SECRET --config "${temp_config}"
+        echo "Synced GitHub webhook secret for ${agent}."
+      else
+        echo "No GitHub webhook secret configured for ${agent}; existing Cloudflare secrets are unchanged."
+      fi
+      echo "Synced Linear and bridge secrets for ${agent}."
     }
     case "${action}" in
       types) "${wrangler_bin}" types --config "${temp_config}" "$@" ;;
@@ -146,6 +155,10 @@ case "${1:-}" in
           KEY="${key}" VALUE="${!sourced_key}" python3 -c 'import json,os; print(os.environ["KEY"]+"="+json.dumps(os.environ["VALUE"]))' >> .dev.vars
         done
         KEY=BRIDGE_SHARED_SECRET VALUE="${BRIDGE_SHARED_SECRET}" python3 -c 'import json,os; print(os.environ["KEY"]+"="+json.dumps(os.environ["VALUE"]))' >> .dev.vars
+        sourced_key="${prefix}_GITHUB_WEBHOOK_SECRET"
+        if [[ -n "${!sourced_key:-}" ]]; then
+          KEY=GITHUB_WEBHOOK_SECRET VALUE="${!sourced_key}" python3 -c 'import json,os; print(os.environ["KEY"]+"="+json.dumps(os.environ["VALUE"]))' >> .dev.vars
+        fi
         "${wrangler_bin}" dev --config "${temp_config}" "$@"
         ;;
       *) usage ;;
