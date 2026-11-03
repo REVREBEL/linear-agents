@@ -6,6 +6,24 @@ GitHub App webhook → `github-{agent}.revrebel.io/webhook` → Worker HMAC-SHA2
 
 The existing GitHub Workers handle `chatgpt` and `antigravity` only. The Worker needs a configured `GITHUB_WEBHOOK_SECRET` in Cloudflare, matching the GitHub App webhook secret. Workers also need `BRIDGE_SHARED_SECRET`.
 
+### Secret deployment
+
+`npm run deploy` uses `scripts/with-env.sh` to load the local root `.env`, generate Wrangler configuration, deploy the Worker, and synchronize secrets separately via `wrangler secret put`. GitHub webhook signing keys must **not** be placed under the public `vars` field of `wrangler.jsonc`.
+
+For example:
+
+```dotenv
+CHATGPT_GITHUB_WEBHOOK_SECRET="value-from-GitHub-App-webhook-settings"
+ANTIGRAVITY_GITHUB_WEBHOOK_SECRET="value-from-GitHub-App-webhook-settings"
+```
+
+Each non-empty value is uploaded to that Worker's Cloudflare `GITHUB_WEBHOOK_SECRET` binding. The corresponding variable may be empty or unset for an agent without a GitHub App; its other deployment steps will proceed. Missing values do **not** delete an existing Cloudflare secret.
+
+`CHATGPT_GITHUB_SECRET` and `ANTIGRAVITY_GITHUB_SECRET` are OAuth client secrets and must **not** be substituted for webhook-signing secrets. During local `wrangler dev`, the deployment wrapper also populates `.dev.vars` when a webhook secret is configured.
+
+After deployment, use GitHub App Settings → Advanced → Recent Deliveries to redeliver a failed webhook. An HTTP 202 from the Worker confirms the bridge accepted the event, not that a PR review was completed.
+
+
 Inbound events currently recorded: `ping`, and `pull_request` actions `opened`, `reopened`, `synchronize`, `ready_for_review`, `closed`, `converted_to_draft`, `edited`. Unknown event families/actions are acknowledged and ignored.
 
 The bridge requires `Authorization: Bearer <BRIDGE_SHARED_SECRET>` and `x-github-agent`. The local endpoint is **not** a public, unauthenticated webhook.
