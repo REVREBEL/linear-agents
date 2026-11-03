@@ -461,9 +461,13 @@ const server = http.createServer(async (request, response) => {
           // Queue a ready-to-run handoff command as a local file instead of launching UI automation from launchd.
           const handoffFile = filename + ".chatgpt-handoff.json";
           const handoffId = safeJobId;
+          // Mark automated ChatGPT submissions clearly without changing the original job prompt.
+          const automatedPrompt = promptContext.startsWith("Linear Bridge Automated Prompt:")
+            ? promptContext
+            : `Linear Bridge Automated Prompt: ${promptContext}`;
           const handoffPayload = useShortcuts
-            ? { conversationUrl: route.chatgptProjectUrl, prompt: promptContext, handoffId }
-            : { projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, autoSend: route.chatgptAutoSend === true, prompt: promptContext, jobFile: filename };
+            ? { conversationUrl: route.chatgptProjectUrl, prompt: automatedPrompt, handoffId }
+            : { projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, autoSend: route.chatgptAutoSend === true, prompt: automatedPrompt, jobFile: filename };
           await fs.writeFile(handoffFile, JSON.stringify(handoffPayload, null, 2), { mode: 0o600 });
           if (route.chatgptAutoSend === true) {
             const handoffController = useShortcuts ? "Apple Shortcut" : "Playwright";
