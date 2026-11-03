@@ -8,21 +8,16 @@ The existing GitHub Workers handle `chatgpt` and `antigravity` only. The Worker 
 
 ### Secret deployment
 
-`npm run deploy` uses `scripts/with-env.sh` to load the local root `.env`, generate Wrangler configuration, deploy the Worker, and synchronize secrets separately via `wrangler secret put`. GitHub webhook signing keys must **not** be placed under the public `vars` field of `wrangler.jsonc`.
-
-For example:
+The existing `.env` variables are the source of the GitHub webhook signing secrets. `scripts/with-env.sh` maps each agent's `*_GITHUB_SECRET` to Cloudflare's `GITHUB_WEBHOOK_SECRET` binding during `wrangler secret put` after Worker deployment, and into temporary `.dev.vars` for `wrangler dev`. Do not add these secrets to public `wrangler.jsonc` `vars` bindings.
 
 ```dotenv
-CHATGPT_GITHUB_WEBHOOK_SECRET="value-from-GitHub-App-webhook-settings"
-ANTIGRAVITY_GITHUB_WEBHOOK_SECRET="value-from-GitHub-App-webhook-settings"
+CHATGPT_GITHUB_SECRET="the-GitHub-App-webhook-secret"
+ANTIGRAVITY_GITHUB_SECRET="the-GitHub-App-webhook-secret"
 ```
 
-Each non-empty value is uploaded to that Worker's Cloudflare `GITHUB_WEBHOOK_SECRET` binding. The corresponding variable may be empty or unset for an agent without a GitHub App; its other deployment steps will proceed. Missing values do **not** delete an existing Cloudflare secret.
+The value must **exactly match the GitHub App's webhook secret** used to sign the `X-Hub-Signature-256` header. The GitHub OAuth client secret, if separately configured, is not interchangeable. No additional `*_GITHUB_WEBHOOK_SECRET` variables are required. Agents without a populated GitHub secret may still deploy; existing Cloudflare secrets are not deleted when a value is absent.
 
-`CHATGPT_GITHUB_SECRET` and `ANTIGRAVITY_GITHUB_SECRET` are OAuth client secrets and must **not** be substituted for webhook-signing secrets. During local `wrangler dev`, the deployment wrapper also populates `.dev.vars` when a webhook secret is configured.
-
-After deployment, use GitHub App Settings → Advanced → Recent Deliveries to redeliver a failed webhook. An HTTP 202 from the Worker confirms the bridge accepted the event, not that a PR review was completed.
-
+After deploying, verify with `wrangler secret list --name linear-chatgpt-agent` (names only), then redeliver the failed event in GitHub App Settings → Advanced → Recent Deliveries. HTTP 202 indicates the Worker and bridge accepted the event, not that a review completed.
 
 Inbound events currently recorded: `ping`, and `pull_request` actions `opened`, `reopened`, `synchronize`, `ready_for_review`, `closed`, `converted_to_draft`, `edited`. Unknown event families/actions are acknowledged and ignored.
 
