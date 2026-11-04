@@ -3,6 +3,8 @@ import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, rou
 import { ReauthorizationRequiredError } from "../../shared/oauth-errors";
 import { getInstallation } from "../../shared/oauth-installation";
 
+import { serveBridgeAccessToken } from "../../shared/bridge-access-token";
+
 interface Env {
   LINEAR_DATA: KVNamespace;
   DELIVERY_COORDINATOR: DurableObjectNamespace;
@@ -85,6 +87,10 @@ export default {
           return jsonResponse({ ok: false, stage: "bridge", status: bridgeResponse.status }, 502);
         }
         return jsonResponse({ ok: true, stage: "bridge", probeId, worker: env.SERVICE_NAME, bridge: data.service });
+      }
+
+      if (request.method === "POST" && url.pathname === "/bridge/access-token") {
+        return serveBridgeAccessToken(request, env);
       }
 
       if (request.method === "GET" && url.pathname === "/install") {

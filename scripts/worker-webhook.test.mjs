@@ -15,6 +15,9 @@ const deliveryUrl = dataUrl(await fs.readFile(path.join(root, "shared/delivery-c
 const installationSource = (await fs.readFile(path.join(root, "shared/oauth-installation.ts"), "utf8"))
   .replaceAll('"./oauth-errors"', JSON.stringify(helperUrl));
 const installationUrl = dataUrl(installationSource);
+const bridgeTokenSource = (await fs.readFile(path.join(root, "shared/bridge-access-token.ts"), "utf8"))
+  .replaceAll('"./oauth-installation"', JSON.stringify(installationUrl));
+const bridgeTokenUrl = dataUrl(bridgeTokenSource);
 const githubHomeUrl = dataUrl(await fs.readFile(path.join(root, "shared/github-app-homepage.ts"), "utf8"));
 const cloudflareStubUrl = "data:text/javascript;base64," + Buffer.from(
   "export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }"
@@ -26,6 +29,7 @@ async function loadWorker(agent) {
   js = js.replaceAll('"../../shared/oauth-errors"', JSON.stringify(helperUrl));
   js = js.replaceAll('"../../shared/delivery-coordinator"', JSON.stringify(deliveryUrl));
   js = js.replaceAll('"../../shared/oauth-installation"', JSON.stringify(installationUrl));
+  js = js.replaceAll('"../../shared/bridge-access-token"', JSON.stringify(bridgeTokenUrl));
   js = js.replaceAll('"../../shared/github-app-homepage"', JSON.stringify(githubHomeUrl));
   js = js.replaceAll('"cloudflare:workers"', JSON.stringify(cloudflareStubUrl));
   return await import("data:text/javascript;base64," + Buffer.from(js).toString("base64"));
