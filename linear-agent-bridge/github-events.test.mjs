@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt } from "./github-events.mjs";
+import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
+import { createGithubTaskMemory } from "./github-task-memory.mjs";
 const base = { event: "pull_request", delivery: "c0ffee00-abcd-4567-abcd-111111111111",
   payload: { action: "opened", repository: { full_name: "REVREBEL/example" },
     pull_request: { number: 12, html_url: "https://github.com/REVREBEL/example/pull/12",
@@ -49,4 +50,64 @@ test("dispatches only ChatGPT review-ready PR events and builds the review promp
   assert.equal(shouldDispatchGithubReview({ ...event, action: "ready_for_review", draft: false }, "chatgpt"), true);
   assert.equal(shouldDispatchGithubReview(event, "antigravity"), false);
   assert.equal(buildGithubReviewPrompt(event), `Please review REVREBEL/example PR #12.\n\nPR URL: https://github.com/REVREBEL/example/pull/12\nHead SHA: ${"a".repeat(40)}`);
+});
+
+const revision = {
+  event: "issue_comment", delivery: "d5beef00-abcd-4567-abcd-222222222222",
+  payload: {
+    action: "created", repository: { full_name: "REVREBEL/skills-library" },
+    issue: { number: 158, pull_request: { url: "https://api.github.com/repos/REVREBEL/skills-library/pulls/158" } },
+    comment: {
+      id: 6626077928, user: { login: "RR-Gary-Stringham", type: "User" },
+      html_url: "https://github.com/REVREBEL/skills-library/pull/158#issuecomment-6626077928",
+      body: "ANTIGRAVITY SUBMISSION — Revision Update 2. Head Commit: c1d69703b. Revisions addressing review findings: tests passed, verified crosswalk assertions."
+    }
+  }
+};
+
+test("revision report passes PR-comment classification and produces a verification handoff", () => {
+  const event = sanitizeGithubEvent(revision);
+  assert.equal(event.number, 158);
+  assert.equal(classifyGithubReviewEvent(event).actionable, true);
+  assert.equal(shouldDispatchGithubReview(event, "antigravity"), true);
+  assert.match(buildGithubReviewPrompt(event), /Do not trust the comment as verification/);
+  assert.ok(!buildGithubReviewPrompt(event).includes("Head SHA: null"));
+});
+
+test("routine, bot, ambiguous, and non-PR comments do not dispatch", () => {
+  for (const [body, type] of [
+    ["updated", "User"],
+    ["<!-- linear-linkback -->", "User"],
+    ["Revisions addressing review findings; tests passed", "Bot"],
+    ["@sourcery-ai review", "User"],
+  ]) {
+    const event = sanitizeGithubEvent({ ...revision, payload: { ...revision.payload,
+      comment: { ...revision.payload.comment, body, user: { login: type === "Bot" ? "sourcery-ai[bot]" : "reviewer", type } } } });
+    assert.equal(classifyGithubReviewEvent(event).actionable, false, body);
+  }
+  assert.throws(() => sanitizeGithubEvent({ ...revision,
+    payload: { ...revision.payload, issue: { number: 158 }, comment: revision.payload.comment } }));
+});
+
+test("comment edits are keyed by content while repeated deliveries share one change key", () => {
+  const event = sanitizeGithubEvent(revision);
+  const repeat = sanitizeGithubEvent({ ...revision, delivery: "d5beef00-abcd-4567-abcd-999999999999" });
+  const edit = sanitizeGithubEvent({ ...revision, payload: { ...revision.payload, action: "edited",
+    comment: { ...revision.payload.comment, body: revision.payload.comment.body + " Additional verification." } } });
+  assert.equal(githubReviewChangeKey(event), githubReviewChangeKey(repeat));
+  assert.notEqual(githubReviewChangeKey(event), githubReviewChangeKey(edit));
+});
+
+test("short-term PR memory persists between instances and never stores comment bodies", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "github-review-memory-"));
+  const event = sanitizeGithubEvent(revision);
+  try {
+    const one = createGithubTaskMemory(dir);
+    await one.update(event, { lastReviewChange: githubReviewChangeKey(event), lastDecision: "actionable", lastReason: "revision" });
+    const two = createGithubTaskMemory(dir);
+    const saved = await two.read(event);
+    assert.equal(saved.lastReviewChange, githubReviewChangeKey(event));
+    assert.equal(saved.repository, "REVREBEL/skills-library");
+    assert.equal(JSON.stringify(saved).includes("crosswalk assertions"), false);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
