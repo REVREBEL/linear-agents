@@ -1,5 +1,6 @@
 import { syncLinearCredential } from "./linear-credentials.mjs";
-import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt } from "./github-events.mjs";
+import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
+import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -23,6 +24,7 @@ const PROJECTS_ROOT =
   process.env.PROJECTS_ROOT || path.join(os.homedir(), "github-revrebel");
 const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs");
 const jobStore = createJobStore(JOBS_DIR);
+const githubTaskMemory = createGithubTaskMemory(JOBS_DIR);
 const agySessionQueue = createSessionQueue();
 // Serialize automated ChatGPT handoffs across the shared Chrome CDP browser.
 // Different conversations share the same browser process and visible tabs.
@@ -57,6 +59,8 @@ async function prepareGithubShortcutHandoff(event, source) {
 
 async function claimGithubReviewDispatch(event, source) {
   if (!shouldDispatchGithubReview(event, source)) return null;
+  const memory = await githubTaskMemory.read(event);
+  if (memory?.lastReviewChange === githubReviewChangeKey(event)) return { duplicate: true };
   const eventDir = path.join(JOBS_DIR, "github-events");
   await fs.mkdir(eventDir, { recursive: true, mode: 0o700 });
   const dispatchClaim = path.join(eventDir, `${source}-${event.delivery}.review.claim`);
@@ -319,6 +323,15 @@ const server = http.createServer(async (request, response) => {
       try {
         handoff = await claimGithubReviewDispatch(event, source);
         await recordGithubEvent(JOBS_DIR, event, source);
+        const classification = classifyGithubReviewEvent(event);
+        await githubTaskMemory.update(event, {
+          lastEvent: event.event + "." + event.action,
+          lastDecision: classification.actionable ? "actionable" : "routine",
+          lastReason: classification.reason,
+          ...(event.headSha ? { lastHeadSha: event.headSha } : {}),
+          ...(event.commentId ? { lastCommentId: event.commentId } : {}),
+          ...(handoff && !handoff.duplicate ? { lastReviewChange: githubReviewChangeKey(event) } : {}),
+        });
         if (handoff && !handoff.duplicate) launchGithubShortcutHandoff(handoff);
         console.log(`GitHub event recorded: ${source} ${event.event} ${event.action} ${event.repository || ""} ${event.number || ""}`);
         return sendJson(response, 202, { ok: true, accepted: true, delivery: event.delivery,
