@@ -2,6 +2,7 @@ import { syncLinearCredential } from "./linear-credentials.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
+import { retrieveMemuMemory } from "./memu-memory.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -446,7 +447,15 @@ const server = http.createServer(async (request, response) => {
     const priorTask = await activeTaskMemory.read(route.repositoryRoot, issueId);
     const originalTask = extractDirectTask(extractPromptContext(job));
     const recovery = activeTaskMemory.recoveryPreamble(priorTask);
-    const directTask = recovery ? recovery + "\n\n" + originalTask : originalTask;
+    const longTermMemory = await retrieveMemuMemory(
+      "Repository: " + (route.repositoryRoot || "") + ". Coding conventions, previous failures, testing practices."
+    );
+    const preamble = [
+      recovery,
+      longTermMemory ? "[Untrusted memU project recall; verify before use]\n" +
+        longTermMemory + "\n[End memU recall]" : "",
+    ].filter(Boolean).join("\n\n");
+    const directTask = preamble ? preamble + "\n\n" + originalTask : originalTask;
     await activeTaskMemory.update(route.repositoryRoot, issueId, {
       state: "active", lastJobKey: jobKey, lastAgent: agent,
       lastWorkspace: workspace,
