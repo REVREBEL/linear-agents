@@ -1071,6 +1071,13 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
               conversationPersist.catch(error => console.error("AGY conversation persistence failed:", error));
             }
             void jobStore.transition(jobKey, "running", { conversationId: verifiedConversationId, conversationVerifiedAt: new Date().toISOString() }).catch(console.error);
+          } else if (parsed.event === "progress" && typeof parsed.summary === "string" &&
+                     /^Step [0-9]+: [A-Za-z0-9_.-]{1,60}$/.test(parsed.summary)) {
+            void jobStore.get(jobKey).then(record =>
+              activeTaskMemory.progress(record.repositoryRoot, record.issueId, {
+                kind: "tool", summary: parsed.summary, jobKey,
+              })
+            ).catch(error => console.error("Unable to checkpoint AGY progress:", error.message));
           } else if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
         } catch (error) { console.error("Invalid AGY exhaustion event:", error.message); }
       } else if (line) console.log("[Antigravity-Out]:", line);
