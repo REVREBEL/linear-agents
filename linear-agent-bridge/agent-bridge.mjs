@@ -1,3 +1,4 @@
+import { syncLinearCredential } from "./linear-credentials.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt } from "./github-events.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
@@ -403,6 +404,13 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 422, { ok: false, accepted: false, error: route.error });
     }
 
+    const credential = await syncLinearCredential({
+      agent,
+      repositoryRoot: route.repositoryRoot,
+      organizationId: job.organizationId,
+      completionUrl: job.completionUrl || job.payload?.data?.completionUrl,
+      sharedSecret: SHARED_SECRET,
+    });
     const workspace = route.launchDirectory;
     const taskDir = path.join(route.repositoryRoot, ".linear-agent", "projects", route.scopeKey, "inbox");
     await fs.mkdir(taskDir, { recursive: true, mode: 0o700 });
@@ -502,7 +510,7 @@ const server = http.createServer(async (request, response) => {
           routedJob, filename, workspace, jobKey, conversationId,
           route.agyConversationMode === "reuse-existing"
             ? async id => saveAgyProjectConversation(route.projectId, workspace, id)
-            : null
+            : null, credential
         );
         if (route.agyConversationMode === "reuse-existing" && actualConversationId) {
           await saveAgyProjectConversation(route.projectId, workspace, actualConversationId);
@@ -568,9 +576,9 @@ const server = http.createServer(async (request, response) => {
         await jobStore.transition(jobKey, "awaiting_external", { note: "ChatGPT task saved; set CHATGPT_HANDOFF_MODE=supervised-playwright or shortcuts to prepare a browser handoff" });
       }
     } else if (agent === "trae") {
-      startTrae(routedJob, filename, workspace, jobKey);
+      startTrae(routedJob, filename, workspace, jobKey, credential);
     } else if (agent === "gemini") {
-      await startGemini(routedJob, filename, workspace, jobKey);
+      await startGemini(routedJob, filename, workspace, jobKey, credential);
     } else {
       await jobStore.transition(jobKey, "failed", { error: "Unknown agent host" });
       console.log(`Unknown agent hostname: ${host}. Job saved but not executed.`);
@@ -680,7 +688,7 @@ function scheduleAgyResume(jobKey, resumeAt) {
   agyResumeTimers.set(jobKey, timer);
 }
 
-function startAntigravity(job, filename, workspace, jobKey, conversationId = null, onVerifiedConversation = null) {
+function startAntigravity(job, filename, workspace, jobKey, conversationId = null, onVerifiedConversation = null, credential = null) {
   return new Promise((resolve, reject) => {
   const sessionId = extractAgentSessionId(job);
 
@@ -710,6 +718,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
       env: {
         ...antigravityEnv,
         ANTIGRAVITY_WORKSPACE: workspace,
+        ...(credential ? { [credential.variable]: credential.accessToken } : {}),
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -801,7 +810,7 @@ function startChatGPT(job, filename) {
   console.log(`ChatGPT job file: ${filename}`);
 }
 
-function startTrae(job, filename, workspace, jobKey) {
+function startTrae(job, filename, workspace, jobKey, credential) {
   if (!TRAE_BIN) {
     void jobStore.transition(jobKey, "failed", { error: "TRAE_BIN not configured" }).catch(console.error);
     console.error("TRAE_BIN is not configured. Job saved but Trae was not started.");
@@ -832,8 +841,7 @@ function startTrae(job, filename, workspace, jobKey) {
     cwd: workspace,
     env: {
       ...process.env,
-      LINEAR_API_KEY,
-      LINEAR_ACCESS_TOKEN,
+      [credential.variable]: credential.accessToken,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -841,7 +849,7 @@ function startTrae(job, filename, workspace, jobKey) {
   attachProcessLogs(traeProcess, "Trae", jobKey);
 }
 
-async function startGemini(job, filename, workspace, jobKey) {
+async function startGemini(job, filename, workspace, jobKey, credential) {
   if (!GEMINI_BIN) {
     await jobStore.transition(jobKey, "failed", { error: "GEMINI_BIN not configured" });
     console.error("GEMINI_BIN is not configured. Job saved but Gemini was not started.");
@@ -876,8 +884,7 @@ async function startGemini(job, filename, workspace, jobKey) {
     cwd: workspace,
     env: {
       ...process.env,
-      LINEAR_API_KEY,
-      LINEAR_ACCESS_TOKEN,
+      [credential.variable]: credential.accessToken,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -918,21 +925,19 @@ if [[ -z \${BRIDGE_SHARED_SECRET:-} ]]; then
   exit 1
 fi
 # Warp starts a fresh interactive shell rather than inheriting launchd's environment.
-# Load the LINEAR_API_KEY from the trusted repo-level environment file, not
-# from a prompt, CLI argument, or persisted issue payload.
-linear_env_file=${shellQuote(AGENT_ENV_FILE)}
-if [[ ! -f "$linear_env_file" ]]; then
-  print -u2 -- "Gemini launch stopped: bridge environment file not found"
+# Load Gemini's app token from the managed repository environment file.
+bridge_env_file=${shellQuote(path.join(workspace, ".env.linear-bridge"))}
+if [[ ! -f "$bridge_env_file" ]]; then
+  print -u2 -- "Gemini launch stopped: missing .env.linear-bridge"
   exit 1
 fi
-export LINEAR_API_KEY="$(
-  source "$linear_env_file"
-  print -rn -- "\${LINEAR_API_KEY:-}"
-)"
-if [[ -z ${LINEAR_API_KEY} ]]; then
-  print -u2 -- "Gemini launch stopped: LINEAR_API_KEY not set in bridge environment"
+source "$bridge_env_file"
+if [[ -z ${GEMINI_LINEAR_API_KEY:-} ]]; then
+  print -u2 -- "Gemini launch stopped: no Gemini App token"
   exit 1
 fi
+export GEMINI_LINEAR_API_KEY
+unset LINEAR_API_KEY LINEAR_ACCESS_TOKEN
 gemini_prompt=$(<${shellQuote(promptFile)})
 exec ${shellQuote(GEMINI_BIN)} --prompt-interactive "$gemini_prompt" --approval-mode auto_edit --skip-trust
 `;
