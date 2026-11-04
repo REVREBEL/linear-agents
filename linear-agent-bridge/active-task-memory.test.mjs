@@ -515,3 +515,19 @@ test("checkpoint expiration completely suppresses stale nextAction content", asy
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("progress events are bounded, redacted, and survive restart", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bridge-progress-"));
+  try {
+    const mem = createActiveTaskMemory(root);
+    await Promise.all(Array.from({ length: 31 }, (_, i) =>
+      mem.progress("repo", "issue-0123", {
+        kind: "tool", summary: "Step " + i + ": edit_file API_KEY=supersecret"
+      })));
+    const latest = await createActiveTaskMemory(root).read("repo", "issue-0123");
+    assert.equal(latest.progress.length, 20);
+    assert.equal(latest.progress[0].summary.startsWith("Step 11:"), true);
+    assert.ok(!JSON.stringify(latest).includes("supersecret"));
+    assert.match(mem.recoveryPreamble(latest), /Checkpoint: tool/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
