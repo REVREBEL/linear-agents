@@ -27,6 +27,8 @@ export function createActiveTaskMemory(root) {
         lastAgent: prior?.lastAgent || null, lastWorkspace: prior?.lastWorkspace || null,
         lastSessionId: prior?.lastSessionId || null, lastSeenAt: prior?.lastSeenAt || null,
         lastVerifiedResult: prior?.lastVerifiedResult || null,
+        progress: prior?.progress || [], lastProgressAt: prior?.lastProgressAt || null,
+        promotion: prior?.promotion || null,
         ...patch, updatedAt: new Date().toISOString(),
       };
       const output = fileOf(repo, issue), tmp = output + "." + crypto.randomUUID() + ".tmp";
@@ -39,6 +41,19 @@ export function createActiveTaskMemory(root) {
     locks.set(key, job);
     try { return await job; } finally { if (locks.get(key) === job) locks.delete(key); }
   }
+  async function progress(repo, issue, { kind = "milestone", summary = "", jobKey = null } = {}) {
+    if (!repo || !issue || !["milestone", "tool", "checkpoint", "error"].includes(kind)) return null;
+    // Only bounded, redacted descriptions; never store raw model transcripts.
+    const clean = String(summary).replace(/(Bearer\s+)[^\s]+/gi, "$1[REDACTED]")
+      .replace(/((?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi, "$1[REDACTED]")
+      .replace(/[\r\n]+/g, " ").slice(0, 240);
+    const prior = await read(repo, issue);
+    const entry = { at: new Date().toISOString(), kind, summary: clean, jobKey };
+    return update(repo, issue, {
+      progress: [...(prior?.progress || []), entry].slice(-20),
+      lastProgressAt: entry.at,
+    });
+  }
   function recoveryPreamble(record) {
     if (!record) return "";
     return [
@@ -48,9 +63,10 @@ export function createActiveTaskMemory(root) {
       "Previous state: " + (record.state || "unknown"),
       "Previous session: " + (record.lastSessionId || "unknown"),
       "Last recorded result: " + (record.lastVerifiedResult || "not verified"),
+      ...((record.progress || []).slice(-6).map(item => "Checkpoint: " + item.kind + " - " + item.summary)),
       "Do not recreate existing work without checking it.",
       "[End LinearBridge checkpoint]",
     ].join("\n");
   }
-  return { read, update, recoveryPreamble };
+  return { read, update, progress, recoveryPreamble };
 }
