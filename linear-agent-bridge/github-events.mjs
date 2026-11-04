@@ -43,7 +43,9 @@ export async function recordGithubEvent(baseDir, event, source) {
   const directory = path.join(baseDir, "github-events");
   await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   const journal = path.join(directory, "events.jsonl");
-  const record = { at: new Date().toISOString(), source, ...event };
+  // The event journal is operational metadata, not a transcript repository.
+  const { commentBody, ...metadata } = event;
+  const record = { at: new Date().toISOString(), source, ...metadata };
   // Serialized by bridge request queue. Only allow known, sanitized fields.
   await fs.appendFile(journal, JSON.stringify(record) + "\n", { mode: 0o600 });
   return { journal, record };
