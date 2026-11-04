@@ -1,6 +1,7 @@
 import { syncLinearCredential } from "./linear-credentials.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
+import { createActiveTaskMemory } from "./active-task-memory.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -25,6 +26,7 @@ const PROJECTS_ROOT =
 const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs");
 const jobStore = createJobStore(JOBS_DIR);
 const githubTaskMemory = createGithubTaskMemory(JOBS_DIR);
+const activeTaskMemory = createActiveTaskMemory(JOBS_DIR);
 const agySessionQueue = createSessionQueue();
 // Serialize automated ChatGPT handoffs across the shared Chrome CDP browser.
 // Different conversations share the same browser process and visible tabs.
@@ -440,7 +442,17 @@ const server = http.createServer(async (request, response) => {
       console.warn(`Unable to set local Git exclusion for task directory: ${error.message}`);
     }
     const filename = path.join(taskDir, `${safeJobId}.json`);
-    const directTask = extractDirectTask(extractPromptContext(job));
+    const issueId = job.issueMetadata?.id || job.issueId || null;
+    const priorTask = await activeTaskMemory.read(route.repositoryRoot, issueId);
+    const originalTask = extractDirectTask(extractPromptContext(job));
+    const recovery = activeTaskMemory.recoveryPreamble(priorTask);
+    const directTask = recovery ? recovery + "\n\n" + originalTask : originalTask;
+    await activeTaskMemory.update(route.repositoryRoot, issueId, {
+      state: "active", lastJobKey: jobKey, lastAgent: agent,
+      lastWorkspace: workspace,
+      lastSessionId: job.agentSessionId || job.payload?.data?.agentSessionId || null,
+      lastSeenAt: new Date().toISOString(),
+    });
     // Persist and dispatch one canonical prompt. The raw Linear webhook embeds
     // the same issue in agentSession.issue and promptContext; keeping it
     // duplicates instructions and unnecessarily expands downstream context.
@@ -797,6 +809,13 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
         scheduleAgyResume(jobKey, resumeAt);
       } else {
         await jobStore.transition(jobKey, code === 0 ? "completed" : "failed", { exitCode: code, signal, pid: null });
+        const completedRecord = await jobStore.get(jobKey);
+        await activeTaskMemory.update(completedRecord.repositoryRoot, completedRecord.issueId, {
+          state: code === 0 ? "agent-finished" : "needs-recovery",
+          lastVerifiedResult: code === 0
+            ? "Agent process exited 0; tests and review are NOT independently verified"
+            : "Agent process exited " + code + "; recovery required",
+        });
       }
     })().then(() => resolve(verifiedConversationId), error => { console.error("Antigravity completion handling failed:", error); reject(error); });
   });
