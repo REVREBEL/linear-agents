@@ -379,6 +379,16 @@ const server = http.createServer(async (request, response) => {
     const deliveryId = request.headers["x-linear-webhook-id"] ??
       crypto.createHash("sha256").update(rawBody).digest("hex");
     const jobKey = `${agent}:${String(deliveryId)}`;
+    // Resolve and synchronize before claiming a delivery, so transient credential
+    // failures can be retried without leaving a permanently claimed job.
+    const route = await resolveJobRoute(job);
+    const credential = route.ok ? await syncLinearCredential({
+      agent,
+      repositoryRoot: route.repositoryRoot,
+      organizationId: job.organizationId,
+      completionUrl: job.completionUrl || job.payload?.data?.completionUrl,
+      sharedSecret: SHARED_SECRET,
+    }) : null;
     const claimed = await jobStore.claim(jobKey, { agent, deliveryId: String(deliveryId), jobId: safeJobId });
     if (!claimed.created) {
       const state = claimed.record?.state || "claimed";
@@ -395,7 +405,6 @@ const server = http.createServer(async (request, response) => {
         state, host,
       });
     }
-    const route = await resolveJobRoute(job);
     if (!route.ok) {
       const pendingFile = path.join(AGENT_JOB_DIRS[agent], `${safeJobId}.unrouted.json`);
       await fs.writeFile(pendingFile, JSON.stringify({ reason: route.error, job }, null, 2), { mode: 0o600 });
@@ -404,13 +413,6 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 422, { ok: false, accepted: false, error: route.error });
     }
 
-    const credential = await syncLinearCredential({
-      agent,
-      repositoryRoot: route.repositoryRoot,
-      organizationId: job.organizationId,
-      completionUrl: job.completionUrl || job.payload?.data?.completionUrl,
-      sharedSecret: SHARED_SECRET,
-    });
     const workspace = route.launchDirectory;
     const taskDir = path.join(route.repositoryRoot, ".linear-agent", "projects", route.scopeKey, "inbox");
     await fs.mkdir(taskDir, { recursive: true, mode: 0o700 });
