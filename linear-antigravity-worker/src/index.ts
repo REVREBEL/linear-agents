@@ -81,7 +81,10 @@ export default {
           if (event === "pull_request" && !["opened", "reopened", "synchronize", "ready_for_review", "closed", "converted_to_draft", "edited"].includes((payload as { action?: string }).action || "")) {
             return jsonResponse({ ok: true, ignored: true, event, delivery }, 200);
           }
-          if (event !== "pull_request" && event !== "ping") {
+          if (event === "issue_comment" && !["created", "edited"].includes((payload as { action?: string }).action || "")) {
+            return jsonResponse({ ok: true, ignored: true, event, delivery }, 200);
+          }
+          if (event !== "pull_request" && event !== "issue_comment" && event !== "ping") {
             return jsonResponse({ ok: true, ignored: true, event }, 200);
           }
           const bridgeUrl = new URL(env.BRIDGE_URL);
