@@ -841,6 +841,7 @@ function startTrae(job, filename, workspace, jobKey, credential) {
     cwd: workspace,
     env: {
       ...process.env,
+      LINEAR_API_KEY: "", LINEAR_ACCESS_TOKEN: "",
       [credential.variable]: credential.accessToken,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -932,7 +933,7 @@ if [[ ! -f "$bridge_env_file" ]]; then
   exit 1
 fi
 source "$bridge_env_file"
-if [[ -z ${GEMINI_LINEAR_API_KEY:-} ]]; then
+if [[ -z \${GEMINI_LINEAR_API_KEY:-} ]]; then
   print -u2 -- "Gemini launch stopped: no Gemini App token"
   exit 1
 fi
