@@ -454,7 +454,7 @@ export function createActiveTaskMemory(root) {
         lastVerifiedResult: prior?.lastVerifiedResult || null,
         progress: prior?.progress || [], lastProgressAt: prior?.lastProgressAt || null,
         promotion: prior?.promotion || null,
-        ...patch, updatedAt: new Date().toISOString(),
+        ...(typeof patch === "function" ? patch(prior) : patch), updatedAt: new Date().toISOString(),
       };
       const output = fileOf(repo, issue), tmp = output + "." + crypto.randomUUID() + ".tmp";
       try {
@@ -482,12 +482,11 @@ export function createActiveTaskMemory(root) {
     const clean = String(summary).replace(/(Bearer\s+)[^\s]+/gi, "$1[REDACTED]")
       .replace(/((?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi, "$1[REDACTED]")
       .replace(/[\r\n]+/g, " ").slice(0, 240);
-    const prior = await read(repo, issue);
     const entry = { at: new Date().toISOString(), kind, summary: clean, jobKey };
-    return update(repo, issue, {
+    return update(repo, issue, prior => ({
       progress: [...(prior?.progress || []), entry].slice(-20),
       lastProgressAt: entry.at,
-    });
+    }));
   }
   function recoveryPreamble(record) {
 >>>>>>> 74d2468 (feat(memory): persist bounded progress milestones during tasks)
