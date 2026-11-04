@@ -885,6 +885,7 @@ async function startGemini(job, filename, workspace, jobKey, credential) {
     cwd: workspace,
     env: {
       ...process.env,
+      LINEAR_API_KEY: "", LINEAR_ACCESS_TOKEN: "",
       [credential.variable]: credential.accessToken,
     },
     stdio: ["ignore", "pipe", "pipe"],
