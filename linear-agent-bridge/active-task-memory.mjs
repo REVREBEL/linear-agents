@@ -355,6 +355,7 @@ export function createActiveTaskMemory(root) {
     const pending = locks.get(key) || Promise.resolve();
     const job = pending.catch(() => {}).then(async () => {
       await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+<<<<<<< HEAD
 
       // Cross-process mutual exclusion
       return await withCrossProcessLock(lockDir, async () => {
@@ -443,6 +444,25 @@ export function createActiveTaskMemory(root) {
         }
         return next;
       }, options);
+=======
+      const prior = await read(repo, issue);
+      const next = {
+        version: 1, repositoryRoot: repo, issueId: issue,
+        state: prior?.state || "active", lastJobKey: prior?.lastJobKey || null,
+        lastAgent: prior?.lastAgent || null, lastWorkspace: prior?.lastWorkspace || null,
+        lastSessionId: prior?.lastSessionId || null, lastSeenAt: prior?.lastSeenAt || null,
+        lastVerifiedResult: prior?.lastVerifiedResult || null,
+        progress: prior?.progress || [], lastProgressAt: prior?.lastProgressAt || null,
+        promotion: prior?.promotion || null,
+        ...patch, updatedAt: new Date().toISOString(),
+      };
+      const output = fileOf(repo, issue), tmp = output + "." + crypto.randomUUID() + ".tmp";
+      try {
+        await fs.writeFile(tmp, JSON.stringify(next, null, 2) + "\n", { mode: 0o600, flag: "wx" });
+        await fs.rename(tmp, output);
+      } finally { await fs.unlink(tmp).catch(() => {}); }
+      return next;
+>>>>>>> 74d2468 (feat(memory): persist bounded progress milestones during tasks)
     });
 
     locks.set(key, job);
@@ -452,8 +472,25 @@ export function createActiveTaskMemory(root) {
       if (locks.get(key) === job) locks.delete(key);
     }
   }
+<<<<<<< HEAD
 
   function recoveryPreamble(record, options = {}) {
+=======
+  async function progress(repo, issue, { kind = "milestone", summary = "", jobKey = null } = {}) {
+    if (!repo || !issue || !["milestone", "tool", "checkpoint", "error"].includes(kind)) return null;
+    // Only bounded, redacted descriptions; never store raw model transcripts.
+    const clean = String(summary).replace(/(Bearer\s+)[^\s]+/gi, "$1[REDACTED]")
+      .replace(/((?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi, "$1[REDACTED]")
+      .replace(/[\r\n]+/g, " ").slice(0, 240);
+    const prior = await read(repo, issue);
+    const entry = { at: new Date().toISOString(), kind, summary: clean, jobKey };
+    return update(repo, issue, {
+      progress: [...(prior?.progress || []), entry].slice(-20),
+      lastProgressAt: entry.at,
+    });
+  }
+  function recoveryPreamble(record) {
+>>>>>>> 74d2468 (feat(memory): persist bounded progress milestones during tasks)
     if (!record) return "";
     const now = options.now ?? Date.now();
     const expired = isCheckpointExpired(record, now);
@@ -481,12 +518,20 @@ export function createActiveTaskMemory(root) {
       "Previous state: " + (record.state || "unknown"),
       "Previous session: " + (record.lastSessionId || "unknown"),
       "Last recorded result: " + (record.lastVerifiedResult || "not verified"),
+<<<<<<< HEAD
       "Next action: " + (record.nextAction || "none"),
       "Expires at: " + (record.expiresAt || "none"),
+=======
+      ...((record.progress || []).slice(-6).map(item => "Checkpoint: " + item.kind + " - " + item.summary)),
+>>>>>>> 74d2468 (feat(memory): persist bounded progress milestones during tasks)
       "Do not recreate existing work without checking it.",
       "[End LinearBridge checkpoint]",
     ].join("\n");
   }
+<<<<<<< HEAD
 
   return { read, update, recoveryPreamble };
+=======
+  return { read, update, progress, recoveryPreamble };
+>>>>>>> 74d2468 (feat(memory): persist bounded progress milestones during tasks)
 }
