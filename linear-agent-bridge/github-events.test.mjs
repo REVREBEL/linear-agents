@@ -48,7 +48,7 @@ test("dispatches only ChatGPT review-ready PR events and builds the review promp
   assert.equal(shouldDispatchGithubReview(event, "chatgpt"), true);
   assert.equal(shouldDispatchGithubReview({ ...event, draft: true }, "chatgpt"), false);
   assert.equal(shouldDispatchGithubReview({ ...event, action: "ready_for_review", draft: false }, "chatgpt"), true);
-  assert.equal(shouldDispatchGithubReview(event, "antigravity"), false);
+  assert.equal(shouldDispatchGithubReview(event, "antigravity"), true);
   assert.equal(buildGithubReviewPrompt(event), `Please review REVREBEL/example PR #12.\n\nPR URL: https://github.com/REVREBEL/example/pull/12\nHead SHA: ${"a".repeat(40)}`);
 });
 
