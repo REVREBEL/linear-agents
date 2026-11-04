@@ -283,6 +283,26 @@ def antigravity_subprocess_env() -> dict[str, str]:
     environment.pop("LINEAR_API_KEY", None)
     environment.pop("LINEAR_ACCESS_TOKEN", None)
     environment.pop("BRIDGE_SHARED_SECRET", None)
+
+    app_name = (
+        os.getenv("ANTIGRAVITY_GITHUB_APP_NAME")
+        or os.getenv("GITHUB_APP_NAME")
+        or "rebel-antigravity"
+    ).strip()
+    app_id = (
+        os.getenv("ANTIGRAVITY_GITHUB_APP_ID")
+        or os.getenv("GITHUB_APP_ID")
+        or "5411353"
+    ).strip()
+
+    if app_name and app_id:
+        bot_name = f"{app_name}[bot]"
+        bot_email = f"{app_id}+{app_name}[bot]@users.noreply.github.com"
+        environment.setdefault("GIT_AUTHOR_NAME", bot_name)
+        environment.setdefault("GIT_AUTHOR_EMAIL", bot_email)
+        environment.setdefault("GIT_COMMITTER_NAME", bot_name)
+        environment.setdefault("GIT_COMMITTER_EMAIL", bot_email)
+
     return environment
 
 
