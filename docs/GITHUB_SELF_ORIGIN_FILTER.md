@@ -9,7 +9,7 @@ Set these environment variables for the **local bridge process** (not a Cloudfla
 - `GITHUB_CHATGPT_SELF_IDS`: comma-separated GitHub numeric user IDs assigned to ChatGPT's writing identity (recommended).
 - `GITHUB_CHATGPT_SELF_LOGINS`: comma-separated exact GitHub logins for the same account(s), case-insensitive. Use only if the identity is confirmed.
 
-Both are optional and disabled when empty, to prevent accidentally hiding an external review. Account IDs/logins are not credentials. Configure them through the existing bridge environment/LaunchAgent, then restart the bridge as usual. Do **not** place OAuth access tokens or GitHub App private keys in this configuration.
+By default, the bridge matches the verified ChatGPT GitHub actor from PR #33: `revrebel-chatgpt` / numeric account ID `352271105`. To override or extend the identity, set the respective comma-separated environment variables. Explicitly set both variables to empty strings to disable the self-origin filter. Account IDs/logins are not credentials. Configure them through the existing bridge environment/LaunchAgent, then restart the bridge as usual. Do **not** place OAuth access tokens or GitHub App private keys in this configuration.
 
 ## Behavior
 
