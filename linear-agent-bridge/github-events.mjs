@@ -25,6 +25,8 @@ export function sanitizeGithubEvent(input) {
       commentUrl: comment.html_url, commentId: comment.id, commentBody: comment.body.slice(0, 6000),
       author: typeof comment.user?.login === "string" ? comment.user.login.slice(0, 100) : "",
       authorType: comment.user?.type === "Bot" ? "Bot" : "User",
+      actorId: Number.isSafeInteger(comment.user?.id) ? comment.user.id : null,
+      actorLogin: typeof comment.user?.login === "string" ? comment.user.login.slice(0, 100) : "",
       headSha: null, draft: false,
       installationId: Number.isSafeInteger(p.installation?.id) ? p.installation.id : null };
   }
@@ -36,7 +38,9 @@ export function sanitizeGithubEvent(input) {
       typeof pr.head?.sha !== "string" || !/^[0-9a-f]{40}$/.test(pr.head.sha)) throw Error("Invalid pull request details");
   return { event: "pull_request", delivery: input.delivery, action: p.action,
     repository: repo, number: pr.number, url: pr.html_url, headSha: pr.head.sha,
-    draft: pr.draft === true, installationId: Number.isSafeInteger(p.installation?.id) ? p.installation.id : null };
+    draft: pr.draft === true, actorId: Number.isSafeInteger(p.sender?.id) ? p.sender.id : null,
+    actorLogin: typeof p.sender?.login === "string" ? p.sender.login.slice(0, 100) : "",
+    installationId: Number.isSafeInteger(p.installation?.id) ? p.installation.id : null };
 }
 export async function recordGithubEvent(baseDir, event, source) {
   if (!/^(chatgpt|antigravity)$/.test(source)) throw Error("Invalid GitHub source agent");
@@ -82,7 +86,17 @@ export function resolveGithubReviewDestination(config, repository) {
  * never executable instructions. Uncertain prose is journaled, not dispatched.
  * A later semantic classifier can replace this policy without changing routing.
  */
-export function classifyGithubReviewEvent(event) {
+export function isSelfAuthoredGithubEvent(event, selfIdentity = {}) {
+  if (!event || !selfIdentity || typeof selfIdentity !== "object") return false;
+  const ids = Array.isArray(selfIdentity.ids) ? selfIdentity.ids : [];
+  const logins = Array.isArray(selfIdentity.logins) ? selfIdentity.logins : [];
+  if (Number.isSafeInteger(event.actorId) && ids.some(id => String(id) === String(event.actorId))) return true;
+  const login = typeof event.actorLogin === "string" ? event.actorLogin.trim().toLowerCase() : "";
+  return !!login && logins.some(own => typeof own === "string" && own.trim().toLowerCase() === login);
+}
+
+export function classifyGithubReviewEvent(event, selfIdentity = {}) {
+  if (isSelfAuthoredGithubEvent(event, selfIdentity)) return { actionable: false, reason: "self-authored-event" };
   if (!event || !event.repository || !event.number) return { actionable: false, reason: "non-pr-event" };
   if (event.event === "pull_request") {
     if ((event.action === "opened" && !event.draft) || event.action === "ready_for_review") {
@@ -119,9 +133,9 @@ export function githubReviewChangeKey(event) {
   ])).digest("hex");
 }
 
-export function shouldDispatchGithubReview(event, source) {
+export function shouldDispatchGithubReview(event, source, selfIdentity = {}) {
   return (source === "chatgpt" || source === "antigravity") &&
-    classifyGithubReviewEvent(event).actionable;
+    classifyGithubReviewEvent(event, selfIdentity).actionable;
 }
 
 export function buildGithubReviewPrompt(event) {
