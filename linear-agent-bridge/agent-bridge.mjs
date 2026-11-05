@@ -15,8 +15,8 @@ import { recordResumedConversation } from "./agy-conversation-state.mjs";
 const PORT = Number(process.env.BRIDGE_PORT || 8788);
 const HOST = process.env.BRIDGE_HOST || "127.0.0.1";
 const GITHUB_CHATGPT_SELF = {
-  ids: (process.env.GITHUB_CHATGPT_SELF_IDS || "").split(",").map(v => v.trim()).filter(Boolean),
-  logins: (process.env.GITHUB_CHATGPT_SELF_LOGINS || "").split(",").map(v => v.trim()).filter(Boolean),
+  ids: (process.env.GITHUB_CHATGPT_SELF_IDS ?? "352271105").split(",").map(v => v.trim()).filter(Boolean),
+  logins: (process.env.GITHUB_CHATGPT_SELF_LOGINS ?? "revrebel-chatgpt").split(",").map(v => v.trim()).filter(Boolean),
 };
 
 const SHARED_SECRET = process.env.BRIDGE_SHARED_SECRET || "";
