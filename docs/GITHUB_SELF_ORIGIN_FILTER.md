@@ -1,6 +1,6 @@
 # Suppress self-authored GitHub code-review requests
 
-The bridge can suppress GitHub events authored by ChatGPT's *own verified GitHub actor* before code-review handoff. It still journals the event, including the classification reason `self-authored-event`, and retains existing delivery/change deduplication.
+The bridge can suppress GitHub events authored by ChatGPT's *own verified GitHub actor* before code-review handoff. It still journals the sanitized event and records the classification reason `self-authored-event` in per-PR task memory, retaining existing delivery/change deduplication.
 
 ## Configuration
 
