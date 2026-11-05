@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
+import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey, isSelfAuthoredGithubEvent } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 const base = { event: "pull_request", delivery: "c0ffee00-abcd-4567-abcd-111111111111",
   payload: { action: "opened", repository: { full_name: "REVREBEL/example" },
@@ -110,4 +110,41 @@ test("short-term PR memory persists between instances and never stores comment b
     assert.equal(saved.repository, "REVREBEL/skills-library");
     assert.equal(JSON.stringify(saved).includes("crosswalk assertions"), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("filters ChatGPT-authored comments by exact login or account ID", () => {
+  const own = sanitizeGithubEvent({ ...revision, payload: { ...revision.payload,
+    comment: { ...revision.payload.comment, user: { login: "chatgpt-review[bot]", id: 9001, type: "Bot" } } } });
+  assert.equal(own.actorId, 9001);
+  assert.equal(isSelfAuthoredGithubEvent(own, { ids: ["9001"] }), true);
+  assert.equal(classifyGithubReviewEvent(own, { logins: ["CHATGPT-REVIEW[bot]"] }).reason, "self-authored-event");
+  assert.equal(shouldDispatchGithubReview(own, "chatgpt", { ids: ["9001"] }), false);
+
+  const humanLogin = sanitizeGithubEvent({ ...revision, payload: { ...revision.payload,
+    comment: { ...revision.payload.comment, user: { login: "chatgpt-service", id: 9002, type: "User" } } } });
+  assert.equal(classifyGithubReviewEvent(humanLogin).actionable, true);
+  assert.equal(shouldDispatchGithubReview(humanLogin, "chatgpt", { logins: ["chatgpt-service"] }), false);
+  assert.equal(shouldDispatchGithubReview(humanLogin, "chatgpt", { ids: ["9001"] }), true);
+});
+
+test("PR synchronization checks the event sender, not the original PR creator", () => {
+  const pushed = sanitizeGithubEvent({ ...base, payload: { ...base.payload,
+    action: "synchronize", sender: { login: "chatgpt-service", id: 9001, type: "User" },
+    pull_request: { ...base.payload.pull_request, user: { login: "another-developer", id: 4444 } } } });
+  assert.equal(pushed.actorId, 9001);
+  assert.equal(shouldDispatchGithubReview(pushed, "chatgpt", { ids: ["9001"] }), false);
+  assert.equal(classifyGithubReviewEvent(pushed, { ids: ["9001"] }).reason, "self-authored-event");
+
+  const externalPush = { ...pushed, actorId: 7000, actorLogin: "outside-reviewer" };
+  assert.equal(shouldDispatchGithubReview(externalPush, "chatgpt", { ids: ["9001"] }), true);
+  assert.equal(shouldDispatchGithubReview({ ...pushed, actorId: null, actorLogin: "" }, "chatgpt", { ids: ["9001"] }), true);
+  assert.equal(shouldDispatchGithubReview({ ...pushed, actorId: 4444, actorLogin: "another-developer" }, "chatgpt", { ids: ["9001"] }), true);
+});
+
+test("comment actor comes from comment.user rather than webhook sender", () => {
+  const event = sanitizeGithubEvent({ ...revision, payload: { ...revision.payload,
+    sender: { id: 9001, login: "chatgpt-service" },
+    comment: { ...revision.payload.comment, user: { id: 777, login: "external-reviewer", type: "User" } } } });
+  assert.equal(shouldDispatchGithubReview(event, "chatgpt", { ids: ["9001"] }), true);
+  assert.equal(shouldDispatchGithubReview(event, "chatgpt", { ids: ["777"] }), false);
 });
