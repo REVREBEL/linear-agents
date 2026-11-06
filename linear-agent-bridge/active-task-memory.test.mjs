@@ -595,3 +595,23 @@ test("separate memory instances serialize concurrent progress using filesystem l
     assert.equal(record.revision, 2);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("checkpoint includes new schema fields and redacts token-like keys", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bridge-active-"));
+  try {
+    const store = createActiveTaskMemory(root);
+    const now = new Date();
+    const result = await store.update("repo", "issue-123", {
+      nextAction: "run-tests",
+      expiresAt: now.toISOString(),
+      apiToken: "super-secret-token",
+    });
+    // Verify new fields are present
+    assert.equal(result.nextAction, "run-tests");
+    assert.equal(result.expiresAt, now.toISOString());
+    // Verify redaction of token-like field
+    assert.equal(result.apiToken, "[REDACTED]");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
