@@ -21,14 +21,43 @@ export function createActiveTaskMemory(root) {
     const job = pending.catch(() => {}).then(async () => {
       await fs.mkdir(dir, { recursive: true, mode: 0o700 });
       const prior = await read(repo, issue);
-      const next = {
-        version: 1, repositoryRoot: repo, issueId: issue,
-        state: prior?.state || "active", lastJobKey: prior?.lastJobKey || null,
-        lastAgent: prior?.lastAgent || null, lastWorkspace: prior?.lastWorkspace || null,
-        lastSessionId: prior?.lastSessionId || null, lastSeenAt: prior?.lastSeenAt || null,
+      // Build the checkpoint with richer schema and redact sensitive fields
+      const nextBase = {
+        schemaVersion: 2,
+        revision: (prior?.revision ?? 0) + 1,
+        repositoryRoot: repo,
+        issueId: issue,
+        state: prior?.state || "active",
+        lastJobKey: prior?.lastJobKey || null,
+        lastAgent: prior?.lastAgent || null,
+        lastWorkspace: prior?.lastWorkspace || null,
+        lastSessionId: prior?.lastSessionId || null,
+        lastSeenAt: prior?.lastSeenAt || null,
         lastVerifiedResult: prior?.lastVerifiedResult || null,
-        ...patch, updatedAt: new Date().toISOString(),
+        expiresAt: prior?.expiresAt || null,
+        nextAction: prior?.nextAction || null,
+        artifacts: prior?.artifacts || [],
+        status: prior?.status || "pending",
+        source: prior?.source || null,
+        ...patch,
+        updatedAt: new Date().toISOString(),
       };
+
+      // Recursively redact any token‑like fields
+      const redact = (obj) => {
+        if (obj && typeof obj === "object") {
+          for (const k of Object.keys(obj)) {
+            if (/(token|secret|passwd|key)/i.test(k) && typeof obj[k] === "string") {
+              obj[k] = "[REDACTED]";
+            } else {
+              redact(obj[k]);
+            }
+          }
+        }
+      };
+      const next = JSON.parse(JSON.stringify(nextBase)); // shallow clone to avoid mutating patch args
+      redact(next);
+
       const output = fileOf(repo, issue), tmp = output + "." + crypto.randomUUID() + ".tmp";
       try {
         await fs.writeFile(tmp, JSON.stringify(next, null, 2) + "\n", { mode: 0o600, flag: "wx" });
@@ -48,6 +77,8 @@ export function createActiveTaskMemory(root) {
       "Previous state: " + (record.state || "unknown"),
       "Previous session: " + (record.lastSessionId || "unknown"),
       "Last recorded result: " + (record.lastVerifiedResult || "not verified"),
+      "Next action: " + (record.nextAction || "none"),
+      "Expires at: " + (record.expiresAt || "none"),
       "Do not recreate existing work without checking it.",
       "[End LinearBridge checkpoint]",
     ].join("\n");
