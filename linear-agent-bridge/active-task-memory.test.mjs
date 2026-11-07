@@ -1,15 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import {
   createActiveTaskMemory,
   isCheckpointExpired,
   deriveStatusFromState,
   isSensitiveKey,
+  isProcessAlive,
   validateStateStatusCompatibility,
+  withCrossProcessLock,
 } from "./active-task-memory.mjs";
 
 test("active memory survives bridge restart and restores issue-scoped context", async () => {
@@ -198,14 +201,143 @@ test("cross-process and independent instance transactional CAS write safety", as
   }
 });
 
-test("lifecycle status validation, non-divergence, and transition contract", async () => {
+test("safe cross-process ownership: no lock stealing from live writer held > 10s and safe release", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bridge-proc-lock-"));
+  const readyFile = path.join(root, "ready.txt");
+  const repo = "/workspace/project";
+  const issue = "ISSUE-SEPARATE-PROC";
+
+  // Liveness helper sanity checks
+  assert.equal(isProcessAlive(process.pid), true);
+  assert.equal(isProcessAlive(9999999), false);
+
+  // Spawn separate OS Process A that holds lock for 10.5 seconds (> 10s staleThreshold)
+  const childA = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+      import { createActiveTaskMemory } from "./linear-agent-bridge/active-task-memory.mjs";
+      import fs from "node:fs/promises";
+      const [root, readyFile, repo, issue] = process.argv.slice(1);
+      const store = createActiveTaskMemory(root);
+      await store.update(repo, issue, { state: "active", nextAction: "child-a-in-flight" }, {
+        _holdLockMs: 10500,
+        _onLockAcquired: async () => {
+          await fs.writeFile(readyFile, "ready");
+        }
+      });
+      process.exit(0);
+      `,
+      root,
+      readyFile,
+      repo,
+      issue,
+    ],
+    { cwd: path.resolve(import.meta.dirname, "..") }
+  );
+
+  try {
+    // Wait for Child Process A to acquire the lock and signal readiness
+    let ready = false;
+    for (let i = 0; i < 60; i++) {
+      try {
+        await readFile(readyFile);
+        ready = true;
+        break;
+      } catch {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+    assert.ok(ready, "Child Process A must have acquired lock and signaled ready");
+
+    // Process B (this process) attempts update while A is still holding the lock.
+    // It must NOT steal the lock even though A holds it, and must time out with ELOCKED.
+    const storeB = createActiveTaskMemory(root);
+    await assert.rejects(
+      async () => {
+        await storeB.update(
+          repo,
+          issue,
+          { nextAction: "contender-b-blocked" },
+          { lockTimeoutMs: 250, retryIntervalMs: 25 }
+        );
+      },
+      (err) => {
+        assert.equal(err.code, "ELOCKED");
+        assert.match(err.message, /Lock acquisition timed out/);
+        return true;
+      }
+    );
+
+    // Wait for Child Process A to finish its critical section (> 10s) and exit cleanly
+    const childExitCode = await new Promise((resolve) => childA.on("exit", resolve));
+    assert.equal(childExitCode, 0, "Child Process A must exit with code 0");
+
+    // Now that Process A has completed and safely released the lock with its nonce,
+    // Process C can now acquire the lock cleanly and update to revision 2!
+    const storeC = createActiveTaskMemory(root);
+    const recordAfterA = await storeC.read(repo, issue);
+    assert.equal(recordAfterA.revision, 1);
+    assert.equal(recordAfterA.nextAction, "child-a-in-flight");
+
+    const recordC = await storeC.update(
+      repo,
+      issue,
+      { nextAction: "contender-c-succeeded" },
+      { expectedRevision: 1 }
+    );
+    assert.equal(recordC.revision, 2);
+    assert.equal(recordC.nextAction, "contender-c-succeeded");
+
+    // Safe release check: if lock file has a different nonce, release does not delete it
+    const fakeLockFile = path.join(root, "fake.lock");
+    await withCrossProcessLock(fakeLockFile, async () => {
+      // Intentionally tamper lock with another owner nonce to simulate concurrent release
+      await writeFile(
+        fakeLockFile,
+        JSON.stringify({ nonce: "other-owner-nonce", pid: process.pid, createdAt: Date.now() })
+      );
+    });
+    // The foreign lock file must NOT have been unlinked!
+    const content = await readFile(fakeLockFile, "utf8");
+    assert.ok(content.includes("other-owner-nonce"), "foreign lock must be preserved by safe release");
+    await rm(fakeLockFile).catch(() => {});
+  } finally {
+    childA.kill();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("lifecycle status validation, non-divergence, and strict unknown rejection", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bridge-active-"));
   try {
     const store = createActiveTaskMemory(root);
     const repo = "/workspace/project";
     const issue = "ISSUE-STATUS-CONTRACT";
 
-    // 1. Incompatible state and status combination is rejected
+    // 1. Strict rejection of unknown status
+    assert.throws(
+      () => validateStateStatusCompatibility("active", "totally-custom"),
+      (err) => {
+        assert.equal(err.code, "EINVAL_STATE_STATUS");
+        assert.match(err.message, /Unknown lifecycle status "totally-custom"/);
+        return true;
+      }
+    );
+
+    // Strict rejection of unknown state
+    assert.throws(
+      () => validateStateStatusCompatibility("invalid-state", "active"),
+      (err) => {
+        assert.equal(err.code, "EINVAL_STATE_STATUS");
+        assert.match(err.message, /Unknown lifecycle state "invalid-state"/);
+        return true;
+      }
+    );
+
+    // 2. Incompatible state and status combination is rejected
     assert.throws(
       () => validateStateStatusCompatibility("active", "completed"),
       (err) => {
@@ -225,27 +357,27 @@ test("lifecycle status validation, non-divergence, and transition contract", asy
       }
     );
 
-    // 2. Normal dispatch transition: state = active -> status = active
+    // 3. Normal dispatch transition: state = active -> status = active
     const dispatch = await store.update(repo, issue, { state: "active" });
     assert.equal(dispatch.state, "active");
     assert.equal(dispatch.status, "active");
 
-    // 3. Subsequent update without state or status preserves both consistently
+    // 4. Subsequent update without state or status preserves both consistently
     const intermediate = await store.update(repo, issue, { nextAction: "intermediate-task" });
     assert.equal(intermediate.state, "active");
     assert.equal(intermediate.status, "active");
 
-    // 4. Normal completion: state = agent-finished -> status = completed
+    // 5. Normal completion: state = agent-finished -> status = completed
     const completion = await store.update(repo, issue, { state: "agent-finished" });
     assert.equal(completion.state, "agent-finished");
     assert.equal(completion.status, "completed");
 
-    // 5. Subsequent update after completion retains completed status
+    // 6. Subsequent update after completion retains completed status
     const postCompletion = await store.update(repo, issue, { artifacts: [{ name: "diff" }] });
     assert.equal(postCompletion.state, "agent-finished");
     assert.equal(postCompletion.status, "completed");
 
-    // 6. Normal recovery: state = needs-recovery -> status = needs-recovery
+    // 7. Normal recovery: state = needs-recovery -> status = needs-recovery
     const recovery = await store.update(repo, issue, { state: "needs-recovery" });
     assert.equal(recovery.state, "needs-recovery");
     assert.equal(recovery.status, "needs-recovery");

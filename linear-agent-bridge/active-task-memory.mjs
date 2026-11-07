@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import os from "node:os";
 
 const idOf = (repo, issue) =>
   crypto.createHash("sha256").update(repo + ":" + issue).digest("hex");
@@ -127,18 +128,36 @@ export const STATUS_TO_STATE = Object.freeze({
   "pending": "pending",
 });
 
+export const VALID_STATES = new Set(Object.keys(STATE_TO_STATUS));
+export const VALID_STATUSES = new Set(Object.keys(STATUS_TO_STATE));
+
 /**
- * Validate compatibility between state and status.
+ * Validate compatibility between state and status with strict rejection of unknown values.
  */
 export function validateStateStatusCompatibility(state, status) {
-  if (!state || !status) return true;
-  const expectedState = STATUS_TO_STATE[status];
-  if (expectedState && expectedState !== state) {
+  if (state && !VALID_STATES.has(state)) {
     const err = new Error(
-      `Incompatible lifecycle status "${status}" for state "${state}" (expected status "${STATE_TO_STATUS[state] || state}")`
+      `Unknown lifecycle state "${state}". Allowed states: ${Array.from(VALID_STATES).join(", ")}`
     );
     err.code = "EINVAL_STATE_STATUS";
     throw err;
+  }
+  if (status && !VALID_STATUSES.has(status)) {
+    const err = new Error(
+      `Unknown lifecycle status "${status}". Allowed statuses: ${Array.from(VALID_STATUSES).join(", ")}`
+    );
+    err.code = "EINVAL_STATE_STATUS";
+    throw err;
+  }
+  if (state && status) {
+    const expectedState = STATUS_TO_STATE[status];
+    if (expectedState !== state) {
+      const err = new Error(
+        `Incompatible lifecycle status "${status}" for state "${state}" (expected status "${STATE_TO_STATUS[state] || state}")`
+      );
+      err.code = "EINVAL_STATE_STATUS";
+      throw err;
+    }
   }
   return true;
 }
@@ -160,30 +179,72 @@ export function isCheckpointExpired(record, now = Date.now()) {
 }
 
 /**
+ * Check whether a process with the given PID is actively running on this host.
+ */
+export function isProcessAlive(pid) {
+  if (typeof pid !== "number" || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM"; // Process exists, insufficient permissions to signal
+  }
+}
+
+/**
  * Cross-process file locking via atomic exclusive file creation (O_CREAT | O_EXCL).
+ *
+ * Guarantees:
+ * - Ownership tracking via unique lock nonce, PID, and hostname.
+ * - Renewable lease via periodic heartbeat updating lastHeartbeat while held.
+ * - Safe release: ONLY removes the lock if the on-disk file still holds this owner's nonce.
+ * - No unsafe lock stealing: live processes holding the lock are NEVER preempted.
+ *   Reclamation is strictly restricted to dead processes on the same host.
  */
 export async function withCrossProcessLock(lockFile, fn, options = {}) {
   const timeoutMs = options.lockTimeoutMs ?? 5000;
   const retryIntervalMs = options.retryIntervalMs ?? 25;
-  const staleThresholdMs = options.staleThresholdMs ?? 10000;
+  const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 1000;
   const start = Date.now();
+  const lockNonce = crypto.randomUUID();
+  let acquired = false;
 
-  while (true) {
+  while (!acquired) {
     try {
-      const lockData = JSON.stringify({ pid: process.pid, createdAt: Date.now() });
+      const lockData = JSON.stringify({
+        nonce: lockNonce,
+        pid: process.pid,
+        hostname: os.hostname(),
+        createdAt: Date.now(),
+        lastHeartbeat: Date.now(),
+      });
       await fs.writeFile(lockFile, lockData, { flag: "wx", mode: 0o600 });
-      break;
+      acquired = true;
     } catch (err) {
       if (err.code === "EEXIST") {
         try {
           const content = await fs.readFile(lockFile, "utf8");
           const parsed = JSON.parse(content);
-          if (Date.now() - parsed.createdAt > staleThresholdMs) {
-            await fs.unlink(lockFile).catch(() => {});
-            continue;
+          const isSameHost = parsed.hostname === os.hostname();
+
+          // A lock is ONLY reclaimed if the owning process is confirmed DEAD on the same host
+          if (isSameHost && typeof parsed.pid === "number") {
+            const alive = isProcessAlive(parsed.pid);
+            if (!alive) {
+              // Owning process is DEAD. Safely reclaim via atomic rename then unlink.
+              const reclaimTmp = lockFile + ".reclaim." + crypto.randomUUID();
+              try {
+                await fs.rename(lockFile, reclaimTmp);
+                await fs.unlink(reclaimTmp).catch(() => {});
+                continue;
+              } catch {
+                // Another process already reclaimed or lock state changed
+              }
+            }
           }
+          // If the owner process is alive, DO NOT STEAL. Wait for release or fail closed.
         } catch {
-          // If unreadable or concurrently unlinked, proceed to retry
+          // File unreadable, corrupted, or removed concurrently; proceed to retry
         }
 
         if (Date.now() - start >= timeoutMs) {
@@ -198,10 +259,43 @@ export async function withCrossProcessLock(lockFile, fn, options = {}) {
     }
   }
 
+  // Set up periodic heartbeat while executing the critical section
+  let heartbeatTimer = null;
+  heartbeatTimer = setInterval(async () => {
+    try {
+      const content = await fs.readFile(lockFile, "utf8");
+      const parsed = JSON.parse(content);
+      if (parsed.nonce === lockNonce) {
+        parsed.lastHeartbeat = Date.now();
+        const tmp = lockFile + ".hb." + crypto.randomUUID();
+        await fs.writeFile(tmp, JSON.stringify(parsed), { mode: 0o600 });
+        await fs.rename(tmp, lockFile);
+      }
+    } catch {
+      // Ignore transient heartbeat write errors
+    }
+  }, heartbeatIntervalMs);
+
   try {
+    if (options._onLockAcquired) {
+      await options._onLockAcquired();
+    }
+    if (options._holdLockMs) {
+      await new Promise((resolve) => setTimeout(resolve, options._holdLockMs));
+    }
     return await fn();
   } finally {
-    await fs.unlink(lockFile).catch(() => {});
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    // Safe ownership-aware release: ONLY remove the lock if this process's nonce still owns it!
+    try {
+      const content = await fs.readFile(lockFile, "utf8");
+      const parsed = JSON.parse(content);
+      if (parsed.nonce === lockNonce) {
+        await fs.unlink(lockFile).catch(() => {});
+      }
+    } catch {
+      // Lock already removed or unreadable
+    }
   }
 }
 
@@ -267,10 +361,14 @@ export function createActiveTaskMemory(root) {
 
         if (patch?.status && patch?.state) {
           validateStateStatusCompatibility(patch.state, patch.status);
+          state = patch.state;
           status = patch.status;
         } else if (patch?.state) {
-          status = STATE_TO_STATUS[patch.state] || patch.state;
+          validateStateStatusCompatibility(patch.state, null);
+          state = patch.state;
+          status = STATE_TO_STATUS[state] || "active";
         } else if (patch?.status) {
+          validateStateStatusCompatibility(null, patch.status);
           state = STATUS_TO_STATE[patch.status] || state;
           validateStateStatusCompatibility(state, patch.status);
           status = patch.status;
@@ -323,7 +421,7 @@ export function createActiveTaskMemory(root) {
           await fs.unlink(tmp).catch(() => {});
         }
         return next;
-      });
+      }, options);
     });
 
     locks.set(key, job);
