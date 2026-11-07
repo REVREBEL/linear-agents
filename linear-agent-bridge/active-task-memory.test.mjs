@@ -1,18 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+<<<<<<< HEAD
 import fs, { mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+=======
+import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import crypto from "node:crypto";
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
 import {
   createActiveTaskMemory,
   isCheckpointExpired,
   deriveStatusFromState,
+<<<<<<< HEAD
   isSensitiveKey,
   isProcessAlive,
   validateStateStatusCompatibility,
   withCrossProcessLock,
+=======
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
 } from "./active-task-memory.mjs";
 
 test("active memory survives bridge restart and restores issue-scoped context", async () => {
@@ -600,17 +610,38 @@ test("checkpoint includes new schema fields and redacts token-like keys", async 
   const root = await mkdtemp(path.join(os.tmpdir(), "bridge-active-"));
   try {
     const store = createActiveTaskMemory(root);
-    const now = new Date();
-    const result = await store.update("repo", "issue-123", {
-      nextAction: "run-tests",
-      expiresAt: now.toISOString(),
-      apiToken: "super-secret-token",
+    const repo = "/workspace/project";
+    const issue = "ISSUE-EXPIRY-TEST";
+
+    const pastDate = new Date(Date.now() - 3600 * 1000).toISOString();
+    const futureDate = new Date(Date.now() + 3600 * 1000).toISOString();
+
+    // Expired record
+    const expiredRecord = await store.update(repo, issue, {
+      state: "active",
+      nextAction: "execute-legacy-step",
+      expiresAt: pastDate,
     });
-    // Verify new fields are present
-    assert.equal(result.nextAction, "run-tests");
-    assert.equal(result.expiresAt, now.toISOString());
-    // Verify redaction of token-like field
-    assert.equal(result.apiToken, "[REDACTED]");
+
+    assert.equal(isCheckpointExpired(expiredRecord), true);
+    const expiredPreamble = store.recoveryPreamble(expiredRecord);
+    assert.match(expiredPreamble, /Previous state: expired \(active\)/);
+    assert.match(expiredPreamble, /Expires at: .* \[EXPIRED - STALE\]/);
+    assert.match(expiredPreamble, /Next action: none \(previous action expired/);
+    assert.ok(!expiredPreamble.includes("Next action: execute-legacy-step\n"), "must not surface stale next action directly");
+
+    // Non-expired record
+    const activeRecord = await store.update(repo, issue, {
+      state: "active",
+      nextAction: "execute-current-step",
+      expiresAt: futureDate,
+    });
+
+    assert.equal(isCheckpointExpired(activeRecord), false);
+    const activePreamble = store.recoveryPreamble(activeRecord);
+    assert.match(activePreamble, /Previous state: active/);
+    assert.match(activePreamble, /Next action: execute-current-step/);
+    assert.ok(!activePreamble.includes("[EXPIRED - STALE]"));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

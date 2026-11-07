@@ -4,9 +4,12 @@ import crypto from "node:crypto";
 import os from "node:os";
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 const idOf = (repo, issue) =>
   crypto.createHash("sha256").update(repo + ":" + issue).digest("hex");
 =======
+=======
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
 
 // Checkpoints are data, never an authority to run stale or unsafe instructions.
 const SENSITIVE_FIELD = /(?:token|secret|password|passwd|credential|authorization|private[_-]?key|api[_-]?key)/i;
@@ -62,7 +65,14 @@ async function withCheckpointLock(filename, action) {
 }
 
 const idOf = (repo, issue) => crypto.createHash("sha256").update(repo + ":" + issue).digest("hex");
+<<<<<<< HEAD
 >>>>>>> 87022c4 (feat(memory): integrate versioned redacted checkpoints and cross-process lock into incremental memory)
+=======
+=======
+const idOf = (repo, issue) =>
+  crypto.createHash("sha256").update(repo + ":" + issue).digest("hex");
+>>>>>>> fad6b48 (fix(active-task-memory): address review comments for checkpoint schema)
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
 
 /**
  * Operational identifiers and non-secret fields that must never be redacted by key name.
@@ -94,6 +104,7 @@ export const OPERATIONAL_ALLOWLIST = new Set([
 ]);
 
 /**
+<<<<<<< HEAD
  * Check whether a field name represents a sensitive credential, token, key, or secret.
  * Handles camelCase, snake_case, kebab-case, and arbitrary case variations without relying
  * on brittle punctuation boundaries.
@@ -123,6 +134,12 @@ export function isSensitiveKey(key) {
   }
   return false;
 }
+=======
+ * Sensitive field name pattern. Matches explicit secret/token/password/credential keys.
+ */
+export const SENSITIVE_KEY_PATTERN =
+  /(?:^|[_\-.])(token|secret|password|passwd|auth|credential|api[_-]?key|private[_-]?key)(?:$|[_\-.])/i;
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
 
 /**
  * Sanitize high-confidence secrets embedded within free text.
@@ -154,7 +171,12 @@ export function redact(obj) {
   }
   for (const k of Object.keys(obj)) {
     const val = obj[k];
+<<<<<<< HEAD
     if (isSensitiveKey(k)) {
+=======
+    const isSensitive = !OPERATIONAL_ALLOWLIST.has(k) && SENSITIVE_KEY_PATTERN.test(k);
+    if (isSensitive) {
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
       obj[k] = "[REDACTED]";
     } else if (typeof val === "string") {
       obj[k] = sanitizeText(val);
@@ -165,6 +187,7 @@ export function redact(obj) {
 }
 
 /**
+<<<<<<< HEAD
  * Canonical mapping between state and lifecycle status.
  */
 export const STATE_TO_STATUS = Object.freeze({
@@ -225,6 +248,21 @@ export function validateStateStatusCompatibility(state, status) {
  */
 export function deriveStatusFromState(state) {
   return STATE_TO_STATUS[state] || state || "pending";
+=======
+ * Derive lifecycle status consistently from state.
+ */
+export function deriveStatusFromState(state) {
+  switch (state) {
+    case "active":
+      return "active";
+    case "agent-finished":
+      return "completed";
+    case "needs-recovery":
+      return "needs-recovery";
+    default:
+      return state || "pending";
+  }
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
 }
 
 /**
@@ -237,6 +275,7 @@ export function isCheckpointExpired(record, now = Date.now()) {
 }
 
 /**
+<<<<<<< HEAD
  * Check whether a process with the given PID is actively running on this host.
  */
 export function isProcessAlive(pid) {
@@ -386,12 +425,24 @@ export async function withCrossProcessLock(lockDir, fn, options = {}) {
  * - Process-level queuing to minimize file-lock contention within a single runtime instance.
  * - CAS optimistic concurrency validation via `expectedRevision` evaluated freshly under the lock.
  * - Atomic rename writes (`tmp` -> target) ensuring zero visible partial files.
+=======
+ * Durable per-issue checkpoint; intentionally distinct from long-term memU knowledge.
+ *
+ * Concurrency model:
+ * - Single-process writer per host (managed by local bridge LaunchAgent/systemd).
+ * - In-memory serialization via Promise queue per checkpoint key.
+ * - Cross-process / optimistic CAS validation via `expectedRevision` in patch/options.
+ * - Atomic file writes via temporary file and atomic rename.
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
  */
 export function createActiveTaskMemory(root) {
   const dir = path.join(root, "active-task-memory");
   const locks = new Map();
   const fileOf = (repo, issue) => path.join(dir, idOf(repo, issue) + ".json");
+<<<<<<< HEAD
   const lockOf = (repo, issue) => fileOf(repo, issue) + ".lock";
+=======
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
 
   async function read(repo, issue) {
     if (!repo || !issue) return null;
@@ -413,6 +464,7 @@ export function createActiveTaskMemory(root) {
     const pending = locks.get(key) || Promise.resolve();
     const job = pending.catch(() => {}).then(async () => {
       await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
 
@@ -523,6 +575,8 @@ export function createActiveTaskMemory(root) {
       return next;
 >>>>>>> 74d2468 (feat(memory): persist bounded progress milestones during tasks)
 =======
+=======
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
       return withCheckpointLock(fileOf(repo, issue), async () => {
         const prior = await read(repo, issue);
         const input = typeof patch === "function" ? patch(prior) : patch;
@@ -561,7 +615,79 @@ export function createActiveTaskMemory(root) {
         } finally { await fs.unlink(tmp).catch(() => {}); }
         return next;
       });
+<<<<<<< HEAD
 >>>>>>> 87022c4 (feat(memory): integrate versioned redacted checkpoints and cross-process lock into incremental memory)
+=======
+=======
+      const prior = await read(repo, issue);
+
+      // CAS: validate expectedRevision if requested
+      const expectedRevision = options.expectedRevision ?? patch?.expectedRevision;
+      if (expectedRevision !== undefined) {
+        const currentRevision = prior?.revision ?? 0;
+        if (currentRevision !== expectedRevision) {
+          const conflictErr = new Error(
+            `Revision conflict for ${repo}:${issue}: expected revision ${expectedRevision}, but found ${currentRevision}`
+          );
+          conflictErr.code = "ECONFLICT";
+          conflictErr.expectedRevision = expectedRevision;
+          conflictErr.currentRevision = currentRevision;
+          throw conflictErr;
+        }
+      }
+
+      // Determine state and lifecycle status consistently
+      const state = patch?.state || prior?.state || "active";
+      const status =
+        patch?.status ||
+        (patch?.state
+          ? deriveStatusFromState(patch.state)
+          : prior?.status || deriveStatusFromState(prior?.state || "active"));
+
+      // Clean patch of internal options
+      const patchData = { ...patch };
+      delete patchData.expectedRevision;
+
+      // Build base checkpoint
+      const nextBase = {
+        schemaVersion: 2,
+        revision: (prior?.revision ?? 0) + 1,
+        repositoryRoot: repo,
+        issueId: issue,
+        state,
+        status,
+        lastJobKey: prior?.lastJobKey || null,
+        lastAgent: prior?.lastAgent || null,
+        lastWorkspace: prior?.lastWorkspace || null,
+        lastSessionId: prior?.lastSessionId || null,
+        lastSeenAt: prior?.lastSeenAt || null,
+        lastVerifiedResult: prior?.lastVerifiedResult || null,
+        expiresAt: prior?.expiresAt || null,
+        nextAction: prior?.nextAction || null,
+        artifacts: prior?.artifacts || [],
+        source: prior?.source || null,
+        ...patchData,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Clone and sanitize/redact
+      const next = JSON.parse(JSON.stringify(nextBase));
+      redact(next);
+
+      const output = fileOf(repo, issue);
+      const tmp = output + "." + crypto.randomUUID() + ".tmp";
+      try {
+        await fs.writeFile(tmp, JSON.stringify(next, null, 2) + "\n", {
+          mode: 0o600,
+          flag: "wx",
+        });
+        await fs.rename(tmp, output);
+      } finally {
+        await fs.unlink(tmp).catch(() => {});
+      }
+      return next;
+>>>>>>> fad6b48 (fix(active-task-memory): address review comments for checkpoint schema)
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
     });
 
     locks.set(key, job);
@@ -572,9 +698,12 @@ export function createActiveTaskMemory(root) {
     }
   }
 <<<<<<< HEAD
+<<<<<<< HEAD
 
   function recoveryPreamble(record, options = {}) {
 =======
+=======
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
   async function progress(repo, issue, { kind = "milestone", summary = "", jobKey = null } = {}) {
     if (!repo || !issue || !["milestone", "tool", "checkpoint", "error"].includes(kind)) return null;
     // Only bounded, redacted descriptions; never store raw model transcripts.
@@ -622,16 +751,39 @@ export function createActiveTaskMemory(root) {
 >>>>>>> 87022c4 (feat(memory): integrate versioned redacted checkpoints and cross-process lock into incremental memory)
 =======
     ].join("\n");
+<<<<<<< HEAD
 >>>>>>> 762f620 (fix(memory): write canonical JSON line terminators and recovery preamble formatting)
+=======
+=======
+
+  function recoveryPreamble(record, options = {}) {
+    if (!record) return "";
+    const now = options.now ?? Date.now();
+    const expired = isCheckpointExpired(record, now);
+    const nextActionDisplay = expired
+      ? `none (previous action expired at ${record.expiresAt}; do not execute stale next action: ${record.nextAction || "none"})`
+      : record.nextAction || "none";
+    const stateDisplay = expired
+      ? `expired (${record.state || "unknown"})`
+      : record.state || "unknown";
+    const expiresDisplay = record.expiresAt
+      ? `${record.expiresAt}${expired ? " [EXPIRED - STALE]" : ""}`
+      : "none";
+
+>>>>>>> fad6b48 (fix(active-task-memory): address review comments for checkpoint schema)
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
     return [
       "[LinearBridge durable task checkpoint, non-authoritative]",
       "This is a follow-up for the same issue. Inspect the repository and tests before deciding what remains.",
       "Previous agent: " + (record.lastAgent || "unknown"),
-      "Previous state: " + (record.state || "unknown"),
+      "Previous state: " + stateDisplay,
       "Previous session: " + (record.lastSessionId || "unknown"),
       "Last recorded result: " + (record.lastVerifiedResult || "not verified"),
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
       "Next action: " + (record.nextAction || "none"),
       "Expires at: " + (record.expiresAt || "none"),
 =======
@@ -640,15 +792,30 @@ export function createActiveTaskMemory(root) {
       "Expires at: " + (record.expiresAt || "none"),
 >>>>>>> 87022c4 (feat(memory): integrate versioned redacted checkpoints and cross-process lock into incremental memory)
       ...((record.progress || []).slice(-6).map(item => "Checkpoint: " + item.kind + " - " + item.summary)),
+<<<<<<< HEAD
 >>>>>>> 74d2468 (feat(memory): persist bounded progress milestones during tasks)
+=======
+=======
+      "Next action: " + nextActionDisplay,
+      "Expires at: " + expiresDisplay,
+>>>>>>> fad6b48 (fix(active-task-memory): address review comments for checkpoint schema)
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
       "Do not recreate existing work without checking it.",
       "[End LinearBridge checkpoint]",
     ].join("\n");
   }
+<<<<<<< HEAD
 <<<<<<< HEAD
 
   return { read, update, recoveryPreamble };
 =======
   return { read, update, progress, recoveryPreamble };
 >>>>>>> 74d2468 (feat(memory): persist bounded progress milestones during tasks)
+=======
+  return { read, update, progress, recoveryPreamble };
+=======
+
+  return { read, update, recoveryPreamble };
+>>>>>>> fad6b48 (fix(active-task-memory): address review comments for checkpoint schema)
+>>>>>>> 5cd86bb (fix(active-task-memory): address review comments for checkpoint schema)
 }
