@@ -14,6 +14,10 @@ import { recordResumedConversation } from "./agy-conversation-state.mjs";
 
 const PORT = Number(process.env.BRIDGE_PORT || 8788);
 const HOST = process.env.BRIDGE_HOST || "127.0.0.1";
+const GITHUB_CHATGPT_SELF = {
+  ids: (process.env.GITHUB_CHATGPT_SELF_IDS ?? "352271105").split(",").map(v => v.trim()).filter(Boolean),
+  logins: (process.env.GITHUB_CHATGPT_SELF_LOGINS ?? "revrebel-chatgpt").split(",").map(v => v.trim()).filter(Boolean),
+};
 
 const SHARED_SECRET = process.env.BRIDGE_SHARED_SECRET || "";
 const LINEAR_API_KEY = process.env.LINEAR_API_KEY || "";
@@ -40,7 +44,7 @@ function enqueueChatgptHandoff(task) {
 }
 
 async function prepareGithubShortcutHandoff(event, source) {
-  if (!shouldDispatchGithubReview(event, source)) return null;
+  if (!shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) return null;
   if (process.env.CHATGPT_HANDOFF_MODE !== "shortcuts") {
     throw new Error("GitHub PR review dispatch requires CHATGPT_HANDOFF_MODE=shortcuts");
   }
@@ -60,7 +64,7 @@ async function prepareGithubShortcutHandoff(event, source) {
 }
 
 async function claimGithubReviewDispatch(event, source) {
-  if (!shouldDispatchGithubReview(event, source)) return null;
+  if (!shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) return null;
   const memory = await githubTaskMemory.read(event);
   if (memory?.lastReviewChange === githubReviewChangeKey(event)) return { duplicate: true };
   const eventDir = path.join(JOBS_DIR, "github-events");
@@ -325,7 +329,7 @@ const server = http.createServer(async (request, response) => {
       try {
         handoff = await claimGithubReviewDispatch(event, source);
         await recordGithubEvent(JOBS_DIR, event, source);
-        const classification = classifyGithubReviewEvent(event);
+        const classification = classifyGithubReviewEvent(event, GITHUB_CHATGPT_SELF);
         await githubTaskMemory.update(event, {
           lastEvent: event.event + "." + event.action,
           lastDecision: classification.actionable ? "actionable" : "routine",
