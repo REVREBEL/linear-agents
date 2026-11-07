@@ -367,9 +367,22 @@ class QuotaExhausted(Exception):
         self.conversation_id = conversation_id
 
 
+class ResumedSessionTimeout(Exception):
+    def __init__(self, conversation_id: str | None, message: str):
+        super().__init__(message)
+        self.conversation_id = conversation_id
+
+
 def quota_exhausted(message: str) -> bool:
     return bool(re.search(
         r"RESOURCE_EXHAUSTED|Individual quota reached|quota (?:has been )?(?:exceeded|exhausted|reached)|rate limit exceeded",
+        message, re.I
+    ))
+
+
+def is_stream_timeout_or_deadline(message: str) -> bool:
+    return bool(re.search(
+        r"stream idle timeout|context deadline exceeded|deadline exceeded",
         message, re.I
     ))
 
@@ -530,6 +543,8 @@ async def run_antigravity(
     diagnostic = "\n".join((error_text, stderr, stdout[-2000:]))
     if quota_exhausted(diagnostic) and (result is None or result.get("status") != "SUCCESS"):
         raise QuotaExhausted(resolved_id, diagnostic[-1000:])
+    if conversation_id and is_stream_timeout_or_deadline(diagnostic) and (result is None or result.get("status") != "SUCCESS"):
+        raise ResumedSessionTimeout(conversation_id, diagnostic[-1000:])
     if result is None:
         raise RuntimeError(f"AGY exited {process.returncode} without terminal result: {stderr[-1500:]}")
     if process.returncode != 0 or result.get("status") != "SUCCESS":
@@ -574,10 +589,22 @@ async def main() -> int:
             "thought",
             "Antigravity has initialized locally and is analyzing the task.",
         )
-        response = await run_antigravity(
-            prompt, resumed_conversation,
-            progress_callback=lambda message: post_worker_activity(session_id, completion_url, "thought", message),
-        )
+        try:
+            response = await run_antigravity(
+                prompt, resumed_conversation,
+                progress_callback=lambda message: post_worker_activity(session_id, completion_url, "thought", message),
+            )
+        except ResumedSessionTimeout as timeout_error:
+            warning_msg = (
+                f"Resumed conversation ({resumed_conversation}) timed out (stream idle deadline exceeded). "
+                "Restarting with a fresh conversation context..."
+            )
+            print(f"[run_agent] {warning_msg}", file=sys.stderr)
+            post_worker_activity(session_id, completion_url, "thought", warning_msg)
+            response = await run_antigravity(
+                prompt, None,
+                progress_callback=lambda message: post_worker_activity(session_id, completion_url, "thought", message),
+            )
         print(response)
         post_worker_activity(session_id, completion_url, "response", f"Task completed.\n\n{response}")
         return 0
