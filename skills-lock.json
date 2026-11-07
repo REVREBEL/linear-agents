@@ -13,6 +13,35 @@
       "skillPath": "skills/durable-objects/SKILL.md",
       "computedHash": "72efa2277fea08f43b393c74abaacc9fa575e20bc63bdc9d46829b8a39352852"
     },
+    "install-memu": {
+      "source": "nevamind-ai/memu",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "bdffd8937b2a9692943b2b8ab7c463bf40e3f77fe48ea3a51e7a76edc443ac22"
+    },
+    "memu": {
+      "source": "skills.volces.com",
+      "sourceType": "well-known",
+      "computedHash": "008ee3d7cce08401ae5e13d2533aa5c1894c5c202b2ed171fc17b07ba20977e4"
+    },
+    "pgvector": {
+      "source": "itechmeat/llm-code",
+      "sourceType": "github",
+      "skillPath": "skills/pgvector/SKILL.md",
+      "computedHash": "6e984f3cf8fd9654b8e86c0191cad13529a112251a479e56db7d64d28c76a25a"
+    },
+    "postgres-tuning": {
+      "source": "yuniorglez/gemini-elite-core",
+      "sourceType": "github",
+      "skillPath": "skills/postgres-tuning/SKILL.md",
+      "computedHash": "b0baeede3025998206cfc63819d1504e17445d4bd952a82feb013d8c82e2b1c6"
+    },
+    "postgresql-17-docs": {
+      "source": "cookiemonsterdev/agents-skills",
+      "sourceType": "github",
+      "skillPath": "skills/docs/postgresql-17-docs/SKILL.md",
+      "computedHash": "b4f929c97f53bb62caf63a08d958af503d84fc271a924500c9ea0b4695e853e0"
+    },
     "workers-best-practices": {
       "source": "cloudflare/skills",
       "sourceType": "github",
