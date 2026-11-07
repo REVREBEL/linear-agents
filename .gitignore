@@ -42,6 +42,9 @@ build/Release
 node_modules/
 jspm_packages/
 
+# Python
+venv-memu/lib/python3
+
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
 
