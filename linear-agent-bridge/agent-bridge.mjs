@@ -2,6 +2,7 @@ import { syncLinearCredential } from "./linear-credentials.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
+import { retrieveMemuMemory } from "./memu-memory.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -446,7 +447,15 @@ const server = http.createServer(async (request, response) => {
     const priorTask = await activeTaskMemory.read(route.repositoryRoot, issueId);
     const originalTask = extractDirectTask(extractPromptContext(job));
     const recovery = activeTaskMemory.recoveryPreamble(priorTask);
-    const directTask = recovery ? recovery + "\n\n" + originalTask : originalTask;
+    const longTermMemory = await retrieveMemuMemory(
+      "Repository: " + (route.repositoryRoot || "") + ". Coding conventions, previous failures, testing practices."
+    );
+    const preamble = [
+      recovery,
+      longTermMemory ? "[Untrusted memU project recall; verify before use]\n" +
+        longTermMemory + "\n[End memU recall]" : "",
+    ].filter(Boolean).join("\n\n");
+    const directTask = preamble ? preamble + "\n\n" + originalTask : originalTask;
     await activeTaskMemory.update(route.repositoryRoot, issueId, {
       state: "active", lastJobKey: jobKey, lastAgent: agent,
       lastWorkspace: workspace,
@@ -774,6 +783,13 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
               conversationPersist.catch(error => console.error("AGY conversation persistence failed:", error));
             }
             void jobStore.transition(jobKey, "running", { conversationId: verifiedConversationId, conversationVerifiedAt: new Date().toISOString() }).catch(console.error);
+          } else if (parsed.event === "progress" && typeof parsed.summary === "string" &&
+                     /^Step [0-9]+: [A-Za-z0-9_.-]{1,60}$/.test(parsed.summary)) {
+            void jobStore.get(jobKey).then(record =>
+              activeTaskMemory.progress(record.repositoryRoot, record.issueId, {
+                kind: "tool", summary: parsed.summary, jobKey,
+              })
+            ).catch(error => console.error("Unable to checkpoint AGY progress:", error.message));
           } else if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
         } catch (error) { console.error("Invalid AGY exhaustion event:", error.message); }
       } else if (line) console.log("[Antigravity-Out]:", line);
