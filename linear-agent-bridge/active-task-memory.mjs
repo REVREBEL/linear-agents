@@ -35,10 +35,35 @@ export const OPERATIONAL_ALLOWLIST = new Set([
 ]);
 
 /**
- * Sensitive field name pattern. Matches explicit secret/token/password/credential keys.
+ * Check whether a field name represents a sensitive credential, token, key, or secret.
+ * Handles camelCase, snake_case, kebab-case, and arbitrary case variations without relying
+ * on brittle punctuation boundaries.
  */
-export const SENSITIVE_KEY_PATTERN =
-  /(?:^|[_\-.])(token|secret|password|passwd|auth|credential|api[_-]?key|private[_-]?key)(?:$|[_\-.])/i;
+export function isSensitiveKey(key) {
+  if (OPERATIONAL_ALLOWLIST.has(key)) return false;
+  const lower = key.toLowerCase();
+  if (
+    lower.includes("token") || // accessToken, refreshToken, apiToken, sessionToken, etc.
+    lower.includes("secret") || // clientSecret, sharedSecret, webhookSecret, etc.
+    lower.includes("password") || // password, passwordHash, etc.
+    lower.includes("passwd") ||
+    lower.includes("auth") || // authorization, authorizationHeader, authHeader, authToken, etc.
+    lower.includes("credential") || // credentials, userCredential, etc.
+    lower.includes("privatekey") ||
+    lower.includes("apikey") ||
+    (lower.endsWith("key") && (
+      lower.includes("api") ||
+      lower.includes("priv") ||
+      lower.includes("sec") ||
+      lower.includes("sign") ||
+      lower.includes("access") ||
+      lower.includes("crypt")
+    ))
+  ) {
+    return true;
+  }
+  return false;
+}
 
 /**
  * Sanitize high-confidence secrets embedded within free text.
@@ -70,8 +95,7 @@ export function redact(obj) {
   }
   for (const k of Object.keys(obj)) {
     const val = obj[k];
-    const isSensitive = !OPERATIONAL_ALLOWLIST.has(k) && SENSITIVE_KEY_PATTERN.test(k);
-    if (isSensitive) {
+    if (isSensitiveKey(k)) {
       obj[k] = "[REDACTED]";
     } else if (typeof val === "string") {
       obj[k] = sanitizeText(val);
@@ -82,19 +106,48 @@ export function redact(obj) {
 }
 
 /**
+ * Canonical mapping between state and lifecycle status.
+ */
+export const STATE_TO_STATUS = Object.freeze({
+  "active": "active",
+  "agent-finished": "completed",
+  "needs-recovery": "needs-recovery",
+  "pending": "pending",
+});
+
+export const STATUS_TO_STATE = Object.freeze({
+  "active": "active",
+  "in-progress": "active",
+  "running": "active",
+  "completed": "agent-finished",
+  "done": "agent-finished",
+  "finished": "agent-finished",
+  "needs-recovery": "needs-recovery",
+  "failed": "needs-recovery",
+  "pending": "pending",
+});
+
+/**
+ * Validate compatibility between state and status.
+ */
+export function validateStateStatusCompatibility(state, status) {
+  if (!state || !status) return true;
+  const expectedState = STATUS_TO_STATE[status];
+  if (expectedState && expectedState !== state) {
+    const err = new Error(
+      `Incompatible lifecycle status "${status}" for state "${state}" (expected status "${STATE_TO_STATUS[state] || state}")`
+    );
+    err.code = "EINVAL_STATE_STATUS";
+    throw err;
+  }
+  return true;
+}
+
+/**
  * Derive lifecycle status consistently from state.
  */
 export function deriveStatusFromState(state) {
-  switch (state) {
-    case "active":
-      return "active";
-    case "agent-finished":
-      return "completed";
-    case "needs-recovery":
-      return "needs-recovery";
-    default:
-      return state || "pending";
-  }
+  return STATE_TO_STATUS[state] || state || "pending";
 }
 
 /**
@@ -107,18 +160,65 @@ export function isCheckpointExpired(record, now = Date.now()) {
 }
 
 /**
+ * Cross-process file locking via atomic exclusive file creation (O_CREAT | O_EXCL).
+ */
+export async function withCrossProcessLock(lockFile, fn, options = {}) {
+  const timeoutMs = options.lockTimeoutMs ?? 5000;
+  const retryIntervalMs = options.retryIntervalMs ?? 25;
+  const staleThresholdMs = options.staleThresholdMs ?? 10000;
+  const start = Date.now();
+
+  while (true) {
+    try {
+      const lockData = JSON.stringify({ pid: process.pid, createdAt: Date.now() });
+      await fs.writeFile(lockFile, lockData, { flag: "wx", mode: 0o600 });
+      break;
+    } catch (err) {
+      if (err.code === "EEXIST") {
+        try {
+          const content = await fs.readFile(lockFile, "utf8");
+          const parsed = JSON.parse(content);
+          if (Date.now() - parsed.createdAt > staleThresholdMs) {
+            await fs.unlink(lockFile).catch(() => {});
+            continue;
+          }
+        } catch {
+          // If unreadable or concurrently unlinked, proceed to retry
+        }
+
+        if (Date.now() - start >= timeoutMs) {
+          const timeoutErr = new Error(`Lock acquisition timed out for ${lockFile}`);
+          timeoutErr.code = "ELOCKED";
+          throw timeoutErr;
+        }
+        await new Promise((resolve) => setTimeout(resolve, retryIntervalMs));
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  try {
+    return await fn();
+  } finally {
+    await fs.unlink(lockFile).catch(() => {});
+  }
+}
+
+/**
  * Durable per-issue checkpoint; intentionally distinct from long-term memU knowledge.
  *
- * Concurrency model:
- * - Single-process writer per host (managed by local bridge LaunchAgent/systemd).
- * - In-memory serialization via Promise queue per checkpoint key.
- * - Cross-process / optimistic CAS validation via `expectedRevision` in patch/options.
- * - Atomic file writes via temporary file and atomic rename.
+ * Concurrency and transactional safety:
+ * - Cross-process single-writer locking via exclusive file lock (`.lock` with O_CREAT | O_EXCL).
+ * - Process-level queuing to minimize file-lock contention within a single runtime instance.
+ * - CAS optimistic concurrency validation via `expectedRevision` evaluated freshly under the lock.
+ * - Atomic rename writes (`tmp` -> target) ensuring zero visible partial files.
  */
 export function createActiveTaskMemory(root) {
   const dir = path.join(root, "active-task-memory");
   const locks = new Map();
   const fileOf = (repo, issue) => path.join(dir, idOf(repo, issue) + ".json");
+  const lockOf = (repo, issue) => fileOf(repo, issue) + ".lock";
 
   async function read(repo, issue) {
     if (!repo || !issue) return null;
@@ -134,76 +234,96 @@ export function createActiveTaskMemory(root) {
   async function update(repo, issue, patch, options = {}) {
     if (!repo || !issue) return null;
     const key = idOf(repo, issue);
+    const lockFile = lockOf(repo, issue);
+
+    // In-process serialization queue
     const pending = locks.get(key) || Promise.resolve();
     const job = pending.catch(() => {}).then(async () => {
       await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-      const prior = await read(repo, issue);
 
-      // CAS: validate expectedRevision if requested
-      const expectedRevision = options.expectedRevision ?? patch?.expectedRevision;
-      if (expectedRevision !== undefined) {
-        const currentRevision = prior?.revision ?? 0;
-        if (currentRevision !== expectedRevision) {
-          const conflictErr = new Error(
-            `Revision conflict for ${repo}:${issue}: expected revision ${expectedRevision}, but found ${currentRevision}`
-          );
-          conflictErr.code = "ECONFLICT";
-          conflictErr.expectedRevision = expectedRevision;
-          conflictErr.currentRevision = currentRevision;
-          throw conflictErr;
+      // Cross-process mutual exclusion
+      return await withCrossProcessLock(lockFile, async () => {
+        // Read current state freshly from disk under the lock
+        const prior = await read(repo, issue);
+
+        // Transactional CAS: validate expectedRevision under the lock
+        const expectedRevision = options.expectedRevision ?? patch?.expectedRevision;
+        if (expectedRevision !== undefined) {
+          const currentRevision = prior?.revision ?? 0;
+          if (currentRevision !== expectedRevision) {
+            const conflictErr = new Error(
+              `Revision conflict for ${repo}:${issue}: expected revision ${expectedRevision}, but found ${currentRevision}`
+            );
+            conflictErr.code = "ECONFLICT";
+            conflictErr.expectedRevision = expectedRevision;
+            conflictErr.currentRevision = currentRevision;
+            throw conflictErr;
+          }
         }
-      }
 
-      // Determine state and lifecycle status consistently
-      const state = patch?.state || prior?.state || "active";
-      const status =
-        patch?.status ||
-        (patch?.state
-          ? deriveStatusFromState(patch.state)
-          : prior?.status || deriveStatusFromState(prior?.state || "active"));
+        // Determine state and lifecycle status consistently
+        let state = patch?.state || prior?.state || "active";
+        let status;
 
-      // Clean patch of internal options
-      const patchData = { ...patch };
-      delete patchData.expectedRevision;
+        if (patch?.status && patch?.state) {
+          validateStateStatusCompatibility(patch.state, patch.status);
+          status = patch.status;
+        } else if (patch?.state) {
+          status = STATE_TO_STATUS[patch.state] || patch.state;
+        } else if (patch?.status) {
+          state = STATUS_TO_STATE[patch.status] || state;
+          validateStateStatusCompatibility(state, patch.status);
+          status = patch.status;
+        } else {
+          state = prior?.state || "active";
+          status = prior?.status && STATUS_TO_STATE[prior.status] === state
+            ? prior.status
+            : (STATE_TO_STATUS[state] || "active");
+        }
 
-      // Build base checkpoint
-      const nextBase = {
-        schemaVersion: 2,
-        revision: (prior?.revision ?? 0) + 1,
-        repositoryRoot: repo,
-        issueId: issue,
-        state,
-        status,
-        lastJobKey: prior?.lastJobKey || null,
-        lastAgent: prior?.lastAgent || null,
-        lastWorkspace: prior?.lastWorkspace || null,
-        lastSessionId: prior?.lastSessionId || null,
-        lastSeenAt: prior?.lastSeenAt || null,
-        lastVerifiedResult: prior?.lastVerifiedResult || null,
-        expiresAt: prior?.expiresAt || null,
-        nextAction: prior?.nextAction || null,
-        artifacts: prior?.artifacts || [],
-        source: prior?.source || null,
-        ...patchData,
-        updatedAt: new Date().toISOString(),
-      };
+        // Clean patch of internal options
+        const patchData = { ...patch };
+        delete patchData.expectedRevision;
 
-      // Clone and sanitize/redact
-      const next = JSON.parse(JSON.stringify(nextBase));
-      redact(next);
+        // Build base checkpoint
+        const nextBase = {
+          schemaVersion: 2,
+          revision: (prior?.revision ?? 0) + 1,
+          repositoryRoot: repo,
+          issueId: issue,
+          state,
+          status,
+          lastJobKey: prior?.lastJobKey || null,
+          lastAgent: prior?.lastAgent || null,
+          lastWorkspace: prior?.lastWorkspace || null,
+          lastSessionId: prior?.lastSessionId || null,
+          lastSeenAt: prior?.lastSeenAt || null,
+          lastVerifiedResult: prior?.lastVerifiedResult || null,
+          expiresAt: prior?.expiresAt || null,
+          nextAction: prior?.nextAction || null,
+          artifacts: prior?.artifacts || [],
+          source: prior?.source || null,
+          ...patchData,
+          updatedAt: new Date().toISOString(),
+        };
 
-      const output = fileOf(repo, issue);
-      const tmp = output + "." + crypto.randomUUID() + ".tmp";
-      try {
-        await fs.writeFile(tmp, JSON.stringify(next, null, 2) + "\n", {
-          mode: 0o600,
-          flag: "wx",
-        });
-        await fs.rename(tmp, output);
-      } finally {
-        await fs.unlink(tmp).catch(() => {});
-      }
-      return next;
+        // Clone and sanitize/redact
+        const next = JSON.parse(JSON.stringify(nextBase));
+        redact(next);
+
+        const output = fileOf(repo, issue);
+        const tmp = output + "." + crypto.randomUUID() + ".tmp";
+        try {
+          await fs.writeFile(tmp, JSON.stringify(next, null, 2) + "\n", {
+            mode: 0o600,
+            flag: "wx",
+          });
+          await fs.rename(tmp, output);
+        } finally {
+          await fs.unlink(tmp).catch(() => {});
+        }
+        return next;
+      });
     });
 
     locks.set(key, job);
@@ -218,25 +338,32 @@ export function createActiveTaskMemory(root) {
     if (!record) return "";
     const now = options.now ?? Date.now();
     const expired = isCheckpointExpired(record, now);
-    const nextActionDisplay = expired
-      ? `none (previous action expired at ${record.expiresAt}; do not execute stale next action: ${record.nextAction || "none"})`
-      : record.nextAction || "none";
-    const stateDisplay = expired
-      ? `expired (${record.state || "unknown"})`
-      : record.state || "unknown";
-    const expiresDisplay = record.expiresAt
-      ? `${record.expiresAt}${expired ? " [EXPIRED - STALE]" : ""}`
-      : "none";
+
+    if (expired) {
+      return [
+        "[LinearBridge durable task checkpoint, non-authoritative - STALE]",
+        "This checkpoint is EXPIRED and STALE. Stale next action has been completely suppressed.",
+        "A live Linear/GitHub/checkout refresh is REQUIRED before taking action.",
+        "Previous agent: " + (record.lastAgent || "unknown"),
+        "Previous state: expired (stale " + (record.state || "unknown") + ")",
+        "Previous session: " + (record.lastSessionId || "unknown"),
+        "Last recorded result: " + (record.lastVerifiedResult || "not verified"),
+        "Next action: none (suppressed due to checkpoint expiration)",
+        "Expires at: " + record.expiresAt + " [EXPIRED - STALE]",
+        "Do not execute any prior unverified instructions without refreshing live issue and Git status.",
+        "[End LinearBridge checkpoint]",
+      ].join("\n");
+    }
 
     return [
       "[LinearBridge durable task checkpoint, non-authoritative]",
       "This is a follow-up for the same issue. Inspect the repository and tests before deciding what remains.",
       "Previous agent: " + (record.lastAgent || "unknown"),
-      "Previous state: " + stateDisplay,
+      "Previous state: " + (record.state || "unknown"),
       "Previous session: " + (record.lastSessionId || "unknown"),
       "Last recorded result: " + (record.lastVerifiedResult || "not verified"),
-      "Next action: " + nextActionDisplay,
-      "Expires at: " + expiresDisplay,
+      "Next action: " + (record.nextAction || "none"),
+      "Expires at: " + (record.expiresAt || "none"),
       "Do not recreate existing work without checking it.",
       "[End LinearBridge checkpoint]",
     ].join("\n");
