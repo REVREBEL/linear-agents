@@ -70,7 +70,7 @@ test("checkpoint preserves operational keys and redacts sensitive keys and embed
         { name: "test-run", key: "artifact-key-1" },
         { authHeader: "Bearer lin_oauth_0123456789abcdef0123456789" },
       ],
-      nextAction: "curl -H 'Authorization: Bearer lin_oauth_0123456789abcdef0123456789' https://api.linear.app",
+      nextAction: "Dispatching task with Bearer lin_oauth_0123456789abcdef0123456789 to internal runner",
       lastVerifiedResult: "Verified commit 6e75d7e using token ghp_0123456789abcdef0123456789abcdef",
     });
 
