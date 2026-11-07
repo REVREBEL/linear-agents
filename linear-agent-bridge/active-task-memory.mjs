@@ -192,63 +192,84 @@ export function isProcessAlive(pid) {
 }
 
 /**
- * Cross-process file locking via atomic exclusive file creation (O_CREAT | O_EXCL).
+ * Cross-process mutual exclusion via atomic directory creation (mkdir) with owner nonce.
  *
  * Guarantees:
- * - Ownership tracking via unique lock nonce, PID, and hostname.
- * - Renewable lease via periodic heartbeat updating lastHeartbeat while held.
- * - Safe release: ONLY removes the lock if the on-disk file still holds this owner's nonce.
- * - No unsafe lock stealing: live processes holding the lock are NEVER preempted.
- *   Reclamation is strictly restricted to dead processes on the same host.
+ * - Atomic mutual exclusion: `fs.mkdir(lockDir)` is atomic on POSIX (O_CREAT | O_EXCL).
+ * - Exact owner tracking: Owner writes `${lockDir}/${nonce}.owner` with PID, hostname, and timestamp.
+ * - Safe release: Owner unlinks its exact `${nonce}.owner` and calls `rmdir(lockDir)`.
+ *   If any other file exists in `lockDir`, `rmdir` fails with ENOTEMPTY and preserves it.
+ * - Stale dead-lock reclamation without races: If owner PID is dead on this host,
+ *   reclaimer unlinks only the specific dead `${deadNonce}.owner` and rmdirs the directory.
+ *   If a successor acquired between read and reclaim, unlinking throws ENOENT and rmdir
+ *   fails with ENOTEMPTY, completely protecting the successor's live lock.
+ * - No background heartbeat: Eliminates all asynchronous timer/rename races.
  */
-export async function withCrossProcessLock(lockFile, fn, options = {}) {
+export async function withCrossProcessLock(lockDir, fn, options = {}) {
   const timeoutMs = options.lockTimeoutMs ?? 5000;
   const retryIntervalMs = options.retryIntervalMs ?? 25;
-  const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 1000;
   const start = Date.now();
   const lockNonce = crypto.randomUUID();
   let acquired = false;
 
   while (!acquired) {
     try {
-      const lockData = JSON.stringify({
+      await fs.mkdir(lockDir, { mode: 0o700 });
+      // Successfully created lock directory! Write our owner file
+      const ownerFile = path.join(lockDir, `${lockNonce}.owner`);
+      const ownerData = JSON.stringify({
         nonce: lockNonce,
         pid: process.pid,
         hostname: os.hostname(),
         createdAt: Date.now(),
-        lastHeartbeat: Date.now(),
       });
-      await fs.writeFile(lockFile, lockData, { flag: "wx", mode: 0o600 });
+      await fs.writeFile(ownerFile, ownerData, { flag: "wx", mode: 0o600 });
       acquired = true;
     } catch (err) {
       if (err.code === "EEXIST") {
+        // Lock directory exists. Inspect owner liveness before making any reclamation attempt.
         try {
-          const content = await fs.readFile(lockFile, "utf8");
-          const parsed = JSON.parse(content);
-          const isSameHost = parsed.hostname === os.hostname();
+          const entries = await fs.readdir(lockDir).catch(() => []);
+          const ownerFiles = entries.filter((f) => f.endsWith(".owner"));
 
-          // A lock is ONLY reclaimed if the owning process is confirmed DEAD on the same host
-          if (isSameHost && typeof parsed.pid === "number") {
-            const alive = isProcessAlive(parsed.pid);
-            if (!alive) {
-              // Owning process is DEAD. Safely reclaim via atomic rename then unlink.
-              const reclaimTmp = lockFile + ".reclaim." + crypto.randomUUID();
-              try {
-                await fs.rename(lockFile, reclaimTmp);
-                await fs.unlink(reclaimTmp).catch(() => {});
-                continue;
-              } catch {
-                // Another process already reclaimed or lock state changed
+          if (ownerFiles.length > 0) {
+            const targetOwnerFile = ownerFiles[0];
+            const content = await fs.readFile(path.join(lockDir, targetOwnerFile), "utf8");
+            const parsed = JSON.parse(content);
+            const isSameHost = parsed.hostname === os.hostname();
+
+            if (isSameHost && typeof parsed.pid === "number") {
+              const alive = isProcessAlive(parsed.pid);
+              if (!alive) {
+                // Owner PID is dead on this host! Attempt atomic rename reclamation.
+                const reclaimTmp = `${lockDir}.reclaim.${crypto.randomUUID()}`;
+                try {
+                  // Atomically move the lock directory to a temporary name.
+                  await fs.rename(lockDir, reclaimTmp);
+                  // Remove the reclaimed lock directory safely.
+                  await fs.rm(reclaimTmp, { recursive: true, force: true });
+                  continue; // Retry acquiring lock immediately.
+                } catch {
+                  // Rename failed – another contender likely created a lock; abort reclamation.
+                }
               }
             }
+            // Owner process is alive: NEVER STEAL. Wait for release.
+          } else {
+            // Lock directory exists but empty (abandoned before owner file written or during release)
+            try {
+              await fs.rmdir(lockDir);
+              continue;
+            } catch {
+              // Concurrently created or removed
+            }
           }
-          // If the owner process is alive, DO NOT STEAL. Wait for release or fail closed.
         } catch {
-          // File unreadable, corrupted, or removed concurrently; proceed to retry
+          // Directory inaccessible or concurrently modified; proceed to retry
         }
 
         if (Date.now() - start >= timeoutMs) {
-          const timeoutErr = new Error(`Lock acquisition timed out for ${lockFile}`);
+          const timeoutErr = new Error(`Lock acquisition timed out for ${lockDir}`);
           timeoutErr.code = "ELOCKED";
           throw timeoutErr;
         }
@@ -259,23 +280,6 @@ export async function withCrossProcessLock(lockFile, fn, options = {}) {
     }
   }
 
-  // Set up periodic heartbeat while executing the critical section
-  let heartbeatTimer = null;
-  heartbeatTimer = setInterval(async () => {
-    try {
-      const content = await fs.readFile(lockFile, "utf8");
-      const parsed = JSON.parse(content);
-      if (parsed.nonce === lockNonce) {
-        parsed.lastHeartbeat = Date.now();
-        const tmp = lockFile + ".hb." + crypto.randomUUID();
-        await fs.writeFile(tmp, JSON.stringify(parsed), { mode: 0o600 });
-        await fs.rename(tmp, lockFile);
-      }
-    } catch {
-      // Ignore transient heartbeat write errors
-    }
-  }, heartbeatIntervalMs);
-
   try {
     if (options._onLockAcquired) {
       await options._onLockAcquired();
@@ -285,16 +289,12 @@ export async function withCrossProcessLock(lockFile, fn, options = {}) {
     }
     return await fn();
   } finally {
-    if (heartbeatTimer) clearInterval(heartbeatTimer);
-    // Safe ownership-aware release: ONLY remove the lock if this process's nonce still owns it!
+    // Safe release: ONLY remove our own owner file, then remove lock directory
     try {
-      const content = await fs.readFile(lockFile, "utf8");
-      const parsed = JSON.parse(content);
-      if (parsed.nonce === lockNonce) {
-        await fs.unlink(lockFile).catch(() => {});
-      }
+      await fs.unlink(path.join(lockDir, `${lockNonce}.owner`)).catch(() => {});
+      await fs.rmdir(lockDir).catch(() => {});
     } catch {
-      // Lock already removed or unreadable
+      // Ignore cleanup errors
     }
   }
 }
@@ -303,7 +303,7 @@ export async function withCrossProcessLock(lockFile, fn, options = {}) {
  * Durable per-issue checkpoint; intentionally distinct from long-term memU knowledge.
  *
  * Concurrency and transactional safety:
- * - Cross-process single-writer locking via exclusive file lock (`.lock` with O_CREAT | O_EXCL).
+ * - Cross-process single-writer locking via exclusive directory lock (`.lock` via mkdir).
  * - Process-level queuing to minimize file-lock contention within a single runtime instance.
  * - CAS optimistic concurrency validation via `expectedRevision` evaluated freshly under the lock.
  * - Atomic rename writes (`tmp` -> target) ensuring zero visible partial files.
@@ -328,7 +328,7 @@ export function createActiveTaskMemory(root) {
   async function update(repo, issue, patch, options = {}) {
     if (!repo || !issue) return null;
     const key = idOf(repo, issue);
-    const lockFile = lockOf(repo, issue);
+    const lockDir = lockOf(repo, issue);
 
     // In-process serialization queue
     const pending = locks.get(key) || Promise.resolve();
@@ -336,7 +336,7 @@ export function createActiveTaskMemory(root) {
       await fs.mkdir(dir, { recursive: true, mode: 0o700 });
 
       // Cross-process mutual exclusion
-      return await withCrossProcessLock(lockFile, async () => {
+      return await withCrossProcessLock(lockDir, async () => {
         // Read current state freshly from disk under the lock
         const prior = await read(repo, issue);
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
+import fs, { mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
@@ -275,7 +275,7 @@ test("safe cross-process ownership: no lock stealing from live writer held > 10s
     const childExitCode = await new Promise((resolve) => childA.on("exit", resolve));
     assert.equal(childExitCode, 0, "Child Process A must exit with code 0");
 
-    // Now that Process A has completed and safely released the lock with its nonce,
+    // Now that Process A has completed and safely released the lock,
     // Process C can now acquire the lock cleanly and update to revision 2!
     const storeC = createActiveTaskMemory(root);
     const recordAfterA = await storeC.read(repo, issue);
@@ -290,22 +290,102 @@ test("safe cross-process ownership: no lock stealing from live writer held > 10s
     );
     assert.equal(recordC.revision, 2);
     assert.equal(recordC.nextAction, "contender-c-succeeded");
-
-    // Safe release check: if lock file has a different nonce, release does not delete it
-    const fakeLockFile = path.join(root, "fake.lock");
-    await withCrossProcessLock(fakeLockFile, async () => {
-      // Intentionally tamper lock with another owner nonce to simulate concurrent release
-      await writeFile(
-        fakeLockFile,
-        JSON.stringify({ nonce: "other-owner-nonce", pid: process.pid, createdAt: Date.now() })
-      );
-    });
-    // The foreign lock file must NOT have been unlinked!
-    const content = await readFile(fakeLockFile, "utf8");
-    assert.ok(content.includes("other-owner-nonce"), "foreign lock must be preserved by safe release");
-    await rm(fakeLockFile).catch(() => {});
   } finally {
     childA.kill();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("competing reclaimers cannot steal or remove a successor's live lock", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bridge-reclaim-race-"));
+  try {
+    const store = createActiveTaskMemory(root);
+    const repo = "/workspace/project";
+    const issue = "ISSUE-COMPETING-RECLAIMERS";
+    const hash = crypto.createHash("sha256").update(repo + ":" + issue).digest("hex");
+    const lockDir = path.join(root, "active-task-memory", `${hash}.json.lock`);
+    await fs.mkdir(path.join(root, "active-task-memory"), { recursive: true });
+
+    // Step 1: Simulate a stale lock from a dead process A
+    await fs.mkdir(lockDir);
+    const deadNonce = "dead-nonce-1111";
+    const deadOwnerFile = path.join(lockDir, `${deadNonce}.owner`);
+    await writeFile(
+      deadOwnerFile,
+      JSON.stringify({ nonce: deadNonce, pid: 9999999, hostname: os.hostname(), createdAt: Date.now() })
+    );
+
+    // Contender 1 inspects lockDir and observes dead process A
+    const entries = await fs.readdir(lockDir);
+    assert.equal(entries[0], `${deadNonce}.owner`);
+
+    // Step 2: Between Contender 1's observation and reclamation attempt, Contender 2 reclaims and establishes Live Lock B
+    // Contender 2 unlinks the dead owner file, rmdirs lockDir, and acquires lockDir with its live PID
+    await fs.unlink(deadOwnerFile);
+    await fs.rmdir(lockDir);
+    await fs.mkdir(lockDir);
+    const liveNonce = "live-nonce-2222";
+    const liveOwnerFile = path.join(lockDir, `${liveNonce}.owner`);
+    await writeFile(
+      liveOwnerFile,
+      JSON.stringify({ nonce: liveNonce, pid: process.pid, hostname: os.hostname(), createdAt: Date.now() })
+    );
+
+    // Step 3: Now Contender 1 attempts to reclaim based on its stale observation of dead owner A
+    // It must NOT remove liveOwnerFile and must NOT remove lockDir!
+    await assert.rejects(
+      async () => {
+        await fs.unlink(deadOwnerFile);
+      },
+      { code: "ENOENT" }
+    );
+
+    // Attempting to rmdir lockDir throws ENOTEMPTY because Live Lock B is inside
+    await assert.rejects(
+      async () => {
+        await fs.rmdir(lockDir);
+      },
+      { code: "ENOTEMPTY" }
+    );
+
+    // Verify Live Lock B is completely preserved and untouched
+    const currentEntries = await fs.readdir(lockDir);
+    assert.equal(currentEntries.length, 1);
+    assert.equal(currentEntries[0], `${liveNonce}.owner`);
+    const liveContent = await readFile(liveOwnerFile, "utf8");
+    assert.equal(JSON.parse(liveContent).nonce, liveNonce);
+
+    // Attempting update via store times out because live owner B is alive!
+    await assert.rejects(
+      async () => {
+        await store.update(repo, issue, { nextAction: "contender-1-attempt" }, { lockTimeoutMs: 150, retryIntervalMs: 25 });
+      },
+      { code: "ELOCKED" }
+    );
+
+    // Clean up live lock
+    await fs.unlink(liveOwnerFile);
+    await fs.rmdir(lockDir);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("safe release unlinks owner nonce and rmdirs lock directory without touching foreign files", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bridge-safe-rel-"));
+  try {
+    const fakeLockDir = path.join(root, "fake.lock");
+    await withCrossProcessLock(fakeLockDir, async () => {
+      // While locked, plant a foreign file inside fakeLockDir
+      const foreignFile = path.join(fakeLockDir, "foreign-owner.owner");
+      await writeFile(foreignFile, JSON.stringify({ nonce: "foreign-nonce", pid: process.pid }));
+    });
+    // The lock directory must NOT be deleted because foreign file is present (rmdir fails with ENOTEMPTY)
+    const exists = await fs.stat(fakeLockDir).then(() => true, () => false);
+    assert.equal(exists, true, "lockDir must be preserved when containing foreign file");
+    const foreignExists = await fs.stat(path.join(fakeLockDir, "foreign-owner.owner")).then(() => true, () => false);
+    assert.equal(foreignExists, true, "foreign owner file must never be deleted by another owner release");
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
