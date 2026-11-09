@@ -8,6 +8,7 @@ import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, 
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import { createReviewInbox } from "./review-inbox.mjs";
+import { notifyLinearReview } from "./review-linear-notifier.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
@@ -63,9 +64,18 @@ async function prepareGithubShortcutHandoff(event, source) {
   if (!destination.ok) throw new Error(destination.error);
   if (process.env.CHATGPT_REVIEW_MODE === "inbox") {
     const stored = await reviewInbox.enqueue(event, { source, destination });
+    let notification = null;
+    if (process.env.CHATGPT_REVIEW_NOTIFY_MODE === "linear-user") {
+      notification = await notifyLinearReview(stored.record, {
+        apiKey: LINEAR_API_KEY,
+        teamId: process.env.CHATGPT_REVIEW_LINEAR_TEAM_ID,
+        userId: process.env.CHATGPT_REVIEW_LINEAR_USER_ID,
+      });
+    }
     return {
       reviewQueued: true, reviewId: stored.record.reviewId,
       handoffId: stored.record.reviewId, created: stored.created,
+      reviewNotified: notification !== null, reviewIssue: notification?.identifier || null,
     };
   }
   const handoffId = crypto.createHash("sha256").update(`github:${source}:${event.delivery}`).digest("hex");
@@ -371,6 +381,14 @@ const server = http.createServer(async (request, response) => {
         return sendJson(response, 503, { ok: false, accepted: false,
           error: "Review inbox requires a separate 32+ character CHATGPT_REVIEW_INBOX_TOKEN" });
       }
+      if (process.env.CHATGPT_REVIEW_MODE === "inbox" &&
+          process.env.CHATGPT_REVIEW_NOTIFY_MODE === "linear-user" &&
+          shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF) &&
+          (!LINEAR_API_KEY || !/^[0-9a-f-]{36}$/i.test(process.env.CHATGPT_REVIEW_LINEAR_TEAM_ID || "") ||
+            !/^[0-9a-f-]{36}$/i.test(process.env.CHATGPT_REVIEW_LINEAR_USER_ID || ""))) {
+        return sendJson(response, 503, { ok: false, accepted: false,
+          error: "Review notification requires Linear API key, team UUID and ChatGPT user UUID" });
+      }
       const eventDir = path.join(JOBS_DIR, "github-events");
       // Atomic create prevents duplicate webhook retries from being journaled twice.
       await fs.mkdir(eventDir, { recursive: true, mode: 0o700 });
@@ -383,7 +401,7 @@ const server = http.createServer(async (request, response) => {
             if (recovered && !recovered.duplicate) {
               launchGithubShortcutHandoff(recovered);
               return sendJson(response, 202, { ok: true, duplicate: true, recoveredReviewDispatch: true,
-                delivery: event.delivery, handoffId: recovered.handoffId, reviewDispatched: !recovered.reviewQueued, reviewQueued: recovered.reviewQueued === true });
+                delivery: event.delivery, handoffId: recovered.handoffId, reviewDispatched: !recovered.reviewQueued, reviewQueued: recovered.reviewQueued === true, reviewNotified: recovered.reviewNotified === true, reviewIssue: recovered.reviewIssue || null });
             }
             return sendJson(response, 202, { ok: true, duplicate: true, delivery: event.delivery,
               reviewDispatched: recovered?.duplicate === true });
@@ -409,7 +427,7 @@ const server = http.createServer(async (request, response) => {
         if (handoff && !handoff.duplicate) launchGithubShortcutHandoff(handoff);
         console.log(`GitHub event recorded: ${source} ${event.event} ${event.action} ${event.repository || ""} ${event.number || ""}`);
         return sendJson(response, 202, { ok: true, accepted: true, delivery: event.delivery,
-          ...(handoff && !handoff.duplicate ? { handoffId: handoff.handoffId, reviewDispatched: !handoff.reviewQueued, reviewQueued: handoff.reviewQueued === true, reviewId: handoff.reviewId } : { reviewDispatched: handoff?.duplicate === true && process.env.CHATGPT_REVIEW_MODE !== "inbox", reviewQueued: handoff?.duplicate === true && process.env.CHATGPT_REVIEW_MODE === "inbox" }) });
+          ...(handoff && !handoff.duplicate ? { handoffId: handoff.handoffId, reviewDispatched: !handoff.reviewQueued, reviewQueued: handoff.reviewQueued === true, reviewNotified: handoff.reviewNotified === true, reviewIssue: handoff.reviewIssue || null, reviewId: handoff.reviewId } : { reviewDispatched: handoff?.duplicate === true && process.env.CHATGPT_REVIEW_MODE !== "inbox", reviewQueued: handoff?.duplicate === true && process.env.CHATGPT_REVIEW_MODE === "inbox" }) });
       } catch (error) {
         await fs.unlink(claimFile).catch(() => {});
         if (handoff?.dispatchClaim) await fs.unlink(handoff.dispatchClaim).catch(() => {});
