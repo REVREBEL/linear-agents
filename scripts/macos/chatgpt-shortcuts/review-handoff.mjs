@@ -18,13 +18,20 @@ function validate(request) {
 }
 export async function runReviewHandoff(input, { run = spawn } = {}) {
   const handoff = validate(input);
+  const controller = process.env.CHATGPT_REVIEW_MAC_CONTROLLER || "playwright";
+  if (!["playwright", "shortcuts"].includes(controller)) throw Error("Invalid Mac review controller");
   const dir = await mkdtemp(path.join(os.tmpdir(), "linearbridge-review-"));
   const file = path.join(dir, "handoff.json");
   try {
-    await writeFile(file, JSON.stringify(handoff), { flag: "wx", mode: 0o600 });
-    const runner = path.resolve(import.meta.dirname, "handoff.mjs");
+    await writeFile(file, JSON.stringify({ ...handoff, projectUrl: handoff.conversationUrl,
+      conversationMode: "reuse-existing", autoSend: true }), { flag: "wx", mode: 0o600 });
+    const runner = controller === "playwright"
+      ? path.resolve(import.meta.dirname, "../../chatgpt-playwright/handoff-test.mjs")
+      : path.resolve(import.meta.dirname, "handoff.mjs");
     await new Promise((resolve, reject) => {
-      const child = run(process.execPath, [runner, "--handoff-file", file], {
+      const args = [runner, "--handoff-file", file];
+      if (controller === "playwright") args.push("--auto-send");
+      const child = run(process.execPath, args, {
         stdio: ["ignore", "pipe", "pipe"],
         env: process.env,
       });
@@ -35,8 +42,9 @@ export async function runReviewHandoff(input, { run = spawn } = {}) {
       child.once("close", code => code === 0 ? resolve() :
         reject(Error("Mac Shortcut handoff failed (exit " + code + "): " + stderr)));
     });
-    // An exit code is an attempted browser submission, not proof of delivery.
-    return "HANDOFF_ATTEMPTED:" + handoff.handoffId;
+    // The Playwright controller attempts Enter after verifying the target composer.
+    // Shortcut-only mode may do no more than open the URL and copy the prompt.
+    return (controller === "playwright" ? "HANDOFF_ATTEMPTED:" : "HANDOFF_PREPARED:") + handoff.handoffId;
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
