@@ -3,8 +3,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 const [agent, output] = process.argv.slice(2);
-if (!/^(antigravity|chatgpt|gemini|trae|mock)$/.test(agent) || !output) throw Error("Usage: node render-wrangler.mjs <agent> <output>");
-const key=agent.toUpperCase(), domain=process.env.DOMAIN;
+if (!/^(antigravity|chatgpt|chatgpt-cli|gemini|trae|mock)$/.test(agent) || !output) throw Error("Usage: node render-wrangler.mjs <agent> <output>");
+const key=agent.toUpperCase().replaceAll('-', '_'), domain=process.env.DOMAIN;
 const prefix=process.env[`${key}_PREFIX`] || agent;
 if (!/^[a-z][a-z0-9-]*$/.test(prefix)) throw Error(`Invalid ${key}_PREFIX`);
 const serviceName=`linear-${prefix}-agent`;
