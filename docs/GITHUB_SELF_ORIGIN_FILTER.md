@@ -9,7 +9,7 @@ Set these environment variables for the **local bridge process** (not a Cloudfla
 - `GITHUB_CHATGPT_SELF_IDS`: comma-separated GitHub numeric user IDs assigned to ChatGPT's writing identity (recommended).
 - `GITHUB_CHATGPT_SELF_LOGINS`: comma-separated exact GitHub logins for the same account(s), case-insensitive. Use only if the identity is confirmed.
 
-By default, the bridge matches the verified ChatGPT GitHub actor from PR #33: `revrebel-chatgpt` / numeric account ID `352271105`. To override or extend the identity, set the respective comma-separated environment variables. Explicitly set both variables to empty strings to disable the self-origin filter. Account IDs/logins are not credentials. Configure them through the existing bridge environment/LaunchAgent, then restart the bridge as usual. Do **not** place OAuth access tokens or GitHub App private keys in this configuration.
+**Default: no identities are configured, so self-origin suppression is disabled.** No GitHub account IDs or logins are inferred from the PR author, environment, or other metadata. An operator must explicitly configure verified identity values before suppression can occur. Unset or empty variables both produce empty allowlists. Account IDs/logins are not credentials. Configure them through the running bridge's `.env` (or other service-specific environment) and restart `agent-bridge.service` on Ubuntu, or the configured LaunchAgent on macOS. Do **not** place OAuth access tokens or GitHub App private keys in this configuration.
 
 ## Behavior
 
@@ -25,6 +25,6 @@ By default, the bridge matches the verified ChatGPT GitHub actor from PR #33: `r
 node --test linear-agent-bridge/github-events.test.mjs
 ```
 
-Validate one self-authored comment and PR synchronize delivery, then an externally authored revision on the same PR. Check the event journal and classification outcome; the external actionable event must still produce one handoff.
+Run both unit and isolated end-to-end `/github/events` dispatch tests. Unset or empty identity variables must preserve an otherwise actionable PR review handoff. A deliberately configured matching GitHub account ID or login must suppress its own event; a different actor must still dispatch. Check the event journal, classification outcome, and handoff file. The Linux integration harness does not require a real Apple Shortcuts installation; it verifies the routing/claim and persisted handoff, not a browser session completing work.
 
 Do not guess an identity from the text `ChatGPT`, commit email, PR creator, or GitHub App delivery header. If the GitHub integration operates using a shared human identity, this filter cannot reliably separate ChatGPT's actions from the human's without additional authenticated provenance, and should remain disabled for that account.
