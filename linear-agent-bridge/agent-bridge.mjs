@@ -306,6 +306,12 @@ const server = http.createServer(async (request, response) => {
       let event;
       try { event = sanitizeGithubEvent(JSON.parse(await readBody(request))); }
       catch (error) { return sendJson(response, 400, { ok: false, error: error.message }); }
+      // Linux currently has no supported automatic ChatGPT review launcher.
+      // Do not consume delivery or semantic claims when dispatch cannot happen.
+      if (process.platform !== "darwin" && shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) {
+        return sendJson(response, 503, { ok: false, accepted: false,
+          reviewDispatched: false, error: "ChatGPT review handoff unavailable on Linux; no delivery or review claim created" });
+      }
       const eventDir = path.join(JOBS_DIR, "github-events");
       // Atomic create prevents duplicate webhook retries from being journaled twice.
       await fs.mkdir(eventDir, { recursive: true, mode: 0o700 });
@@ -589,6 +595,13 @@ const server = http.createServer(async (request, response) => {
       if (!route.chatgptProjectUrl) {
         await jobStore.transition(jobKey, "failed", { error: "No chatgpt.projectUrl in Linear project mapping" });
         console.error("ChatGPT handoff stopped: project mapping has no chatgpt.projectUrl");
+      } else if (process.platform !== "darwin") {
+        // Keep the task but never claim a UI/browser handoff was launched.
+        await jobStore.transition(jobKey, "awaiting_external", {
+          taskFile: filename,
+          note: "Linux ChatGPT browser/Shortcuts handoff unsupported; task retained for a supported runner; automatic dispatch not attempted"
+        });
+        console.warn(`ChatGPT Linux handoff deferred (no browser launched): ${filename}`);
       } else if (["supervised-playwright", "shortcuts"].includes(process.env.CHATGPT_HANDOFF_MODE) || route.chatgptAutoSend === true) {
         const promptContext = extractPromptContext(routedJob);
         if (!promptContext) {

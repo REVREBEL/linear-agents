@@ -46,7 +46,7 @@ function pullRequestEnvelope(number, actorId, actorLogin) {
     },
   };
 }
-async function sendEvent(port, payload) {
+async function sendEvent(port, payload, expectedStatus = 202) {
   const response = await fetch(`http://127.0.0.1:${port}/github/events`, {
     method: "POST",
     headers: {
@@ -58,7 +58,7 @@ async function sendEvent(port, payload) {
     signal: AbortSignal.timeout(4000),
   });
   const body = await response.text();
-  assert.equal(response.status, 202, body);
+  assert.equal(response.status, expectedStatus, body);
   return JSON.parse(body);
 }
 async function runCase(identityEnv, assertions) {
@@ -146,23 +146,24 @@ test("GitHub dispatch honors explicitly configured self-origin identities, never
   // The identity deliberately matches the previously hardcoded defaults.
   const own = pullRequestEnvelope(21, 352271105, "revrebel-chatgpt");
   await runCase({}, async ({port, handoffCount, eventJournal}) => {
-    const result = await sendEvent(port, own);
-    assert.equal(result.reviewDispatched, true, "unset env must preserve actionable review");
-    assert.equal(await handoffCount(), 1, "real dispatcher must persist a handoff");
-    assert.equal((await eventJournal()).length, 1);
+    const result = await sendEvent(port, own, 503);
+    assert.equal(result.reviewDispatched, false, "Linux must not claim a nonfunctional handoff");
+    assert.equal(result.accepted, false);
+    assert.equal(await handoffCount(), 0, "no unsupported handoff should be persisted");
   });
   await runCase({GITHUB_CHATGPT_SELF_IDS: "", GITHUB_CHATGPT_SELF_LOGINS: ""}, async ({port, handoffCount}) => {
-    const result = await sendEvent(port, own);
-    assert.equal(result.reviewDispatched, true, "empty env must preserve actionable review");
-    assert.equal(await handoffCount(), 1);
+    const result = await sendEvent(port, own, 503);
+    assert.equal(result.reviewDispatched, false, "empty env leaves event actionable but Linux handoff unavailable");
+    assert.equal(await handoffCount(), 0);
   });
   await runCase({GITHUB_CHATGPT_SELF_IDS: "352271105", GITHUB_CHATGPT_SELF_LOGINS: "revrebel-chatgpt"}, async ({port, handoffCount, eventJournal}) => {
     const suppressed = await sendEvent(port, own);
     assert.equal(suppressed.reviewDispatched, false, "verified matching actor must be suppressed");
     assert.equal(await handoffCount(), 0, "self-authored event must not create a handoff");
-    const unrelated = await sendEvent(port, pullRequestEnvelope(22, 3456, "outside-reviewer"));
-    assert.equal(unrelated.reviewDispatched, true, "unrelated actor must still dispatch");
-    assert.equal(await handoffCount(), 1);
-    assert.equal((await eventJournal()).length, 2);
+    const unrelated = await sendEvent(port, pullRequestEnvelope(22, 3456, "outside-reviewer"), 503);
+    assert.equal(unrelated.reviewDispatched, false, "unrelated actor remains actionable, but cannot launch on Linux");
+    assert.equal(unrelated.accepted, false);
+    assert.equal(await handoffCount(), 0);
+    assert.equal((await eventJournal()).length, 1, "only deliberately suppressed event was acknowledged and journaled");
   });
 });
