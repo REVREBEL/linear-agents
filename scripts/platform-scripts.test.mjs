@@ -109,7 +109,7 @@ test("ChatGPT CLI KV setup provisions the dedicated namespace and .env binding",
   try {
     const envFile = path.join(temp, ".env");
     const namespaceId = "b".repeat(32);
-    writeFileSync(envFile, "CHATGPT_CLI_KV_NAMESPACE_ID=\\n");
+    writeFileSync(envFile, "CHATGPT_CLI_KV_NAMESPACE_ID=\n");
     const mockFetch = path.join(temp, "mock-fetch.mjs");
     writeFileSync(mockFetch, `
 globalThis.fetch = async (url, options = {}) => {
