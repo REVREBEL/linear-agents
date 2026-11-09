@@ -140,6 +140,36 @@ test("antigravity: completion callback preserves explicit activity type", { conc
   } finally { globalThis.fetch = oldFetch; }
 });
 
+test("trae: completion callback preserves explicit progress activity type", { concurrency: false }, async () => {
+  const workerModule = await loadWorker("trae");
+  const store = kv({
+    "installation:org": installed(Date.now() + 3600000),
+    "agent-session:session-1": "org",
+  });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
+  const oldFetch = globalThis.fetch;
+  let activityInput;
+  try {
+    globalThis.fetch = async (url, options) => {
+      assert.match(String(url), /api\.linear\.app\/graphql/);
+      activityInput = JSON.parse(String(options.body)).variables.input;
+      return Response.json({ data: { agentActivityCreate: { success: true } } });
+    };
+    const response = await workerModule.default.fetch(new Request("https://worker.test/complete", {
+      method: "POST",
+      headers: { authorization: "Bearer shared", "content-type": "application/json" },
+      body: JSON.stringify({
+        agentSessionId: "session-1",
+        activityType: "thought",
+        body: "Editing project files",
+      }),
+    }), config, {});
+    assert.equal(response.status, 200);
+    assert.deepEqual(activityInput.content, { type: "thought", body: "Editing project files" });
+  } finally { globalThis.fetch = oldFetch; }
+});
+
 for (const agent of agents) {
   test(`${agent}: expired OAuth does not poison dedupe; reauthorization permits retry`, { concurrency: false }, async () => {
     const workerModule = await loadWorker(agent);

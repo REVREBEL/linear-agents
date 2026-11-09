@@ -139,6 +139,8 @@ The committed unified router selects the runtime using the hostname: `antigravit
 
 On a local macOS LaunchAgent use an explicit Python venv binary, CLI executable paths and repository workspaces. Validate the `GEMINI_BIN`, `TRAE_BIN`, their arguments, authentication and whether the command blocks or merely opens an IDE session. A successful process spawn is not proof that the work completed.
 
+Trae progress uses the user-level hooks installed from `linear-agent-bridge/.trae/hooks.json`. Before launch, the bridge writes a mode-0600 `.linear-agent/trae-active-session.json` file in the routed repository containing the exact Linear Agent Session, Worker completion URL, workspace and a random local callback token. `SessionStart`, `PreToolUse`, `PostToolUse`, and `Stop` invoke `trae-linear-progress.mjs`, which sends only a short sanitized action summary to the loopback bridge. The bridge validates the workspace and callback token, rate-limits activity, and relays a `thought` through the authenticated Trae Worker `/complete` endpoint. Raw commands, tool results and model reasoning are never forwarded. A newer Trae delivery for the same repository replaces the active context, so simultaneous Trae sessions in one checkout are intentionally unsupported.
+
 ## Completion contract
 
 ```bash

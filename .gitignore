@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
+.DS_Store    
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
@@ -149,7 +150,12 @@ linear-jobs/
 .linear-agent-bridge/trae-hook-events.log
 
 # Central configuration and Terraform generated artifacts
+# Ignores exact .env file, .playlist.env, app.env or .env.local, .env.production, etc.
+.env
 .env.*
+*.env
+.*.env
+
 !.env.example
 **/.terraform/
 **/*.tfstate
@@ -168,3 +174,4 @@ scripts/chatgpt-playwright/package-lock.json
 # Regenerated Wrangler declarations contain deployment-specific values
 **/worker-configuration.d.ts
 linear-mock-worker/worker-configuration.d.ts
+/__pycache__
