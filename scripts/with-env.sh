@@ -81,6 +81,7 @@ case "${1:-}" in
       antigravity) worker_dir="${REPO_ROOT}/linear-antigravity-worker"; prefix="ANTIGRAVITY" ;;
       trae) worker_dir="${REPO_ROOT}/linear-trae-worker"; prefix="TRAE" ;;
       chatgpt) worker_dir="${REPO_ROOT}/linear-chatgpt-worker"; prefix="CHATGPT" ;;
+      chatgpt-cli) worker_dir="${REPO_ROOT}/linear-chatgpt-cli-worker"; prefix="CHATGPT_CLI" ;;
       gemini) worker_dir="${REPO_ROOT}/linear-gemini-worker"; prefix="GEMINI" ;;
       mock) worker_dir="${REPO_ROOT}/linear-mock-worker"; prefix="MOCK" ;;
       *) usage ;;
