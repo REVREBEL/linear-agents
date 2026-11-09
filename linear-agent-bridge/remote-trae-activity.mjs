@@ -18,12 +18,22 @@ export function validateRemoteTraeActivity(activity, record) {
   if (!["running", "awaiting_external"].includes(record.state)) return false;
   return Boolean(record.remoteCompletionUrl && /^https:\/\//.test(record.remoteCompletionUrl));
 }
-export function validateActivityEndpoint(raw, hostname) {
+export function validateActivityEndpoint(raw, hostname, endpointPath = "/trae-activity") {
   const parsed = new URL(raw);
   if (parsed.protocol !== "https:" || parsed.username || parsed.password ||
-      parsed.search || parsed.hash || parsed.pathname !== "/trae-activity" ||
+      parsed.search || parsed.hash || parsed.pathname !== endpointPath ||
       parsed.hostname !== hostname || parsed.port) {
     throw Error("Mac Trae activity endpoint must be the expected HTTPS Trae host");
+  }
+  return parsed.toString();
+}
+
+export function validateTraeCompletionUrl(raw, hostname) {
+  const parsed = new URL(raw);
+  if (parsed.protocol !== "https:" || parsed.hostname !== hostname ||
+      parsed.pathname !== "/complete" || parsed.username || parsed.password ||
+      parsed.port || parsed.search || parsed.hash) {
+    throw Error("Unexpected Trae Worker completion endpoint");
   }
   return parsed.toString();
 }
