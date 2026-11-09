@@ -42,6 +42,12 @@ export async function validateStorageState(file, fsApi = fs) {
   return state;
 }
 
+export async function preflightChatgptHeadless({ storageStatePath = process.env.CHATGPT_STORAGE_STATE || defaultState } = {}) {
+  await validateStorageState(storageStatePath);
+  requirePlaywright.resolve("playwright");
+  return true;
+}
+
 export async function submitChatgptHeadless({ handoff, storageStatePath = process.env.CHATGPT_STORAGE_STATE || defaultState,
   playwright, fsApi = fs, logger = console }) {
   const { url, prompt } = validateHandoff(handoff);
