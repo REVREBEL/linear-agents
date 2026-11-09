@@ -13,11 +13,11 @@ const SENSITIVE_FIELD = /(?:token|secret|password|passwd|credential|authorizatio
 const OPERATIONAL_FIELDS = new Set(["lastJobKey", "jobKey", "issueId", "lastSessionId"]);
 export function sanitizeCheckpointText(text) {
   return String(text)
-    .replace(/Bearer\\s+[^\\s]+/gi, "Bearer [REDACTED]")
+    .replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]")
     .replace(/(?:github_pat|gh[pousr]|lin_api|lin_oauth)_[A-Za-z0-9_-]{12,}/gi, "[REDACTED]")
-    .replace(/\\bsk-[A-Za-z0-9_-]{20,}\\b/g, "[REDACTED]")
-    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED_PRIVATE_KEY]")
-    .replace(/((?:token|password|secret|api[_-]?key)\\s*[:=]\\s*)[^\\s,;]+/gi, "$1[REDACTED]");
+    .replace(/\bsk-[A-Za-z0-9_-]{20,}\b/g, "[REDACTED]")
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED_PRIVATE_KEY]")
+    .replace(/((?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi, "$1[REDACTED]");
 }
 export function sanitizeCheckpoint(value, depth = 0) {
   if (depth > 20) throw Error("Checkpoint nesting exceeds limit");
