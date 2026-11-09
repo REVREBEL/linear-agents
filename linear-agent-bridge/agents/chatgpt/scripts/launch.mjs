@@ -39,6 +39,7 @@ export function parseOpenCodeEvent(line) {
       sessionId: /^ses_[a-zA-Z0-9]+$/.test(sessionId || "") ? sessionId : null,
       error: event.type === "error" ? "OpenCode reported an error" : null,
       type: typeof event.type === "string" ? event.type : null,
+      summary: event.type === "text" && typeof event.part?.text === "string" ? event.part.text.slice(0, 3500) : null,
     };
   } catch { return null; }
 }
@@ -48,7 +49,7 @@ export async function runOpenCode({
   onProgress = () => {}, maxDurationMs = 30 * 60 * 1000,
 }) {
   const child = spawnImpl(launch.command, launch.args, launch.options);
-  let buffer = "", observedSession = null, reportedError = false;
+  let buffer = "", observedSession = null, reportedError = false, finalText = "";
   const sessionWrites = [];
   const timer = setTimeout(() => child.kill("SIGTERM"), maxDurationMs);
   child.stdout.on("data", chunk => {
@@ -61,6 +62,7 @@ export async function runOpenCode({
       buffer = buffer.slice(end + 1);
       if (!event) continue;
       if (event.error) reportedError = true;
+      if (event.summary) finalText = event.summary;
       if (event.sessionId && event.sessionId !== observedSession) {
         observedSession = event.sessionId;
         sessionWrites.push(Promise.resolve().then(() => onSession(observedSession)));
@@ -77,7 +79,8 @@ export async function runOpenCode({
     });
     await Promise.all(sessionWrites);
     if (exitCode !== 0 || reportedError) throw Error("OpenCode execution failed (exit " + exitCode + ")");
-    return { sessionId: observedSession, exitCode };
+    if (!finalText.trim()) throw Error("OpenCode emitted no final text; completion unverified");
+    return { sessionId: observedSession, exitCode, summary: finalText };
   } finally {
     clearTimeout(timer);
   }
