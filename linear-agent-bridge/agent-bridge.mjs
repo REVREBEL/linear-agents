@@ -69,7 +69,9 @@ async function claimGithubReviewDispatch(event, source) {
   if (memory?.lastReviewChange === githubReviewChangeKey(event)) return { duplicate: true };
   const eventDir = path.join(JOBS_DIR, "github-events");
   await fs.mkdir(eventDir, { recursive: true, mode: 0o700 });
-  // Claim the semantic change, not a provider-specific delivery ID. Two GitHub Apps\n  // may deliver the same revision with independent delivery IDs.\n  const dispatchClaim = path.join(eventDir, `${githubReviewChangeKey(event)}.review.claim`);
+  // Claim the semantic change, not a provider-specific delivery ID. Two GitHub Apps
+  // may deliver the same revision with independent delivery IDs.
+  const dispatchClaim = path.join(eventDir, `${githubReviewChangeKey(event)}.review.claim`);
   try { await fs.writeFile(dispatchClaim, event.delivery, { flag: "wx", mode: 0o600 }); }
   catch (error) {
     if (error.code === "EEXIST") return { duplicate: true };
