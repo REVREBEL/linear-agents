@@ -1,2 +1,0 @@
-# Terraform creates .terraform.lock.hcl after 'terraform init'.
-# Commit that generated lock file when ready to pin provider checksums.

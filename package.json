@@ -1,54 +1,9 @@
 {
-  "name": "linear-agents",
+  "name": "bridge",
   "private": true,
   "version": "1.0.0",
-  "workspaces": [
-    "linear-antigravity-worker",
-    "linear-chatgpt-worker",
-    "linear-gemini-worker",
-    "linear-trae-worker",
-    "linear-mock-worker"
-  ],
-  "scripts": {
-    "types": "node scripts/workspace-command.mjs types",
-    "dev": "node scripts/workspace-command.mjs dev",
-    "deploy": "node scripts/workspace-command.mjs deploy",
-    "setup": "node scripts/workspace-command.mjs install",
-    "terraform": "bash scripts/with-env.sh terraform",
-    "terraform:init": "bash scripts/with-env.sh terraform init",
-    "terraform:validate": "bash scripts/with-env.sh terraform validate",
-    "terraform:plan": "bash scripts/with-env.sh terraform plan -out=linear.tfplan",
-    "terraform:fmt": "bash scripts/with-env.sh terraform fmt -check",
-    "terraform:apply-plan": "bash scripts/with-env.sh terraform apply linear.tfplan",
-    "terraform:get-ids": "bash scripts/get-terraform-ids.sh",
-    "linear:projects": "bash scripts/with-env.sh linear-projects",
-    "chatgpt:playwright": "node scripts/chatgpt-playwright/handoff-test.mjs",
-    "mock:agent": "bash scripts/with-env.sh mock-agent",
-    "mock:submit": "bash scripts/with-env.sh mock-submit",
-    "mock:end": "bash scripts/with-env.sh mock-end",
-    "setup:kv": "node scripts/workspace-command.mjs kv",
-    "bridge:load": "bash scripts/bridge.sh load",
-    "bridge:unload": "bash scripts/bridge.sh unload",
-    "bridge:restart": "bash scripts/bridge.sh restart",
-    "bridge:status": "bash scripts/bridge.sh status",
-    "bridge:doctor": "bash scripts/bridge.sh doctor",
-    "bridge:test": "node --test scripts/platform-scripts.test.mjs linear-agent-bridge/*.test.mjs",
-    "bridge:macos-setup": "bash scripts/macos/install-launchagent.sh",
-    "log:messages": "npx wrangler tail linear-mock-agent --format pretty",
-    "typecheck": "node scripts/workspace-typecheck.mjs",
-    "test:reliability": "node --test scripts/platform-scripts.test.mjs scripts/oauth-errors.test.mjs scripts/worker-webhook.test.mjs linear-agent-bridge/*.test.mjs",
-    "bridge:setup": "bash scripts/platform-setup.sh",
-    "bridge:linux-setup": "bash scripts/linux/install-systemd.sh",
-    "bridge:linux-publisher-setup": "bash scripts/linux/install-github-event-publisher.sh"
-  },
-  "devDependencies": {
-    "typescript": "^7.0.0",
-    "wrangler": "^4.151.3"
-  },
-  "allowScripts": {
-    "sharp@0.34.5": true,
-    "fsevents@2.3.3": true,
-    "esbuild@0.28.2": true,
-    "workerd@1.20261023.1": true
-  }
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {},
+  "devDependencies": {}
 }

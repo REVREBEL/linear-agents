@@ -1,2 +1,0 @@
-# Dependencies for the local Antigravity Python runner.
-requests>=2.31,<3
