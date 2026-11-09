@@ -78,3 +78,49 @@ The earlier Mac CLI exit is **not** treated as proof of completion. SSH
 closure leaves the ledger `awaiting_external` unless terminal completion
 has already been confirmed. The explicit completion script is currently a
 manual/agent-invoked contract; a live Trae desktop cycle has not been tested.
+
+## Trae callback deployment contract (Ubuntu)
+
+Both callback routes are handled by `linear-agent-bridge/agent-bridge.mjs`,
+not by the `linear-trae-worker` custom domain. The existing Trae Tunnel
+hostname must forward **all** paths, including these, to the same local Ubuntu
+listener as `/jobs`:
+
+| Public destination | Target |
+| --- | --- |
+| `https://trae-agent.revrebel.io/trae-activity` | `http://127.0.0.1:8788/trae-activity` |
+| `https://trae-agent.revrebel.io/trae-complete` | `http://127.0.0.1:8788/trae-complete` |
+
+**No separate Worker route, reverse proxy, or Mac service is required** if
+the existing Tunnel hostname already forwards paths unconditionally.
+The repository's Terraform does **not** currently manage Cloudflare Tunnel
+ingress or DNS. Check the active Tunnel configuration before deployment.
+Do not create another Tunnel or overwrite the existing one.
+
+The opted-in Terraform-managed zone WAF ruleset includes a POST-only block rule
+for these two paths. It is not deployed automatically: the
+`manage_linear_webhook_waf` toggle defaults to false, because Terraform's
+zone ruleset is authoritative and could overwrite unrelated existing policies.
+When an existing WAF ruleset is present, reconcile/import it first and preserve
+every existing rule and its ordering. An additional WAF exception may be needed
+if an existing zone-wide block rule catches the Trae callback POSTs. Keep the
+capability-token checks in Ubuntu as the primary application authentication.
+
+After deploying the new Ubuntu bridge, run:
+
+```bash
+npm run bridge:check-trae-routes
+```
+
+The non-mutating probe sends JSON `{}` over POST to each route. It expects the
+exact Ubuntu errors: `400 Invalid Trae workspace` from `/trae-activity`, and
+`401 Invalid completion context` from `/trae-complete`. A challenge, redirect,
+404, unexpected success, or wrong JSON error fails the test. This verifies
+public reachability and denial of unauthenticated requests, not that a valid
+Mac capability token reaches Linear. Run a controlled Trae session afterward.
+
+**Deployment order:** deploy Ubuntu bridge code; confirm Tunnel's Trae origin
+points to the Ubuntu listener; review any existing Cloudflare WAF exceptions;
+run this unauthenticated route check; then test live authenticated Mac hooks.
+The Worker itself needs no new callback route because it only receives the
+existing `/complete` request from Ubuntu.
