@@ -1,4 +1,6 @@
 import { syncLinearCredential } from "./linear-credentials.mjs";
+import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
+import { launchMacTrae } from "./ssh-dispatch.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
@@ -25,8 +27,9 @@ const LINEAR_ACCESS_TOKEN = process.env.LINEAR_ACCESS_TOKEN || "";
 
 const PROJECT_DIR = path.dirname(new URL(import.meta.url).pathname);
 const AGENT_ENV_FILE = process.env.AGENT_ENV_FILE || path.join(PROJECT_DIR, ".env");
-const PROJECTS_ROOT =
+const PROJECTS_ROOT = process.env.LINUX_PROJECTS_ROOT ||
   process.env.PROJECTS_ROOT || path.join(os.homedir(), "github-revrebel");
+const OSX_PROJECTS_ROOT = process.env.OSX_PROJECTS_ROOT || "";
 const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs");
 const jobStore = createJobStore(JOBS_DIR);
 const githubTaskMemory = createGithubTaskMemory(JOBS_DIR);
@@ -214,6 +217,9 @@ const server = http.createServer(async (request, response) => {
         geminiBin: GEMINI_BIN || null,
         geminiWorkspace: GEMINI_WORKSPACE,
         projectsRoot: PROJECTS_ROOT,
+        linuxProjectsRoot: PROJECTS_ROOT,
+        macProjectsRootConfigured: Boolean(OSX_PROJECTS_ROOT),
+        macSshConfigured: Boolean(process.env.MAC_SSH_HOST),
         jobsDir: JOBS_DIR,
         hasBridgeSharedSecret: Boolean(SHARED_SECRET),
         hasLinearApiKey: Boolean(LINEAR_API_KEY),
@@ -445,6 +451,7 @@ const server = http.createServer(async (request, response) => {
       organizationId: job.organizationId,
       completionUrl: job.completionUrl || job.payload?.data?.completionUrl,
       sharedSecret: SHARED_SECRET,
+      persist: route.executionHost !== "macos",
     }) : null;
     const claimed = await jobStore.claim(jobKey, { agent, deliveryId: String(deliveryId), jobId: safeJobId });
     if (!claimed.created) {
@@ -468,6 +475,52 @@ const server = http.createServer(async (request, response) => {
       await jobStore.transition(jobKey, "unrouted", { error: route.error, taskFile: pendingFile });
       console.error(`Routing failed: ${route.error}; saved pending job to ${pendingFile}`);
       return sendJson(response, 422, { ok: false, accepted: false, error: route.error });
+    }
+
+    if (route.executionHost === "macos") {
+      // Ubuntu owns the ledger, while the Mac validates its own filesystem.
+      if (agent !== "trae") {
+        await jobStore.transition(jobKey, "unrouted", { error: "Mac SSH runner currently supports Trae only" });
+        return sendJson(response, 422, { ok: false, accepted: false, error: "Mac SSH runner currently supports Trae only" });
+      }
+      const promptContext = extractDirectTask(extractPromptContext(job));
+      if (!promptContext || !credential?.accessToken) {
+        await jobStore.transition(jobKey, "failed", { error: "Missing Mac Trae prompt or app credential" });
+        return sendJson(response, 422, { ok: false, accepted: false, error: "Missing remote prompt or credential" });
+      }
+      const sessionId = extractAgentSessionId(job);
+      const message = {
+        agent: "trae", jobId: safeJobId,
+        projectId: route.scopeKey, repository: route.repository,
+        projectsRoot: OSX_PROJECTS_ROOT,
+        projectScope: route.projectScope, launchFromScope: route.launchFromScope,
+        prompt: promptContext, agentSessionId: sessionId,
+        accessToken: credential.accessToken,
+        traeBin: process.env.MAC_TRAE_BIN || "trae",
+        githubAppName: process.env.TRAE_GITHUB_APP_NAME || "revrebel-trae",
+        githubAppId: process.env.TRAE_GITHUB_APP_ID || "5660644",
+        job: {
+          routing: job.routing, issueId: job.issueId || job.issueMetadata?.id,
+          issueMetadata: job.issueMetadata, source: job.source,
+          sessionAction: job.sessionAction, agentSessionId: sessionId,
+          completionUrl: job.completionUrl,
+          payload: { data: { promptContext, agentSessionId: sessionId, completionUrl: job.completionUrl } },
+        },
+      };
+      await jobStore.transition(jobKey, "launching", {
+        executionHost: "macos", repository: route.repository,
+        workspace: route.launchDirectory, agentSessionId: sessionId,
+        issueId: message.job.issueId || null, attempts: 1,
+      });
+      try {
+        await launchMacTrae({ job: message, jobKey, jobStore });
+      } catch (error) {
+        await jobStore.transition(jobKey, "failed", { error: String(error), executionHost: "macos" });
+        return sendJson(response, 503, { ok: false, accepted: false,
+          error: "Mac Trae dispatch failed; reconcile remote job state before retry" });
+      }
+      return sendJson(response, 202, { ok: true, accepted: true,
+        jobId: safeJobId, executionHost: "macos", host });
     }
 
     const workspace = route.launchDirectory;
@@ -1187,7 +1240,23 @@ async function resolveJobRoute(job) {
   if (typeof repoName !== "string" || !/^REVREBEL\/[a-zA-Z0-9._-]+$/.test(repoName)) {
     return { ok: false, error: "Invalid or missing allowed REVREBEL repository mapping" };
   }
-  const root = path.resolve(config.projectsRoot || PROJECTS_ROOT);
+  const selection = chooseExecutionHost(routing);
+  if (!selection.ok) return selection;
+  if (selection.host === "macos") {
+    if (!OSX_PROJECTS_ROOT) return { ok: false, error: "Missing OSX_PROJECTS_ROOT for Mac dispatch" };
+    try {
+      const remote = makeRemoteRoute({
+        root: OSX_PROJECTS_ROOT, repository: repoName, scope: project.scope || ".",
+        launchFromScope: project.launchFromScope === true,
+      });
+      return { ok: true, ...remote, repository: repoName, executionHost: "macos",
+        projectId, initiativeId, launchFromScope: project.launchFromScope === true,
+        scopeKey: String(projectId).replace(/[^a-zA-Z0-9_-]/g, "_") };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  }
+  const root = path.resolve(process.env.LINUX_PROJECTS_ROOT || config.projectsRoot || PROJECTS_ROOT);
   const target = path.resolve(root, repoName.split("/")[1]);
   let repositoryRoot;
   try {
@@ -1303,6 +1372,7 @@ async function resolveJobRoute(job) {
   }
   const agyConfig = roleAgent?.provider === "antigravity" ? roleAgent : null;
   return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId,
+    repository: repoName, executionHost: "bridge-server", launchFromScope: project.launchFromScope === true,
     chatgptProjectUrl, chatgptConversationMode, chatgptAutoSend,
     agentRole: roleAgent || null, codeReviewRole: roleReview || null,
     agyConversationMode: agyConfig?.conversationMode || null,
