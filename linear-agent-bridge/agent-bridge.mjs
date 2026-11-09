@@ -13,6 +13,7 @@ import { notifyLinearReview } from "./review-linear-notifier.mjs";
 import { verifyPublishedGithubReview } from "./review-delivery.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
 import { retrieveMemuMemory } from "./memu-memory.mjs";
+import { createOrderedProgressQueue } from "./ordered-progress.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -1070,6 +1071,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
   let exhaustionEvent = null;
   let verifiedConversationId = conversationId;
   let conversationPersist = Promise.resolve();
+  const progressQueue = createOrderedProgressQueue();
   agentProcess.on("spawn", () => { void jobStore.transition(jobKey, "running", { pid: agentProcess.pid }).catch(console.error); });
   agentProcess.stdout.on("data", data => {
     output += String(data);
@@ -1089,11 +1091,12 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
             void jobStore.transition(jobKey, "running", { conversationId: verifiedConversationId, conversationVerifiedAt: new Date().toISOString() }).catch(console.error);
           } else if (parsed.event === "progress" && typeof parsed.summary === "string" &&
                      /^Step [0-9]+: [A-Za-z0-9_.-]{1,60}$/.test(parsed.summary)) {
-            trackProgressWrite(jobStore.get(jobKey).then(record =>
-              activeTaskMemory.progress(record.repositoryRoot, record.issueId, {
+            trackProgressWrite(progressQueue.enqueue(async () => {
+              const record = await jobStore.get(jobKey);
+              return activeTaskMemory.progress(record.repositoryRoot, record.issueId, {
                 kind: "tool", summary: parsed.summary, jobKey,
-              })
-            ));
+              });
+            }));
           } else if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
         } catch (error) { console.error("Invalid AGY exhaustion event:", error.message); }
       } else if (line) console.log("[Antigravity-Out]:", line);
