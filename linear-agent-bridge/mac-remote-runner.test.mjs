@@ -47,10 +47,10 @@ test("Git runtime exclusion is installed before writing Mac task files", async (
     async appendFile(file, content) { current += content; appendCount++; },
   };
   const git = async (bin, argv) => argv.includes("rev-parse")
-    ? { stdout: "/tmp/repo/.git/info/exclude\\n" } : { stdout: "" };
+    ? { stdout: "/tmp/repo/.git/info/exclude\n" } : { stdout: "" };
   await excludeAgentRuntime("/tmp/repo", fsApi, git);
   await excludeAgentRuntime("/tmp/repo", fsApi, git);
-  assert.match(current, /\\/\\.linear-agent\\//);
+  assert.ok(current.includes("/.linear-agent/"));
   assert.equal(appendCount, 1);
 });
 
