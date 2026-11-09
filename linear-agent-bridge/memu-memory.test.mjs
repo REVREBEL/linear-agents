@@ -72,7 +72,7 @@ test("memU stalled prepare is terminated rather than blocking promotion", async 
     const cli = path.join(dir, "stalled-memu");
     await writeFile(input, JSON.stringify(session));
     await writeFile(proof, JSON.stringify(verified));
-    await writeFile(cli, "#!/bin/sh\nsleep 30\n");
+    await writeFile(cli, "#!/bin/sh\nexec sleep 30\n");
     await chmod(cli, 0o700);
     await assert.rejects(
       prepareMemuPromotion(input, proof, cli, { timeoutMs: 100 }),
