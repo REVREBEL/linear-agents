@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint } from "./remote-trae-activity.mjs";
+import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "./remote-trae-activity.mjs";
 
 const token = "a".repeat(64);
 const record = {
@@ -35,5 +35,16 @@ test("Mac activity endpoint is HTTPS on the configured Trae tunnel host only", (
     "https://user:password@trae-agent.revrebel.io/trae-activity",
     "https://trae-agent.revrebel.io/trae-activity?redirect=https://evil.example"]) {
     assert.throws(() => validateActivityEndpoint(invalid, "trae-agent.revrebel.io"));
+  }
+});
+
+test("Linear completion URL must belong to Trae Worker, not arbitrary HTTPS origin", () => {
+  const url = "https://linear-trae.revrebel.io/complete";
+  assert.equal(validateTraeCompletionUrl(url, "linear-trae.revrebel.io"), url);
+  for (const bad of ["https://attacker.example/complete",
+    "http://linear-trae.revrebel.io/complete",
+    "https://linear-trae.revrebel.io/other",
+    "https://linear-trae.revrebel.io/complete?redirect=1"]) {
+    assert.throws(() => validateTraeCompletionUrl(bad, "linear-trae.revrebel.io"));
   }
 });
