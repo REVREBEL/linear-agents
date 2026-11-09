@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validateRemoteJob } from "../scripts/macos/remote-agent-runner.mjs";
+import { validateRemoteJob } from "./agents/trae/scripts/launch.mjs";
 
 function mockFs() {
   return {
