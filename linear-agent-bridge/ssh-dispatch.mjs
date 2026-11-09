@@ -63,6 +63,16 @@ export function launchMacTrae({ job, jobKey, jobStore, onExit, env = process.env
     })().catch(error => log.error("Unable to confirm Mac execution completion:", error));
   });
   // Single JSON request over the encrypted SSH channel; no shell interpolation of job text.
+  child.stdin.on("error", error => {
+    // Handle EPIPE if SSH exits before reading the full job payload.
+    if (!accepted) {
+      clearTimeout(timer);
+      fail(error);
+    }
+    void jobStore.transition(jobKey, "failed", {
+      error: "SSH stdin transport: " + error.message, executionHost: "macos",
+    }).catch(log.error);
+  });
   child.stdin.end(JSON.stringify(job));
   return acknowledged;
 }
