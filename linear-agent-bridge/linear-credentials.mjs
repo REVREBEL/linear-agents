@@ -53,7 +53,7 @@ export async function writeLinearEnv(root, agent, token) {
     return file;
   });
 }
-export async function syncLinearCredential({ agent, repositoryRoot, organizationId, completionUrl, sharedSecret, fetchImpl = fetch }) {
+export async function syncLinearCredential({ agent, repositoryRoot, organizationId, completionUrl, sharedSecret, fetchImpl = fetch, persist = true }) {
   if (!LINEAR_AGENT_VARS[agent] || !sharedSecret || typeof organizationId !== "string" || !organizationId) {
     throw new Error("Missing agent credentials or organization");
   }
@@ -75,6 +75,6 @@ export async function syncLinearCredential({ agent, repositoryRoot, organization
   if (payload?.ok !== true || typeof payload.accessToken !== "string" || !payload.accessToken) {
     throw new Error("Invalid Worker token response");
   }
-  await writeLinearEnv(repositoryRoot, agent, payload.accessToken);
+  if (persist) await writeLinearEnv(repositoryRoot, agent, payload.accessToken);
   return { variable: LINEAR_AGENT_VARS[agent], accessToken: payload.accessToken, expiresAt: payload.expiresAt };
 }
