@@ -17,7 +17,20 @@ export function createReviewInbox(jobsDir) {
   async function update(key, mutate) {
     // Atomic per-review lock works across bridge processes, not just JS turns.
     const lock = file(key) + ".lock";
-    await fs.mkdir(lock, { mode: 0o700 });
+    // Concurrent requests wait for the existing atomic lock instead of
+    // failing with EEXIST. Stale locks fail closed after a bounded wait.
+    let acquired = false;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      try {
+        await fs.mkdir(lock, { mode: 0o700 });
+        acquired = true;
+        break;
+      } catch (error) {
+        if (error.code !== "EEXIST") throw error;
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    }
+    if (!acquired) throw Error("Review inbox busy; existing lock requires reconciliation");
     try {
       const record = await get(key);
       if (!record) return null;
