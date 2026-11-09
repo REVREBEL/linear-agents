@@ -47,7 +47,10 @@ test("progress events are bounded, redacted, and survive restart", async () => {
     assert.equal(latest.progress.length, 20);
     assert.equal(latest.progress[0].summary.startsWith("Step 11:"), true);
     assert.ok(!JSON.stringify(latest).includes("supersecret"));
-    assert.match(mem.recoveryPreamble(latest), /Checkpoint: tool/);
+    const lines = mem.recoveryPreamble(latest).split("\n")
+      .filter(line => line.startsWith("Checkpoint: tool"));
+    assert.deepEqual(lines.map(line => Number(line.match(/Step (\\d+):/)?.[1])),
+      [25, 26, 27, 28, 29, 30]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
