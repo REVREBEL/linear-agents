@@ -76,3 +76,32 @@ export function launchMacTrae({ job, jobKey, jobStore, onExit, env = process.env
   child.stdin.end(JSON.stringify(job));
   return acknowledged;
 }
+
+export function cleanupMacTrae({ job, env = process.env, spawnImpl = spawn }) {
+  const args = buildSshArgs(env);
+  return new Promise((resolve, reject) => {
+    const child = spawnImpl("ssh", args, { env, stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const done = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      error ? reject(error) : resolve(true);
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      done(Error("Remote cleanup timed out"));
+    }, 20000);
+    child.stdin.on("error", done);
+    child.on("error", done);
+    child.stdout.on("data", chunk => { stdout += String(chunk); if (stdout.length > 10000) stdout = stdout.slice(-1000); });
+    child.stderr.on("data", chunk => { stderr += String(chunk); if (stderr.length > 10000) stderr = stderr.slice(-1000); });
+    child.on("close", code => {
+      if (code === 0 && stdout.includes("REMOTE_CLEANED:" + job.jobId)) done();
+      else done(Error("Remote cleanup not confirmed (SSH exit " + code + "): " + stderr.slice(-300)));
+    });
+    child.stdin.end(JSON.stringify(job));
+  });
+}
