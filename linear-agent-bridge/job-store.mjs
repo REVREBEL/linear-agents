@@ -119,7 +119,7 @@ export function createJobStore(root) {
         if (!item.isDirectory()) continue;
         try {
           const record = await read(path.join(ledger, item.name));
-          if (record.agent === "chatgpt" && record.key !== excludeKey &&
+          if (record.agent === "chatgpt-cli" && record.key !== excludeKey &&
               record.agentSessionId === sessionId && record.opencodeSessionId &&
               (!workspace || workspace === record.workspace)) matches.push(record);
         } catch (error) {
