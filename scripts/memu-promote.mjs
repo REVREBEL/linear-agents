@@ -10,7 +10,9 @@
  * The CLI prints memU's executor_prompt and next_command as JSON. A trusted
  * executor must process ALL jobs serially before running commit.
  */
-import { readFile } from "node:fs/promises";
+import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { spawn } from "node:child_process";
 
 export function validatePromotion(session, evidence) {
@@ -32,28 +34,59 @@ export function validatePromotion(session, evidence) {
   return { issueId: evidence.issueId, headSha: evidence.review.headSha };
 }
 
-export async function prepareMemuPromotion(sessionPath, evidencePath, binary = "memu") {
-  const session = JSON.parse(await readFile(sessionPath, "utf8"));
+export async function prepareMemuPromotion(sessionPath, evidencePath, binary = "memu", {
+  timeoutMs = 30000, spawnImpl = spawn,
+} = {}) {
+  // Use exactly the bytes that passed validation. The original session path can
+  // be replaced between validation and the CLI's subsequent open.
+  const sessionBytes = await readFile(sessionPath);
+  const session = JSON.parse(sessionBytes.toString("utf8"));
   const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
   validatePromotion(session, evidence);
-  return new Promise((resolve, reject) => {
-    const child = spawn(binary, ["memorize", "prepare", sessionPath, "--json"], {
-      shell: false, stdio: ["ignore", "pipe", "pipe"],
+  const dir = await mkdtemp(path.join(os.tmpdir(), "linearbridge-memu-promotion-"));
+  try {
+    const snapshot = path.join(dir, "validated-session.json");
+    await writeFile(snapshot, sessionBytes, { mode: 0o400, flag: "wx" });
+    return await new Promise((resolve, reject) => {
+      const child = spawnImpl(binary, ["memorize", "prepare", snapshot, "--json"], {
+        shell: false, stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stdout = "", stderr = "", settled = false;
+      const finish = (err, result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        err ? reject(err) : resolve(result);
+      };
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        finish(Error("memU prepare timed out"));
+      }, timeoutMs);
+      child.stdout.on("data", part => {
+        stdout += part;
+        if (stdout.length > 1024 * 1024) {
+          child.kill("SIGKILL");
+          finish(Error("memU prepare output exceeded limit"));
+        }
+      });
+      child.stderr.on("data", part => {
+        stderr = (stderr + part).slice(-4096);
+      });
+      child.once("error", error => finish(error));
+      child.once("close", code => {
+        if (settled) return;
+        if (code !== 0) return finish(Error("memU prepare failed: " + stderr.slice(-250)));
+        try {
+          const result = JSON.parse(stdout);
+          if (!Array.isArray(result.jobs) || !result.executor_prompt || !result.next_command)
+            throw Error("Invalid memU prepare response");
+          finish(null, result);
+        } catch (error) { finish(error); }
+      });
     });
-    let stdout = "", stderr = "";
-    child.stdout.on("data", part => { stdout += part; if (stdout.length > 1024 * 1024) child.kill(); });
-    child.stderr.on("data", part => { stderr += part; if (stderr.length > 4096) stderr = stderr.slice(-4096); });
-    child.on("error", reject);
-    child.on("close", code => {
-      if (code !== 0) return reject(Error("memU prepare failed: " + stderr.slice(-250)));
-      try {
-        const result = JSON.parse(stdout);
-        if (!Array.isArray(result.jobs) || !result.executor_prompt || !result.next_command)
-          throw Error("Invalid memU prepare response");
-        resolve(result);
-      } catch (error) { reject(error); }
-    });
-  });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 if (process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href) {
