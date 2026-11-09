@@ -91,7 +91,7 @@ acknowledges the optional assigned issue.
 Tunnel/WAF policies must protect the review routes when exposed beyond
 localhost. They are not publicly anonymous; use a separately rotated
 long token and avoid placing it in URLs, PR descriptions, or browser history.
-Review events remain retriable when notification configuration or Linear
+The opt-in zone WAF Terraform ruleset restricts `/reviews/pending` to GET and\n`/reviews/claim` and `/reviews/complete` to POST on the existing\n`chatgpt-agent.<DOMAIN>` Tunnel host. This WAF rule is not applied by this PR.\n\nReview events remain retriable when notification configuration or Linear
 submission fails before a delivery claim is accepted. Test the real assigned
 user, their Linear inbox notifications, and consumer authorization before
 enabling production mode.
