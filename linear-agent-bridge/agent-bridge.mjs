@@ -12,6 +12,8 @@ import { sendInitialReviewMessage } from "./review-message-handoff.mjs";
 import { notifyLinearReview } from "./review-linear-notifier.mjs";
 import { verifyPublishedGithubReview } from "./review-delivery.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
+import { retrieveMemuMemory } from "./memu-memory.mjs";
+import { createOrderedProgressQueue } from "./ordered-progress.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -43,6 +45,15 @@ const jobStore = createJobStore(JOBS_DIR);
 const githubTaskMemory = createGithubTaskMemory(JOBS_DIR);
 const reviewInbox = createReviewInbox(JOBS_DIR);
 const activeTaskMemory = createActiveTaskMemory(JOBS_DIR);
+const pendingProgressWrites = new Set();
+function trackProgressWrite(promise) {
+  const tracked = promise.catch(error => console.error("Unable to checkpoint AGY progress:", error.message));
+  pendingProgressWrites.add(tracked);
+  void tracked.finally(() => pendingProgressWrites.delete(tracked));
+}
+async function drainProgressWrites() {
+  await Promise.all([...pendingProgressWrites]);
+}
 const agySessionQueue = createSessionQueue();
 const traeActivityState = new Map();
 // Serialize automated ChatGPT handoffs across the shared Chrome CDP browser.
@@ -733,9 +744,15 @@ const server = http.createServer(async (request, response) => {
     }
     const filename = path.join(taskDir, `${safeJobId}.json`);
     const issueId = job.issueMetadata?.id || job.issueId || null;
+    await drainProgressWrites();
     const priorTask = await activeTaskMemory.read(route.repositoryRoot, issueId);
     const originalTask = extractDirectTask(extractPromptContext(job));
     const recovery = activeTaskMemory.recoveryPreamble(priorTask);
+    const longTermMemory = await retrieveMemuMemory(
+      "Repository: " + (route.repositoryRoot || "") + ". Coding conventions, previous failures, testing practices."
+    );
+    // Never put untrusted recalled text into a coding agent's instruction stream.
+    if (longTermMemory) console.log("[memU recall] retrieved context withheld from agent prompt");
     const directTask = recovery ? recovery + "\n\n" + originalTask : originalTask;
     await activeTaskMemory.update(route.repositoryRoot, issueId, {
       state: "active", lastJobKey: jobKey, lastAgent: agent,
@@ -1054,6 +1071,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
   let exhaustionEvent = null;
   let verifiedConversationId = conversationId;
   let conversationPersist = Promise.resolve();
+  const progressQueue = createOrderedProgressQueue();
   agentProcess.on("spawn", () => { void jobStore.transition(jobKey, "running", { pid: agentProcess.pid }).catch(console.error); });
   agentProcess.stdout.on("data", data => {
     output += String(data);
@@ -1071,6 +1089,14 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
               conversationPersist.catch(error => console.error("AGY conversation persistence failed:", error));
             }
             void jobStore.transition(jobKey, "running", { conversationId: verifiedConversationId, conversationVerifiedAt: new Date().toISOString() }).catch(console.error);
+          } else if (parsed.event === "progress" && typeof parsed.summary === "string" &&
+                     /^Step [0-9]+: [A-Za-z0-9_.-]{1,60}$/.test(parsed.summary)) {
+            trackProgressWrite(progressQueue.enqueue(async () => {
+              const record = await jobStore.get(jobKey);
+              return activeTaskMemory.progress(record.repositoryRoot, record.issueId, {
+                kind: "tool", summary: parsed.summary, jobKey,
+              });
+            }));
           } else if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
         } catch (error) { console.error("Invalid AGY exhaustion event:", error.message); }
       } else if (line) console.log("[Antigravity-Out]:", line);
@@ -1081,6 +1107,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
   agentProcess.on("close", (code, signal) => {
     void (async () => {
       await conversationPersist;
+      await drainProgressWrites();
       if (code === 75 && exhaustionEvent?.event === "on_exhaustion") {
         const conversationId = exhaustionEvent.conversation_id || verifiedConversationId;
         if (!conversationId) {

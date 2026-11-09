@@ -518,6 +518,14 @@ async def run_antigravity(
                         last_progress_at = now
                         last_reported_summary = summary
                         await announce_progress(summary)
+                        # Minimal bridge checkpoint metadata only. Never export tool
+                        # inputs, commands, model output, or credentials.
+                        tool_name, _ = extract_tool_info(step)
+                        safe_tool = tool_name if re.fullmatch(r"[A-Za-z0-9_.-]{1,60}", tool_name) else "unknown"
+                        print("AGY_BRIDGE_EVENT=" + json.dumps({
+                            "event": "progress",
+                            "summary": f"Step {index}: {safe_tool}",
+                        }), flush=True)
             if event.get("event") == "result" and isinstance(event.get("result"), dict):
                 result = event["result"]
 
