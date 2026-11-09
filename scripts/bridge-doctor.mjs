@@ -6,6 +6,7 @@ const secret = process.env.BRIDGE_SHARED_SECRET;
 const hosts = [
   ["Antigravity", process.env.ANTIGRAVITY_HOST || "antigravity-agent.revrebel.io"],
   ["ChatGPT", process.env.CHATGPT_HOST || "chatgpt-agent.revrebel.io"],
+  ["ChatGPT CLI", process.env.CHATGPT_CLI_HOST || "chatgpt-cli-agent.revrebel.io"],
   ["Trae", process.env.TRAE_HOST || "trae-agent.revrebel.io"],
   ["Gemini", process.env.GEMINI_HOST || "gemini-agent.revrebel.io"],
   ["Mock", process.env.MOCK_HOST || "mock-agent.revrebel.io"],
@@ -16,11 +17,12 @@ const domain = process.env.DOMAIN || "revrebel.io";
 const workers = [
   ["Antigravity", process.env.ANTIGRAVITY_WORKER_HOST || `linear-${process.env.ANTIGRAVITY_PREFIX || "antigravity"}.${domain}`],
   ["ChatGPT", process.env.CHATGPT_WORKER_HOST || `linear-${process.env.CHATGPT_PREFIX || "chatgpt"}.${domain}`],
+  ["ChatGPT CLI", process.env.CHATGPT_CLI_WORKER_HOST || `linear-${process.env.CHATGPT_CLI_PREFIX || "chatgpt-cli"}.${domain}`],
   ["Trae", process.env.TRAE_WORKER_HOST || `linear-${process.env.TRAE_PREFIX || "trae"}.${domain}`],
   ["Gemini", process.env.GEMINI_WORKER_HOST || `linear-${process.env.GEMINI_PREFIX || "gemini"}.${domain}`],
   ["Mock", process.env.MOCK_WORKER_HOST || `linear-${process.env.MOCK_PREFIX || "mock"}.${domain}`],
 ];
-const agentIds = { Antigravity: "antigravity", ChatGPT: "chatgpt", Trae: "trae", Gemini: "gemini", Mock: "mock" };
+const agentIds = { Antigravity: "antigravity", ChatGPT: "chatgpt", "ChatGPT CLI": "chatgpt-cli", Trae: "trae", Gemini: "gemini", Mock: "mock" };
 const timeoutMs = 9000;
 let failures = 0;
 
@@ -68,7 +70,7 @@ if (!secret) {
   for (const [label, workerHost] of workers) {
     await check(`${label} Worker health`, async () => {
       const data = await request(`https://${workerHost}/health`);
-      if (data?.ok !== true || data.service !== `linear-${process.env[`${agentIds[label].toUpperCase()}_PREFIX`] || agentIds[label]}-agent`) {
+      if (data?.ok !== true || data.service !== `linear-${process.env[`${agentIds[label].toUpperCase().replaceAll("-", "_")}_PREFIX`] || agentIds[label]}-agent`) {
         throw Error(`Unexpected Worker health identity: ${data?.service ?? "missing"}`);
       }
       return `Worker ${data.service} reachable`;
