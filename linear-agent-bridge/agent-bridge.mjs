@@ -3,6 +3,7 @@ import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
 import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";
 import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
+import { buildOpenCodeLaunch, runOpenCode } from "./agents/chatgpt/scripts/launch.mjs";
 import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "./remote-trae-activity.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
@@ -721,7 +722,10 @@ const server = http.createServer(async (request, response) => {
         await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(console.error);
       });
     } else if (agent === "chatgpt") {
-      if (!route.chatgptProjectUrl) {
+      if (process.env.CHATGPT_HANDOFF_MODE === "opencode") {
+        void enqueueChatgptHandoff(() => startChatgptOpenCode(routedJob, workspace, jobKey, credential))
+          .catch(error => console.error("OpenCode ChatGPT execution failed:", error.message));
+      } else if (!route.chatgptProjectUrl) {
         await jobStore.transition(jobKey, "failed", { error: "No chatgpt.projectUrl in Linear project mapping" });
         console.error("ChatGPT handoff stopped: project mapping has no chatgpt.projectUrl");
       } else if (process.platform !== "darwin") {
@@ -1130,6 +1134,66 @@ async function postTraeActivity(context, body, activityType = "thought") {
     console.error("[Trae] Failed to publish progress activity:", error);
     return false;
   }
+}
+
+async function startChatgptOpenCode(job, workspace, jobKey, credential) {
+  const prompt = extractPromptContext(job);
+  const agentSessionId = extractAgentSessionId(job);
+  const callback = job.completionUrl || job.payload?.data?.completionUrl;
+  if (!prompt || !agentSessionId || !callback || !credential?.accessToken) {
+    await jobStore.transition(jobKey, "failed", { error: "OpenCode job is missing prompt/session/callback/agent app credential" });
+    return;
+  }
+  const url = new URL(callback);
+  const expected = process.env.CHATGPT_WORKER_HOST ||
+    `linear-${process.env.CHATGPT_PREFIX || "chatgpt"}.${process.env.DOMAIN || "revrebel.io"}`;
+  if (url.protocol !== "https:" || url.hostname !== expected || url.pathname !== "/complete" ||
+      url.port || url.search || url.hash || url.username || url.password) {
+    await jobStore.transition(jobKey, "failed", { error: "Invalid ChatGPT Worker completion destination" });
+    return;
+  }
+  const prior = job.sessionAction === "prompted"
+    ? await jobStore.findLatestOpenCodeSessionBySessionId(agentSessionId, jobKey, workspace)
+    : null;
+  const launch = buildOpenCodeLaunch({
+    workspace, prompt, sessionId: prior?.opencodeSessionId || null,
+  });
+  await jobStore.transition(jobKey, "running", {
+    runtime: "opencode", opencodeSessionId: prior?.opencodeSessionId || null,
+    executionHost: "bridge-server",
+  });
+  let result;
+  try {
+    result = await runOpenCode({
+      launch,
+      onSession: async id => jobStore.transition(jobKey, "running", { opencodeSessionId: id }),
+    });
+  } catch (error) {
+    await jobStore.transition(jobKey, "failed", { error: error.message });
+    // Failures are reported through the app Worker; the OpenCode child does not
+    // receive the bridge-wide secret or app installation token.
+    await sendOpenCodeActivity(callback, agentSessionId, "error",
+      "OpenCode execution failed; inspect the Ubuntu bridge job ledger.").catch(console.error);
+    return;
+  }
+  const confirmed = await sendOpenCodeActivity(callback, agentSessionId, "response", result.summary)
+    .catch(error => { console.error("ChatGPT OpenCode completion callback failed:", error.message); return false; });
+  await jobStore.transition(jobKey, confirmed ? "completed" : "awaiting_external", {
+    opencodeSessionId: result.sessionId || prior?.opencodeSessionId || null,
+    ...(confirmed ? { completionConfirmedAt: new Date().toISOString() } :
+      { note: "OpenCode exited successfully but the Linear Worker did not confirm completion" }),
+  });
+}
+
+async function sendOpenCodeActivity(url, agentSessionId, activityType, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${SHARED_SECRET}` },
+    body: JSON.stringify({ agentSessionId, activityType, body: String(body).slice(0, 3500) }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) throw Error("ChatGPT Worker completion callback returned HTTP " + response.status);
+  return true;
 }
 
 async function startGemini(job, filename, workspace, jobKey, credential) {
