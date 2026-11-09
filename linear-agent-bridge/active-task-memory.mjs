@@ -556,7 +556,7 @@ export function createActiveTaskMemory(root) {
         });
         const output = fileOf(repo, issue), tmp = output + "." + crypto.randomUUID() + ".tmp";
         try {
-          await fs.writeFile(tmp, JSON.stringify(next, null, 2) + "\\n", { mode: 0o600, flag: "wx" });
+          await fs.writeFile(tmp, JSON.stringify(next, null, 2) + "\n", { mode: 0o600, flag: "wx" });
           await fs.rename(tmp, output);
         } finally { await fs.unlink(tmp).catch(() => {}); }
         return next;
@@ -617,8 +617,12 @@ export function createActiveTaskMemory(root) {
       "Previous agent: " + (record.lastAgent || "unknown"),
       "Next action: suppressed (expired checkpoint)",
       "[End LinearBridge checkpoint]",
+<<<<<<< HEAD
     ].join("\\n");
 >>>>>>> 87022c4 (feat(memory): integrate versioned redacted checkpoints and cross-process lock into incremental memory)
+=======
+    ].join("\n");
+>>>>>>> 762f620 (fix(memory): write canonical JSON line terminators and recovery preamble formatting)
     return [
       "[LinearBridge durable task checkpoint, non-authoritative]",
       "This is a follow-up for the same issue. Inspect the repository and tests before deciding what remains.",
