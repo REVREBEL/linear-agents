@@ -51,9 +51,37 @@ export async function excludeAgentRuntime(root, fsApi = fs, runGit = run) {
   const tracked = await runGit("git", ["-C", root, "ls-files", "--", ".linear-agent"]);
   if (tracked.stdout.trim()) throw Error("Refusing agent runtime writes: .linear-agent is tracked");
 }
+export async function cleanupRemoteInbox(message, fsApi = fs) {
+  if (message?.operation !== "cleanup" || message.agent !== "trae" ||
+      !/^[a-zA-Z0-9._-]{1,160}$/.test(message.jobId || "") ||
+      !/^[a-zA-Z0-9_-]{1,160}$/.test(message.projectId || "") ||
+      !/^REVREBEL\/[a-zA-Z0-9._-]+$/.test(message.repository || "")) {
+    throw Error("Invalid remote cleanup identity");
+  }
+  if (!path.isAbsolute(message.projectsRoot) || message.projectsRoot === "/") throw Error("Invalid cleanup root");
+  const base = await fsApi.realpath(message.projectsRoot);
+  const repository = await fsApi.realpath(path.join(base, message.repository.split("/")[1]));
+  if (!repository.startsWith(base + path.sep)) throw Error("Cleanup escapes trusted root");
+  const inbox = path.join(repository, ".linear-agent", "projects", message.projectId, "inbox");
+  const filename = path.join(inbox, message.jobId + ".json");
+  // A symlinked runtime directory must not make cleanup escape the checkout.
+  const realInbox = await fsApi.realpath(inbox).catch(error => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!realInbox) return false;
+  if (!realInbox.startsWith(repository + path.sep)) throw Error("Cleanup inbox escapes repository");
+  await fsApi.unlink(filename).catch(error => { if (error.code !== "ENOENT") throw error; });
+  return true;
+}
 export async function main() {
   if (process.platform !== "darwin") throw Error("Remote runner must execute on macOS");
   const message = await input();
+  if (message.operation === "cleanup") {
+    await cleanupRemoteInbox(message);
+    console.log("REMOTE_CLEANED:" + message.jobId);
+    return;
+  }
   const { root, workspace } = await validateRemoteJob(message);
   await excludeAgentRuntime(root);
   const taskDir = path.join(root, ".linear-agent", "projects", message.projectId, "inbox");
