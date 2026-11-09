@@ -111,6 +111,24 @@ export function createJobStore(root) {
       }
       return null;
     },
+    async findLatestOpenCodeSessionBySessionId(sessionId, excludeKey = null, workspace = null) {
+      if (!sessionId) return null;
+      const entries = await fs.readdir(ledger, { withFileTypes: true });
+      const matches = [];
+      for (const item of entries) {
+        if (!item.isDirectory()) continue;
+        try {
+          const record = await read(path.join(ledger, item.name));
+          if (record.agent === "chatgpt" && record.key !== excludeKey &&
+              record.agentSessionId === sessionId && record.opencodeSessionId &&
+              (!workspace || workspace === record.workspace)) matches.push(record);
+        } catch (error) {
+          if (error.code !== "ENOENT") console.warn("Unreadable ledger entry:", error.message);
+        }
+      }
+      matches.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+      return matches[0] || null;
+    },
     async findLatestConversationBySessionId(sessionId, excludeKey = null, workspace = null) {
       const entries = await fs.readdir(ledger, { withFileTypes: true });
       const matches = [];
