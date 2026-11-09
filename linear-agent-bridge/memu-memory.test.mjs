@@ -51,7 +51,7 @@ test("memU prepare snapshots validated bytes and never runs on failed proof", as
       'test "$3" != "' + input + '" || exit 3',
       'test -r "$3" || exit 4',
       'cat "$3" > "' + marker + '"',
-      "printf '%s' '{\\"jobs\\":[\\"job1\\"],\\"executor_prompt\\":\\"evolve\\",\\"next_command\\":\\"memu memorize commit\\"}'",
+      `printf '%s' '{"jobs":["job1"],"executor_prompt":"evolve","next_command":"memu memorize commit"}'`,
       "",
     ].join("\n"));
     await chmod(cli, 0o700);
