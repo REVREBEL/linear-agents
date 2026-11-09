@@ -1,5 +1,12 @@
 import { spawn } from "node:child_process";
 
+const lastWarningAt = new Map();
+function warnRecall(reason, logger = console, now = Date.now()) {
+  if (now - (lastWarningAt.get(reason) ?? -Infinity) < 60000) return;
+  lastWarningAt.set(reason, now);
+  logger.warn(`[memU recall] ${reason}; continuing without long-term memory`);
+}
+
 export function compactRecall(result, limit = 5) {
   const hits = Array.isArray(result?.hits) ? result.hits : [];
   const texts = hits.slice(0, limit).map(hit =>
@@ -19,10 +26,12 @@ export async function retrieveMemuMemory(query, {
   enabled = process.env.MEMU_RETRIEVAL_ENABLED === "true",
   binary = process.env.MEMU_BIN || "memu",
   timeoutMs = 5000,
+  logger = console,
+  spawnImpl = spawn,
 } = {}) {
   if (!enabled) return "";
   return new Promise(resolve => {
-    const child = spawn(binary, ["retrieve", String(query).slice(0, 500)], {
+    const child = spawnImpl(binary, ["retrieve", String(query).slice(0, 500)], {
       shell: false, env: process.env, stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "", settled = false;
@@ -32,16 +41,16 @@ export async function retrieveMemuMemory(query, {
       clearTimeout(timer);
       resolve(value);
     };
-    const timer = setTimeout(() => { child.kill(); finish(""); }, timeoutMs);
+    const timer = setTimeout(() => { child.kill(); warnRecall("timeout", logger); finish(""); }, timeoutMs);
     child.stdout.on("data", chunk => {
       out += String(chunk);
-      if (out.length > 1024 * 1024) { child.kill(); finish(""); }
+      if (out.length > 1024 * 1024) { child.kill(); warnRecall("output limit exceeded", logger); finish(""); }
     });
-    child.on("error", () => finish(""));
+    child.on("error", () => { warnRecall("spawn error", logger); finish(""); });
     child.on("close", code => {
-      if (code !== 0) return finish("");
+      if (code !== 0) { warnRecall("nonzero exit", logger); return finish(""); }
       try { finish(compactRecall(JSON.parse(out))); }
-      catch { finish(""); }
+      catch { warnRecall("invalid response", logger); finish(""); }
     });
   });
 }
