@@ -15,7 +15,7 @@ export async function checkOpenCodeReady({
     throw Error("Set CHATGPT_OPENCODE_MODEL to an authenticated openai/<model> (not local Ollama)");
   }
   if (runAsUser && !/^[a-z_][a-z0-9_-]{0,31}$/.test(runAsUser)) throw Error("Invalid CHATGPT_OPENCODE_USER");
-  await fsApi.access(binary, fs.constants.X_OK);
+  await fsApi.access(runAsUser ? "/usr/bin/sudo" : binary, fs.constants.X_OK);
   return true;
 }
 
