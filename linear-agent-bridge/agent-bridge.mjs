@@ -14,6 +14,10 @@ import { recordResumedConversation } from "./agy-conversation-state.mjs";
 
 const PORT = Number(process.env.BRIDGE_PORT || 8788);
 const HOST = process.env.BRIDGE_HOST || "127.0.0.1";
+const GITHUB_CHATGPT_SELF = {
+  ids: (process.env.GITHUB_CHATGPT_SELF_IDS ?? "").split(",").map(v => v.trim()).filter(Boolean),
+  logins: (process.env.GITHUB_CHATGPT_SELF_LOGINS ?? "").split(",").map(v => v.trim()).filter(Boolean),
+};
 
 const SHARED_SECRET = process.env.BRIDGE_SHARED_SECRET || "";
 const LINEAR_API_KEY = process.env.LINEAR_API_KEY || "";
@@ -41,7 +45,7 @@ function enqueueChatgptHandoff(task) {
 }
 
 async function prepareGithubShortcutHandoff(event, source) {
-  if (!shouldDispatchGithubReview(event, source)) return null;
+  if (!shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) return null;
   if (process.env.CHATGPT_HANDOFF_MODE !== "shortcuts") {
     throw new Error("GitHub PR review dispatch requires CHATGPT_HANDOFF_MODE=shortcuts");
   }
@@ -61,12 +65,14 @@ async function prepareGithubShortcutHandoff(event, source) {
 }
 
 async function claimGithubReviewDispatch(event, source) {
-  if (!shouldDispatchGithubReview(event, source)) return null;
+  if (!shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) return null;
   const memory = await githubTaskMemory.read(event);
   if (memory?.lastReviewChange === githubReviewChangeKey(event)) return { duplicate: true };
   const eventDir = path.join(JOBS_DIR, "github-events");
   await fs.mkdir(eventDir, { recursive: true, mode: 0o700 });
-  // Claim the semantic change, not a provider-specific delivery ID. Two GitHub Apps\n  // may deliver the same revision with independent delivery IDs.\n  const dispatchClaim = path.join(eventDir, `${githubReviewChangeKey(event)}.review.claim`);
+  // Claim the semantic change, not a provider-specific delivery ID. Two GitHub Apps
+  // may deliver the same revision with independent delivery IDs.
+  const dispatchClaim = path.join(eventDir, `${githubReviewChangeKey(event)}.review.claim`);
   try { await fs.writeFile(dispatchClaim, event.delivery, { flag: "wx", mode: 0o600 }); }
   catch (error) {
     if (error.code === "EEXIST") return { duplicate: true };
@@ -326,7 +332,7 @@ const server = http.createServer(async (request, response) => {
       try {
         handoff = await claimGithubReviewDispatch(event, source);
         await recordGithubEvent(JOBS_DIR, event, source);
-        const classification = classifyGithubReviewEvent(event);
+        const classification = classifyGithubReviewEvent(event, GITHUB_CHATGPT_SELF);
         await githubTaskMemory.update(event, {
           lastEvent: event.event + "." + event.action,
           lastDecision: classification.actionable ? "actionable" : "routine",
