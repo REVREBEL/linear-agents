@@ -1,6 +1,8 @@
 import { syncLinearCredential } from "./linear-credentials.mjs";
 import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
+import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";
+import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
@@ -853,19 +855,12 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
   // Python owns the completion callback; AGY itself must not inherit the secret.
   // The Python runner strips BRIDGE_SHARED_SECRET from its own child process.
 
-  const agentProcess = spawn(
-    PYTHON_BIN,
-    [RUN_AGENT_PATH, sessionId, filename, ...(conversationId ? [conversationId] : [])],
-    {
-      cwd: PROJECT_DIR,
-      env: {
-        ...antigravityEnv,
-        ANTIGRAVITY_WORKSPACE: workspace,
-        ...(credential ? { [credential.variable]: credential.accessToken } : {}),
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+  const agyLaunch = buildAntigravityLaunch({
+    pythonBin: PYTHON_BIN, runnerPath: RUN_AGENT_PATH, sessionId,
+    taskFile: filename, conversationId, workspace, projectDir: PROJECT_DIR,
+    credential, env: antigravityEnv,
+  });
+  const agentProcess = spawn(agyLaunch.command, agyLaunch.args, agyLaunch.options);
 
   // AGY emits a structured exhaustion event; only that event schedules a retry.
   // Keep the same Linear agent session and explicitly resume the AGY conversation.
@@ -1096,27 +1091,18 @@ async function startGemini(job, filename, workspace, jobKey, credential) {
     return;
   }
 
-  const args = buildGenericArgs(
-    GEMINI_ARGS_TEMPLATE,
-    promptContext,
-    filename,
-    workspace,
-  );
+  const launch = buildGeminiLaunch({
+    binary: GEMINI_BIN, template: GEMINI_ARGS_TEMPLATE,
+    prompt: promptContext, taskFile: filename, workspace,
+    credential, buildArgs: buildGenericArgs,
+  });
 
   console.log("Gemini job accepted. Spawning Gemini CLI...");
-  console.log(`Gemini binary: ${GEMINI_BIN}`);
+  console.log(`Gemini binary: ${launch.command}`);
   console.log(`Gemini workspace: ${workspace}`);
-  console.log(`Gemini args: ${args.map(maskArg).join(" ")}`);
+  console.log(`Gemini args: ${launch.args.map(maskArg).join(" ")}`);
 
-  const geminiProcess = spawn(GEMINI_BIN, args, {
-    cwd: workspace,
-    env: {
-      ...process.env,
-      LINEAR_API_KEY: "", LINEAR_ACCESS_TOKEN: "",
-      [credential.variable]: credential.accessToken,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const geminiProcess = spawn(launch.command, launch.args, launch.options);
 
   attachProcessLogs(geminiProcess, "Gemini", jobKey);
 }
