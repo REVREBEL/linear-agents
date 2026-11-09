@@ -54,6 +54,10 @@ export function launchMacTrae({ job, jobKey, jobStore, onExit, env = process.env
     // Notify Linear through the central bridge, then update the durable ledger.
     void (async () => {
       const confirmed = code === 0 && onExit ? await onExit(code, signal) : false;
+      const current = await jobStore.get(jobKey);
+      // A verified /trae-complete callback may beat SSH process closure.
+      // Never downgrade an acknowledged terminal result to awaiting_external.
+      if (current.remoteCompletionConfirmedAt && ["completed", "failed"].includes(current.state)) return;
       const state = code !== 0 ? "failed" : confirmed ? "completed" : "awaiting_external";
       await jobStore.transition(jobKey, state, {
         exitCode: code, signal, executionHost: "macos",
