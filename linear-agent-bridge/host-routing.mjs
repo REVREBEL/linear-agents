@@ -48,7 +48,7 @@ export function validateSshSettings(env = process.env) {
     throw Error("MAC_NODE_BIN must be node or an absolute trusted executable");
   }
   const roots = configuredProjectRoots(env);
-  const runner = env.MAC_RUNNER_PATH || path.posix.join(roots.mac || "", "linear-agents", "scripts/macos/remote-agent-runner.mjs");
+  const runner = env.MAC_RUNNER_PATH || path.posix.join(roots.mac || "", "linear-agents", "linear-agent-bridge/agents/trae/scripts/launch.mjs");
   if (!path.posix.isAbsolute(runner) || runner.includes("\n") || runner.includes("\0") || runner.includes("'")) {
     throw Error("MAC_RUNNER_PATH must be an absolute trusted macOS file path");
   }
