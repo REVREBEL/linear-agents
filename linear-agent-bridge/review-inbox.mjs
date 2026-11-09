@@ -15,16 +15,23 @@ export function createReviewInbox(jobsDir) {
     catch (e) { if (e.code === "ENOENT") return null; throw e; }
   }
   async function update(key, mutate) {
-    const record = await get(key);
-    if (!record) return null;
-    const next = mutate(record);
-    if (!allowed.has(next.state)) throw Error("Invalid review state");
-    const tmp = file(key) + "." + process.pid + "." + crypto.randomUUID() + ".tmp";
+    // Atomic per-review lock works across bridge processes, not just JS turns.
+    const lock = file(key) + ".lock";
+    await fs.mkdir(lock, { mode: 0o700 });
     try {
-      await fs.writeFile(tmp, JSON.stringify(next, null, 2), { flag: "wx", mode: 0o600 });
-      await fs.rename(tmp, file(key));
-    } finally { await fs.rm(tmp, { force: true }); }
-    return next;
+      const record = await get(key);
+      if (!record) return null;
+      const next = mutate(record);
+      if (!allowed.has(next.state)) throw Error("Invalid review state");
+      const tmp = file(key) + "." + process.pid + "." + crypto.randomUUID() + ".tmp";
+      try {
+        await fs.writeFile(tmp, JSON.stringify(next, null, 2), { flag: "wx", mode: 0o600 });
+        await fs.rename(tmp, file(key));
+      } finally { await fs.rm(tmp, { force: true }); }
+      return next;
+    } finally {
+      await fs.rmdir(lock);
+    }
   }
   return {
     get,
