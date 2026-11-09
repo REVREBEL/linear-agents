@@ -57,8 +57,9 @@ async function sendEvent(port, payload) {
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(4000),
   });
-  assert.equal(response.status, 202, await response.text());
-  return response.json();
+  const body = await response.text();
+  assert.equal(response.status, 202, body);
+  return JSON.parse(body);
 }
 async function runCase(identityEnv, assertions) {
   const temp = await mkdtemp(path.join(os.tmpdir(), "github-self-origin-dispatch-"));
