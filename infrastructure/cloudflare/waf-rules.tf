@@ -16,7 +16,21 @@ resource "cloudflare_ruleset" "linear_webhook_waf" {
       description = "Block non-POST or untrusted source IPs on Linear webhook endpoints"
       action      = "block"
       enabled     = true
-      expression  = "(http.host in {\"linear-antigravity.${var.cloudflare_domain}\" \"linear-trae.${var.cloudflare_domain}\" \"linear-gemini.${var.cloudflare_domain}\" \"linear-chatgpt.${var.cloudflare_domain}\"} and http.request.uri.path eq \"/webhook\" and (http.request.method ne \"POST\" or not ip.src in $linear_webhooks))"
+      expression  = "(http.host in {\"linear-antigravity.${var.cloudflare_domain}\" \"linear-trae.${var.cloudflare_domain}\" \"linear-gemini.${var.cloudflare_domain}\" \"linear-chatgpt.${var.cloudflare_domain}\" \"linear-chatgpt-cli.${var.cloudflare_domain}\"} and http.request.uri.path eq \"/webhook\" and (http.request.method ne \"POST\" or not ip.src in $linear_webhooks))"
+    },
+    {
+      ref         = "block_invalid_chatgpt_review_methods"
+      description = "Review consumer inbox uses GET for pending, POST for claims and outcomes; separate token is required by Ubuntu"
+      action      = "block"
+      enabled     = true
+      expression  = "(http.host eq \"chatgpt-agent.${var.cloudflare_domain}\" and ((http.request.uri.path eq \"/reviews/pending\" and http.request.method ne \"GET\") or (http.request.uri.path in {\"/reviews/claim\" \"/reviews/complete\"} and http.request.method ne \"POST\")))"
+    },
+    {
+      ref         = "block_non_post_trae_bridge_callbacks"
+      description = "Trae desktop callback endpoints accept POST only; Ubuntu validates per-job token"
+      action      = "block"
+      enabled     = true
+      expression  = "(http.host eq \"trae-agent.${var.cloudflare_domain}\" and http.request.uri.path in {\"/trae-activity\" \"/trae-complete\"} and http.request.method ne \"POST\")"
     }
   ]
 

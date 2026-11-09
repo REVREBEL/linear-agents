@@ -19,6 +19,7 @@ const bridgeTokenSource = (await fs.readFile(path.join(root, "shared/bridge-acce
   .replaceAll('"./oauth-installation"', JSON.stringify(installationUrl));
 const bridgeTokenUrl = dataUrl(bridgeTokenSource);
 const githubHomeUrl = dataUrl(await fs.readFile(path.join(root, "shared/github-app-homepage.ts"), "utf8"));
+const agentLocationUrl = dataUrl(await fs.readFile(path.join(root, "shared/agent-location.ts"), "utf8"));
 const cloudflareStubUrl = "data:text/javascript;base64," + Buffer.from(
   "export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }"
 ).toString("base64");
@@ -31,6 +32,7 @@ async function loadWorker(agent) {
   js = js.replaceAll('"../../shared/oauth-installation"', JSON.stringify(installationUrl));
   js = js.replaceAll('"../../shared/bridge-access-token"', JSON.stringify(bridgeTokenUrl));
   js = js.replaceAll('"../../shared/github-app-homepage"', JSON.stringify(githubHomeUrl));
+  js = js.replaceAll('"../../shared/agent-location"', JSON.stringify(agentLocationUrl));
   js = js.replaceAll('"cloudflare:workers"', JSON.stringify(cloudflareStubUrl));
   return await import("data:text/javascript;base64," + Buffer.from(js).toString("base64"));
 }
@@ -108,7 +110,7 @@ const installed = (expiresAt, refreshToken = "refresh") => JSON.stringify({
   organizationId: "org", accessToken: "access", expiresAt,
   refreshToken, scope: "read", installedAt: "2026-10-28T00:00:00Z"
 });
-const agents = ["antigravity", "chatgpt", "gemini", "trae", "mock"];
+const agents = ["antigravity", "chatgpt", "chatgpt-cli", "gemini", "trae", "mock"];
 
 test("antigravity: completion callback preserves explicit activity type", { concurrency: false }, async () => {
   const workerModule = await loadWorker("antigravity");
@@ -392,4 +394,37 @@ test("replayed signed body cannot bypass dedupe by changing unsigned delivery he
     }
     assert.equal(forwarded, 1);
   } finally { globalThis.fetch = oldFetch; }
+});
+
+test("trae: Agent Location label is forwarded to the Ubuntu bridge", { concurrency: false }, async () => {
+  const workerModule = await loadWorker("trae");
+  const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
+  const request = await signedEvent("mac-location-trae");
+  const original = globalThis.fetch;
+  let forwarded;
+  try {
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes("api.linear.app/graphql")) {
+        const input = JSON.parse(options.body);
+        if (String(input.query).includes("BridgeIssueRouting")) {
+          return Response.json({ data: {
+            issue: { project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } },
+              labels: { nodes: [{ name: "macos", parent: { name: "agent-location" } }] } }
+          } });
+        }
+        return Response.json({ data: { agentActivityCreate: { success: true } } });
+      }
+      if (String(url).includes("bridge.test")) {
+        forwarded = JSON.parse(options.body);
+        return Response.json({ ok: true, accepted: true }, { status: 202 });
+      }
+      throw Error("Unexpected test fetch: " + url);
+    };
+    const response = await workerModule.default.fetch(request(), config, {});
+    assert.equal(response.status, 200);
+    assert.equal(forwarded.routing.agentLocation, "macos");
+    assert.equal(forwarded.routing.projectId, "project-1");
+  } finally { globalThis.fetch = original; }
 });

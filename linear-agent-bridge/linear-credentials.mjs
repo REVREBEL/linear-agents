@@ -9,6 +9,7 @@ export const LINEAR_AGENT_VARS = Object.freeze({
   trae: "TRAE_LINEAR_API_KEY",
   gemini: "GEMINI_LINEAR_API_KEY",
   chatgpt: "CHATGPT_LINEAR_API_KEY",
+  "chatgpt-cli": "CHATGPT_CLI_LINEAR_API_KEY",
   mock: "MOCK_LINEAR_API_KEY",
 });
 const locks = new Map();
@@ -53,7 +54,7 @@ export async function writeLinearEnv(root, agent, token) {
     return file;
   });
 }
-export async function syncLinearCredential({ agent, repositoryRoot, organizationId, completionUrl, sharedSecret, fetchImpl = fetch }) {
+export async function syncLinearCredential({ agent, repositoryRoot, organizationId, completionUrl, sharedSecret, fetchImpl = fetch, persist = true }) {
   if (!LINEAR_AGENT_VARS[agent] || !sharedSecret || typeof organizationId !== "string" || !organizationId) {
     throw new Error("Missing agent credentials or organization");
   }
@@ -62,7 +63,7 @@ export async function syncLinearCredential({ agent, repositoryRoot, organization
       origin.pathname !== "/complete" || !origin.hostname.startsWith("linear-")) {
     throw new Error("Unexpected worker completion URL");
   }
-  const pinned = process.env["LINEAR_" + agent.toUpperCase() + "_WORKER_URL"];
+  const pinned = process.env["LINEAR_" + agent.toUpperCase().replaceAll("-", "_") + "_WORKER_URL"];
   if (pinned && new URL(pinned).origin !== origin.origin) throw new Error("Worker origin mismatch");
   const response = await fetchImpl(new URL("/bridge/access-token", origin.origin), {
     method: "POST",
@@ -75,6 +76,6 @@ export async function syncLinearCredential({ agent, repositoryRoot, organization
   if (payload?.ok !== true || typeof payload.accessToken !== "string" || !payload.accessToken) {
     throw new Error("Invalid Worker token response");
   }
-  await writeLinearEnv(repositoryRoot, agent, payload.accessToken);
+  if (persist) await writeLinearEnv(repositoryRoot, agent, payload.accessToken);
   return { variable: LINEAR_AGENT_VARS[agent], accessToken: payload.accessToken, expiresAt: payload.expiresAt };
 }
