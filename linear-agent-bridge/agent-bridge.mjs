@@ -1087,6 +1087,12 @@ async function startGemini(job, filename, workspace, jobKey, credential) {
   }
 
   if (GEMINI_LAUNCH_MODE === "warp") {
+    if (process.platform !== "darwin") {
+      await jobStore.transition(jobKey, "failed", {
+        error: "Gemini Warp mode requires macOS; use GEMINI_LAUNCH_MODE=headless on Ubuntu",
+      });
+      return;
+    }
     await startGeminiInWarp(promptContext, filename, workspace, jobKey);
     return;
   }
