@@ -3,6 +3,7 @@ import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
 import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";
 import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
+import { preflightChatgptHeadless } from "./agents/chatgpt/scripts/launch.mjs";
 import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "./remote-trae-activity.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
@@ -52,8 +53,8 @@ function enqueueChatgptHandoff(task) {
 
 async function prepareGithubShortcutHandoff(event, source) {
   if (!shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) return null;
-  if (process.env.CHATGPT_HANDOFF_MODE !== "shortcuts") {
-    throw new Error("GitHub PR review dispatch requires CHATGPT_HANDOFF_MODE=shortcuts");
+  if (!["shortcuts", "headless-playwright"].includes(process.env.CHATGPT_HANDOFF_MODE)) {
+    throw new Error("GitHub PR review dispatch requires CHATGPT_HANDOFF_MODE=shortcuts or headless-playwright");
   }
   const config = JSON.parse(await fs.readFile(ROUTING_CONFIG_FILE, "utf8"));
   const destination = resolveGithubReviewDestination(config, event.repository);
@@ -64,6 +65,8 @@ async function prepareGithubShortcutHandoff(event, source) {
   await fs.mkdir(handoffDir, { recursive: true, mode: 0o700 });
   await fs.writeFile(handoffFile, JSON.stringify({
     conversationUrl: destination.conversationUrl,
+    conversationMode: "reuse-existing",
+    autoSend: true,
     prompt: buildGithubReviewPrompt(event),
     handoffId,
   }, null, 2), { mode: 0o600 });
@@ -94,7 +97,9 @@ async function claimGithubReviewDispatch(event, source) {
 }
 
 function launchGithubShortcutHandoff(handoff) {
-  const script = path.resolve(PROJECT_DIR, "../scripts/chatgpt-shortcuts/handoff.mjs");
+  const script = path.resolve(PROJECT_DIR, process.env.CHATGPT_HANDOFF_MODE === "headless-playwright"
+    ? "./agents/chatgpt/scripts/launch.mjs"
+    : "../scripts/chatgpt-shortcuts/handoff.mjs");
   void enqueueChatgptHandoff(() => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, "--handoff-file", handoff.handoffFile], {
       cwd: path.resolve(PROJECT_DIR, ".."), env: process.env, stdio: ["ignore", "pipe", "pipe"],
@@ -315,11 +320,17 @@ const server = http.createServer(async (request, response) => {
       let event;
       try { event = sanitizeGithubEvent(JSON.parse(await readBody(request))); }
       catch (error) { return sendJson(response, 400, { ok: false, error: error.message }); }
-      // Linux currently has no supported automatic ChatGPT review launcher.
-      // Do not consume delivery or semantic claims when dispatch cannot happen.
-      if (process.platform !== "darwin" && shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) {
-        return sendJson(response, 503, { ok: false, accepted: false,
-          reviewDispatched: false, error: "ChatGPT review handoff unavailable on Linux; no delivery or review claim created" });
+      // Do not consume delivery or semantic claims without a viable launcher.
+      if (shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) {
+        if (process.platform !== "darwin" && process.env.CHATGPT_HANDOFF_MODE !== "headless-playwright") {
+          return sendJson(response, 503, { ok: false, accepted: false,
+            reviewDispatched: false, error: "Linux GitHub reviews require CHATGPT_HANDOFF_MODE=headless-playwright" });
+        }
+        if (process.env.CHATGPT_HANDOFF_MODE === "headless-playwright") {
+          try { await preflightChatgptHeadless(); }
+          catch (error) { return sendJson(response, 503, { ok: false, accepted: false,
+            reviewDispatched: false, error: "ChatGPT headless not ready: " + error.message }); }
+        }
       }
       const eventDir = path.join(JOBS_DIR, "github-events");
       // Atomic create prevents duplicate webhook retries from being journaled twice.
@@ -724,21 +735,22 @@ const server = http.createServer(async (request, response) => {
       if (!route.chatgptProjectUrl) {
         await jobStore.transition(jobKey, "failed", { error: "No chatgpt.projectUrl in Linear project mapping" });
         console.error("ChatGPT handoff stopped: project mapping has no chatgpt.projectUrl");
-      } else if (process.platform !== "darwin") {
-        // Keep the task but never claim a UI/browser handoff was launched.
+      } else if (process.platform !== "darwin" && process.env.CHATGPT_HANDOFF_MODE !== "headless-playwright") {
         await jobStore.transition(jobKey, "awaiting_external", {
           taskFile: filename,
-          note: "Linux ChatGPT browser/Shortcuts handoff unsupported; task retained for a supported runner; automatic dispatch not attempted"
+          note: "Linux ChatGPT requires CHATGPT_HANDOFF_MODE=headless-playwright; task retained, not submitted"
         });
-        console.warn(`ChatGPT Linux handoff deferred (no browser launched): ${filename}`);
-      } else if (["supervised-playwright", "shortcuts"].includes(process.env.CHATGPT_HANDOFF_MODE) || route.chatgptAutoSend === true) {
+        console.warn(`ChatGPT Linux handoff deferred (headless mode disabled): ${filename}`);
+      } else if (["supervised-playwright", "shortcuts", "headless-playwright"].includes(process.env.CHATGPT_HANDOFF_MODE) || route.chatgptAutoSend === true) {
         const promptContext = extractPromptContext(routedJob);
         if (!promptContext) {
           await jobStore.transition(jobKey, "failed", { error: "Missing ChatGPT promptContext" });
         } else {
           const useShortcuts = process.env.CHATGPT_HANDOFF_MODE === "shortcuts";
+          const useHeadless = process.env.CHATGPT_HANDOFF_MODE === "headless-playwright";
           const script = path.resolve(PROJECT_DIR, useShortcuts
             ? "../scripts/chatgpt-shortcuts/handoff.mjs"
+            : useHeadless ? "./agents/chatgpt/scripts/launch.mjs"
             : "../scripts/chatgpt-playwright/handoff-test.mjs");
           // This supervised test requires an attached terminal, and must not consume the daemon stdin.
           // Queue a ready-to-run handoff command as a local file instead of launching UI automation from launchd.
@@ -753,10 +765,11 @@ const server = http.createServer(async (request, response) => {
             : { projectUrl: route.chatgptProjectUrl, conversationMode: route.chatgptConversationMode, autoSend: route.chatgptAutoSend === true, prompt: automatedPrompt, jobFile: filename };
           await fs.writeFile(handoffFile, JSON.stringify(handoffPayload, null, 2), { mode: 0o600 });
           if (route.chatgptAutoSend === true) {
-            const handoffController = useShortcuts ? "Apple Shortcut" : "Playwright";
+            if (useHeadless) await preflightChatgptHeadless();
+            const handoffController = useShortcuts ? "Apple Shortcut" : useHeadless ? "Headless Playwright" : "Playwright";
             await jobStore.transition(jobKey, "awaiting_external", { handoffFile, handoffId, note: `Automatic ${handoffController} submission launched; response processing not implemented` });
             void enqueueChatgptHandoff(() => new Promise((resolve, reject) => {
-              const childArgs = useShortcuts
+              const childArgs = useShortcuts || useHeadless
                 ? [script, "--handoff-file", handoffFile]
                 : [script, "--handoff-file", handoffFile, "--auto-send", "--keep-open"];
               const child = spawn(process.execPath, childArgs, {
@@ -771,7 +784,7 @@ const server = http.createServer(async (request, response) => {
               await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(e => console.error("Unable to record ChatGPT handoff failure:", e));
             });
           } else {
-            const handoffController = useShortcuts ? "Apple Shortcut" : "Playwright";
+            const handoffController = useShortcuts ? "Apple Shortcut" : useHeadless ? "Headless Playwright" : "Playwright";
             await jobStore.transition(jobKey, "awaiting_external", { handoffFile, handoffId, note: `Supervised ${handoffController} handoff ready; run manually` });
             console.log(`ChatGPT ${handoffController} handoff ready: ${handoffFile}`);
             console.log(`Run: node ${script} --handoff-file ${handoffFile}`);
