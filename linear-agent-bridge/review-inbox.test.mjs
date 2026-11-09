@@ -55,6 +55,7 @@ test("review claim and outcome are serialized, no CLI coding session involved", 
     );
     const done = await inbox.finish(record.reviewId, {
       status: "reviewed", summary: "Reviewed PR #51. Found two blocking defects.",
+      delivery: { githubReviewId: 123, githubReviewedCommit: event.headSha, verifiedAt: new Date().toISOString() },
     });
     assert.equal(done.state, "reviewed");
     assert.equal((await inbox.list()).length, 0);
