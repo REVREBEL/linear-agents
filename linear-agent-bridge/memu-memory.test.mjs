@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, chmod, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, chmod, rm, readFile, access } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { compactRecall, retrieveMemuMemory } from "./memu-memory.mjs";
@@ -13,7 +13,11 @@ test("recall is compact and ignores unsupported formats", () => {
 });
 
 test("disabled recall never starts a subprocess", async () => {
-  assert.equal(await retrieveMemuMemory("query", { enabled: false, binary: "/does-not-exist" }), "");
+  let invoked = 0;
+  assert.equal(await retrieveMemuMemory("query", {
+    enabled: false, spawnImpl: () => { invoked++; throw Error("Spawn forbidden"); },
+  }), "");
+  assert.equal(invoked, 0);
 });
 
 test("enabled recall tolerates absent executable", async () => {
@@ -33,24 +37,30 @@ test("promotion gate rejects unverified or invented sessions", () => {
   assert.throws(() => validatePromotion(session, { ...verified, review: {status:"approved",headSha:"b".repeat(40)} }));
 });
 
-test("memU prepare obeys verified gate and forwards canonical session path", async () => {
+test("memU prepare snapshots validated bytes and never runs on failed proof", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "memu-prepare-"));
   try {
     const input = path.join(dir, "session.json"), proof = path.join(dir, "proof.json");
     const cli = path.join(dir, "fake-memu");
+    const marker = path.join(dir, "calls.txt");
     await writeFile(input, JSON.stringify(session));
     await writeFile(proof, JSON.stringify(verified));
-    const shell = [
+    await writeFile(cli, [
       "#!/bin/sh",
-      "[ \"$1\" = \"memorize\" ] && [ \"$2\" = \"prepare\" ] && [ \"$3\" = \"" + input + "\" ] && [ \"$4\" = \"--json\" ] || exit 2",
-      "printf '%s' '{\"jobs\":[\"job1\"],\"executor_prompt\":\"evolve\",\"next_command\":\"memu memorize commit\"}'",
+      'test "$1" = memorize && test "$2" = prepare && test "$4" = --json || exit 2',
+      'test "$3" != "' + input + '" || exit 3',
+      'test -r "$3" || exit 4',
+      'cat "$3" > "' + marker + '"',
+      "printf '%s' '{\\"jobs\\":[\\"job1\\"],\\"executor_prompt\\":\\"evolve\\",\\"next_command\\":\\"memu memorize commit\\"}'",
       "",
-    ].join("\n");
-    await writeFile(cli, shell);
+    ].join("\n"));
     await chmod(cli, 0o700);
     const result = await prepareMemuPromotion(input, proof, cli);
     assert.deepEqual(result.jobs, ["job1"]);
-    await writeFile(proof, JSON.stringify({ ...verified, tests: {status:"failed",headSha:"a".repeat(40)} }));
+    assert.deepEqual(JSON.parse(await readFile(marker, "utf8")), session);
+    await rm(marker);
+    await writeFile(proof, JSON.stringify({ ...verified, tests: { status: "failed", headSha: "a".repeat(40) } }));
     await assert.rejects(() => prepareMemuPromotion(input, proof, cli), /Verified review/);
+    await assert.rejects(access(marker), error => error.code === "ENOENT");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
