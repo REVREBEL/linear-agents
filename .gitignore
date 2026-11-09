@@ -1,4 +1,5 @@
 # Logs
+.DS_Store
 logs
 *.log
 npm-debug.log*
@@ -141,6 +142,7 @@ dist
 .dev.vars.*
 !.dev.vars.example
 .venv/
+
 linear-jobs/
 .wrangler/
 .linear-agent-bridge/.env
@@ -148,6 +150,7 @@ linear-jobs/
 .linear-agent-bridge/trae-pending-prompt.txt
 .linear-agent-bridge/trae-consumed-prompts/
 .linear-agent-bridge/trae-hook-events.log
+linear-agent-bridge/__pycache__/
 
 # Central configuration and Terraform generated artifacts
 # Ignores exact .env file, .playlist.env, app.env or .env.local, .env.production, etc.
@@ -174,4 +177,25 @@ scripts/chatgpt-playwright/package-lock.json
 # Regenerated Wrangler declarations contain deployment-specific values
 **/worker-configuration.d.ts
 linear-mock-worker/worker-configuration.d.ts
-/__pycache__
+
+# System Bridge User Specific Files
+
+.profile
+.lesshst
+.histfile
+.local
+.ssh
+.volta/
+.oh-my-zsh/
+.zsh_config/
+.zshrc
+.zsh*
+.zcompdump*
+.bashrc
+,bash_logout
+.bash*
+.cache/
+.config/
+.DS_Store
+.gitconfig
+__pycache__
