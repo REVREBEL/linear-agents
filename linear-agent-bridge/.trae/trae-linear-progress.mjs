@@ -63,11 +63,12 @@ async function main() {
   const { context } = found;
   if (!context.token || !context.agentSessionId) return;
 
-  const response = await fetch("http://127.0.0.1:8788/trae-activity", {
+  const response = await fetch(context.activityEndpoint || "http://127.0.0.1:8788/trae-activity", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       token: context.token,
+      ...(context.jobKey ? { jobKey: context.jobKey } : {}),
       agentSessionId: context.agentSessionId,
       workspace: context.workspace,
       activityType: "thought",
