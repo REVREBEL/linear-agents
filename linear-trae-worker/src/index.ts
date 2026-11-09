@@ -607,8 +607,14 @@ async function handleAgentComplete(
     );
   }
 
+  const requestedActivityType = stringValue(body.activityType);
+  const supportedActivityTypes: AgentActivityContent["type"][] = [
+    "thought", "response", "error", "elicitation",
+  ];
   const activityType: AgentActivityContent["type"] =
-    status === "failed" || status === "error" ? "error" : "response";
+    supportedActivityTypes.includes(requestedActivityType as AgentActivityContent["type"])
+      ? requestedActivityType as AgentActivityContent["type"]
+      : status === "failed" || status === "error" ? "error" : "response";
 
   const bodyText =
     stringValue(body.body) ||

@@ -28,6 +28,7 @@ const jobStore = createJobStore(JOBS_DIR);
 const githubTaskMemory = createGithubTaskMemory(JOBS_DIR);
 const activeTaskMemory = createActiveTaskMemory(JOBS_DIR);
 const agySessionQueue = createSessionQueue();
+const traeActivityState = new Map();
 // Serialize automated ChatGPT handoffs across the shared Chrome CDP browser.
 // Different conversations share the same browser process and visible tabs.
 let chatgptHandoffTail = Promise.resolve();
@@ -345,6 +346,35 @@ const server = http.createServer(async (request, response) => {
       }
     }
 
+    if (request.method === "POST" && url.pathname === "/trae-activity") {
+      let activity;
+      try { activity = JSON.parse(await readBody(request)); }
+      catch { return sendJson(response, 400, { ok: false, error: "Invalid JSON payload" }); }
+      const workspace = typeof activity.workspace === "string" ? path.resolve(activity.workspace) : "";
+      const projectsRoot = path.resolve(PROJECTS_ROOT);
+      if (!workspace || (workspace !== projectsRoot && !workspace.startsWith(projectsRoot + path.sep))) {
+        return sendJson(response, 400, { ok: false, error: "Invalid Trae workspace" });
+      }
+      const context = await readTraeActivityContext(workspace);
+      if (!context || typeof activity.token !== "string" ||
+          !safeTokenEqual(activity.token, context.token) ||
+          activity.agentSessionId !== context.agentSessionId) {
+        return sendJson(response, 401, { ok: false, error: "Invalid Trae activity context" });
+      }
+      const body = sanitizeTraeActivityBody(activity.body);
+      if (!body) return sendJson(response, 400, { ok: false, error: "Invalid Trae activity body" });
+      const now = Date.now();
+      const previous = traeActivityState.get(context.agentSessionId);
+      if (previous && (now - previous.at < 10_000 ||
+          (previous.body === body && now - previous.at < 60_000))) {
+        return sendJson(response, 202, { ok: true, accepted: true, throttled: true });
+      }
+      const posted = await postTraeActivity(context, body, "thought");
+      if (!posted) return sendJson(response, 502, { ok: false, error: "Unable to publish Trae activity" });
+      traeActivityState.set(context.agentSessionId, { at: now, body });
+      return sendJson(response, 202, { ok: true, accepted: true });
+    }
+
     if (request.method === "POST" && url.pathname === "/issue-completed") {
       if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized" });
@@ -603,7 +633,7 @@ const server = http.createServer(async (request, response) => {
         await jobStore.transition(jobKey, "awaiting_external", { note: "ChatGPT task saved; set CHATGPT_HANDOFF_MODE=supervised-playwright or shortcuts to prepare a browser handoff" });
       }
     } else if (agent === "trae") {
-      startTrae(routedJob, filename, workspace, jobKey, credential);
+      await startTrae(routedJob, filename, workspace, jobKey, credential, route.repositoryRoot);
     } else if (agent === "gemini") {
       await startGemini(routedJob, filename, workspace, jobKey, credential);
     } else {
@@ -844,7 +874,7 @@ function startChatGPT(job, filename) {
   console.log(`ChatGPT job file: ${filename}`);
 }
 
-function startTrae(job, filename, workspace, jobKey, credential) {
+async function startTrae(job, filename, workspace, jobKey, credential, repositoryRoot) {
   if (!TRAE_BIN) {
     void jobStore.transition(jobKey, "failed", { error: "TRAE_BIN not configured" }).catch(console.error);
     console.error("TRAE_BIN is not configured. Job saved but Trae was not started.");
@@ -871,17 +901,94 @@ function startTrae(job, filename, workspace, jobKey, credential) {
   console.log(`Trae args: ${args.map(maskArg).join(" ")}`);
   console.log("Trae prompt transport: positional chat prompt");
 
+  const traeGithubAppName = process.env.TRAE_GITHUB_APP_NAME || "revrebel-trae";
+  const traeGithubAppId = process.env.TRAE_GITHUB_APP_ID || "5660644";
+  const traeGitName = `${traeGithubAppName}[bot]`;
+  const traeGitEmail = `${traeGithubAppId}+${traeGithubAppName}[bot]@users.noreply.github.com`;
+
+  const sessionId = extractAgentSessionId(job);
+  const completionUrl = job.completionUrl || job.payload?.data?.completionUrl;
+  if (!sessionId || !completionUrl) {
+    await jobStore.transition(jobKey, "failed", { error: "Missing Trae activity session context" });
+    console.error("Trae skipped. Missing Agent Session ID or completion URL.");
+    return;
+  }
+  const activityDir = path.join(repositoryRoot, ".linear-agent");
+  const activityContextFile = path.join(activityDir, "trae-active-session.json");
+  await fs.mkdir(activityDir, { recursive: true, mode: 0o700 });
+  await fs.writeFile(activityContextFile, JSON.stringify({
+    token: crypto.randomBytes(32).toString("hex"),
+    agentSessionId: sessionId,
+    completionUrl,
+    workspace,
+    jobKey,
+    updatedAt: new Date().toISOString(),
+  }, null, 2), { mode: 0o600 });
+  await jobStore.transition(jobKey, "launching", { activityContextFile });
+
   const traeProcess = spawn(TRAE_BIN, args, {
     cwd: workspace,
     env: {
       ...process.env,
       LINEAR_API_KEY: "", LINEAR_ACCESS_TOKEN: "",
       [credential.variable]: credential.accessToken,
+      GIT_AUTHOR_NAME: traeGitName,
+      GIT_AUTHOR_EMAIL: traeGitEmail,
+      GIT_COMMITTER_NAME: traeGitName,
+      GIT_COMMITTER_EMAIL: traeGitEmail,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
   attachProcessLogs(traeProcess, "Trae", jobKey);
+}
+
+function safeTokenEqual(actual, expected) {
+  if (typeof actual !== "string" || typeof expected !== "string") return false;
+  const left = Buffer.from(actual);
+  const right = Buffer.from(expected);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function sanitizeTraeActivityBody(value) {
+  if (typeof value !== "string") return null;
+  const body = value.replace(/[\r\n\0]+/g, " ").trim();
+  if (!body || body.length > 240) return null;
+  if (/(gh[opusr]_[A-Za-z0-9_]{20,}|github_pat_|bearer\s+[A-Za-z0-9._-]{20,}|private[-_ ]?key)/i.test(body)) {
+    return "Trae completed a protected operation.";
+  }
+  return body;
+}
+
+async function readTraeActivityContext(workspace) {
+  const projectsRoot = path.resolve(PROJECTS_ROOT);
+  let current = path.resolve(workspace);
+  while (current === projectsRoot || current.startsWith(projectsRoot + path.sep)) {
+    const contextFile = path.join(current, ".linear-agent", "trae-active-session.json");
+    try { return JSON.parse(await fs.readFile(contextFile, "utf8")); }
+    catch (error) {
+      if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
+    }
+    if (current === projectsRoot) break;
+    current = path.dirname(current);
+  }
+  return null;
+}
+
+async function postTraeActivity(context, body, activityType = "thought") {
+  if (!SHARED_SECRET || !context?.completionUrl || !context?.agentSessionId) return false;
+  try {
+    const response = await fetch(context.completionUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${SHARED_SECRET}` },
+      body: JSON.stringify({ agentSessionId: context.agentSessionId, activityType, body }),
+    });
+    if (!response.ok) throw new Error(`Trae Worker returned ${response.status}`);
+    return true;
+  } catch (error) {
+    console.error("[Trae] Failed to publish progress activity:", error);
+    return false;
+  }
 }
 
 async function startGemini(job, filename, workspace, jobKey, credential) {

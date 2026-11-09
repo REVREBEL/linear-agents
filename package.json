@@ -39,6 +39,7 @@
     "test:reliability": "node --test scripts/oauth-errors.test.mjs scripts/worker-webhook.test.mjs linear-agent-bridge/*.test.mjs"
   },
   "devDependencies": {
+    "antigravity-ask": "^0.3.2",
     "typescript": "^7.0.0",
     "wrangler": "^4.151.3"
   },
@@ -46,6 +47,6 @@
     "sharp@0.34.5": true,
     "fsevents@2.3.3": true,
     "esbuild@0.28.2": true,
-    "workerd@1.20261023.1": true
+    "workerd@1.20261103.1": true
   }
 }
