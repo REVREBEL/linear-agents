@@ -43,7 +43,7 @@ export async function sendInitialReviewMessage(record, { env = process.env, spaw
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
       finish(Error("Mac review handoff timed out; submission outcome unknown"));
-    }, 60000);
+    }, 180000);
     child.stdout.on("data", chunk => { stdout = (stdout + chunk).slice(-3000); });
     child.stderr.on("data", chunk => { stderr = (stderr + chunk).slice(-2000); });
     child.stdin.on("error", error => finish(error));
