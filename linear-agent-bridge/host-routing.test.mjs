@@ -46,7 +46,7 @@ test("SSH host and command are fixed and never interpolate the issue payload", (
   const args = buildSshArgs(env);
   assert.ok(args.includes("StrictHostKeyChecking=yes"));
   assert.equal(args[args.length - 2], "mac-agent");
-  assert.match(args.at(-1), /remote-agent-runner\.mjs/);
+  assert.match(args.at(-1), /agents\/trae\/scripts\/launch\.mjs/);
   assert.throws(() => validateSshSettings({ ...env, MAC_SSH_HOST: "-oProxyCommand=evil" }), /trusted SSH/);
   assert.throws(() => validateSshSettings({ ...env, MAC_RUNNER_PATH: "/tmp/test';touch /tmp/x" }), /trusted macOS/);
 });
