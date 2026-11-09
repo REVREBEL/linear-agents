@@ -1,6 +1,6 @@
 # ABR-11 | Provider-neutral short-term memory and recovery architecture
 
-**Status:** proposed Phase-1 architecture, not deployed. See [source inventory](source-inventory.md) and [evaluation/implementation plan](recovery-plan.md).  
+**Status:** Phase-1 research architecture aligned to merged PRs #31 and #32. Provider-neutral adapters are proposed, not deployed. See [source inventory](source-inventory.md) and [evaluation/implementation plan](recovery-plan.md).  
 **Scope:** AGY on Ubuntu and macOS, OpenCode on Ubuntu with constrained model context, Linear/GitHub bridge; optionally other agent providers.  
 **Non-goal:** treat semantic vector recall as the source of truth for a live job, or blindly migrate proprietary native conversation files.
 
@@ -89,7 +89,7 @@ type ProviderAdapter = {
 
 Implement adapters without importing UI-extension state or assuming one provider's session ID is meaningful to another. A session `ref` must include provider, runner and workspace scope. An API request accepted is **not** proof of resumed execution.
 
-## Durable checkpoint contract (proposal; reconcile with PR #36 before implementing)
+## Durable checkpoint contract (merged baseline and proposed extensions)
 
 Each issue-scoped checkpoint should include:
 - `schemaVersion`, `revision`, `repository`, `issueId`, `jobKey`/idempotency key, `agentProvider`, `runnerId`, `machineId`, `workspaceId`.
@@ -97,7 +97,9 @@ Each issue-scoped checkpoint should include:
 - `state`, `lastVerifiedGitHead`, `branch`, `prNumber`, `lastObservedReviewSha`, `tests` (command, result, machine, timestamp, commit), `lastVerifiedResult`, `blockers`, `nextAction`, `expiresAt`.
 - `lastSyncedEventId`, `lastObservedAt`, `checkpointSource`, `checkpointEvidence`, `sensitivity`, `updatedAt`.
 
-**Critical:** “agent says done” is not verified CI success. Don't add fields blindly to `active-task-memory.mjs`: existing PR #36 is actively modifying this module and its concurrency model. Design versioned migration against merged code.
+**Current implementation baseline:** PR #31 is merged into `main`, with `schemaVersion: 2`, revisions, `read/update/progress/recoveryPreamble`, redaction, fail-closed cross-process locking, expiry suppression and ordered AGY milestones. The current checkpoint key is `(repositoryRoot, issueId)`, **not** the proposed multi-tenant/session schema. The separate `job-store.mjs` remains operational authority. PR #36 is **closed unmerged** because its lock reclamation implementation remained unsafe. Do not import its directory rename/heartbeat logic. Any new `SessionRef`, runner ownership or event journal needs explicit migration and tests.
+
+**Critical:** “agent says done” is not verified CI success. Preserve current shape, identity, state transitions and tests when adding proposed fields.
 
 Write workflow: idempotent event receipt -> verify job/issue scope -> update checkpoint via atomic CAS/transaction -> acknowledge. Event consumer may retry; operation must never be applied twice. A checkpoint must not contain arbitrary raw credentials, shell history, full transcripts, or untrusted commands interpreted as instructions.
 
@@ -153,6 +155,14 @@ Resume packet should be a **small context budget** relative to the available mod
 | Secrets in snippets/exports | deny storage or redact according to typed rules and test actual persisted bytes |
 | memU/DB outage | continue with local operational checkpoint and live sources; queue verified long-term promotion |
 | Old task action expired | suppress text and refresh Linear/GitHub/repo before proposing new action |
+
+## Phase-1 handoff and authority boundary
+
+**Phase 1 delivers research and API/test proposals only**, not an observed native session restore. The authoritative storage and migration design lives in [the merged memory architecture](../../AGENT_MEMORY_ARCHITECTURE.md); existing checkpoint behavior is in [the merged backend notes](../../AGENT_MEMORY_BACKENDS.md). This document owns provider session capability discovery and bounded recovery, not a second database coordinator or review outbox.
+
+Phase 2 first records sanitized **Ubuntu OpenCode** and **AGY** host capabilities from the actual installed binaries, including runner identity, version, authenticated API/hook availability, verified session IDs, read-only samples, and failure cases. Missing features must be reported as `unsupported`, with explicit child-session lineage rather than guessed paths or claims from another machine.
+
+Provider APIs must distinguish `accepted` from `verified`, and session IDs are not authorization tokens. Recovery packets are assembled from refreshed Linear/GitHub/checkout evidence plus exact-key checkpoint data. Provider transcripts and memU remain untrusted evidence, not executable instructions.
 
 ## Open decisions for Phase 2
 1. Is one active writer per issue sufficient, or do cross-host active-active writers require PostgreSQL transactions?
