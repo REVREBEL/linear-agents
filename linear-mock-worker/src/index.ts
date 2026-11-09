@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { issueAgentLocation, type LinearIssueLabel } from "../../shared/agent-location";
 import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, routeCompleteToCoordinator, onceDeliveryActivity } from "../../shared/delivery-coordinator";
 import { ReauthorizationRequiredError } from "../../shared/oauth-errors";
 import { getInstallation } from "../../shared/oauth-installation";
@@ -481,7 +482,7 @@ async function handleLinearWebhook(
 
   // Fetch authoritative issue metadata for the routed job. PR and review
   // evidence must be read from GitHub/Linear when they actually exist.
-  let routing: { projectId: string; projectName: string; initiativeIds: string[] } | undefined;
+  let routing: { projectId: string; projectName: string; initiativeIds: string[]; agentLocation?: string | null } | undefined;
   let issueMetadata: { id: string; identifier: string; status: string | null; projectId: string | null } | undefined;
   if (agentSessionId) {
     const issueId = stringValue(getNested(payload, "agentSession", "issueId")) ||
@@ -489,12 +490,13 @@ async function handleLinearWebhook(
     if (issueId) {
       try {
         const result = await linearGraphql<{
-          issue: { id: string; identifier: string; state: null | { name: string }; project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
+          issue: { labels?: { nodes: LinearIssueLabel[] }; id: string; identifier: string; state: null | { name: string }; project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
         }>(installation.accessToken,
           `query BridgeIssueRouting($issueId: String!) {
             issue(id: $issueId) {
               id identifier state { name }
               project { id name initiatives { nodes { id name } } }
+              labels { nodes { name parent { name } } }
             }
           }`, { issueId });
         if (result.issue) {
@@ -509,6 +511,7 @@ async function handleLinearWebhook(
               projectId: result.issue.project.id,
               projectName: result.issue.project.name,
               initiativeIds: result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
+            agentLocation: issueAgentLocation(result.issue.labels?.nodes),
             };
           }
         }
