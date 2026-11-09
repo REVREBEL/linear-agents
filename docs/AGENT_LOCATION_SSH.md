@@ -38,3 +38,43 @@ MAC_SSH_HOST="macos"
 - Trae's CLI must run in the SSH user's macOS session. GUI-specific behavior may require an interactive logged-in desktop session. A successful SSH authentication alone does not guarantee Trae GUI availability.
 - The remote CLI process exit is recorded centrally; **Linear agent-session completion still follows the existing separate completion/activity contract** and should be end-to-end verified before broad rollout.
 - The bridge must be able to fetch the Trae app's short-lived token from the Worker. It delivers it only inside the encrypted SSH stdin payload; Mac task files omit the token.
+
+## Mac Trae progress and explicit completion
+
+The macOS Trae hook no longer assumes the central bridge listens on Mac loopback.
+For SSH-routed jobs, Ubuntu generates a random per-job capability token and
+retains only its SHA-256 hash in the job ledger. The Mac stores the token and the
+callback URLs in the mode-0600 repository-local
+`.linear-agent/trae-active-session.json` context. Git excludes `.linear-agent/`.
+The bridge-wide `BRIDGE_SHARED_SECRET` is never given to the Mac hook.
+
+The Mac reports sanitized progress to
+`https://trae-agent.revrebel.io/trae-activity`. Ubuntu verifies the token,
+job key, session ID, workspace, and non-terminal job state from its ledger
+before forwarding activity to the trusted Trae Worker `/complete` route.
+The configured Trae Worker completion URL is restricted to its expected HTTPS
+Worker host.
+
+**Network prerequisite:** Cloudflare Tunnel and WAF rules must permit the
+authenticated `POST /trae-activity` and `POST /trae-complete` routes on
+the Trae Tunnel host. Never allow these paths to bypass the token validation
+in the Ubuntu bridge. Test from Mac before production cutover. No new daemon
+or Mac LaunchAgent is installed.
+
+A Trae `Stop` hook only reports progress, not task completion. When the
+agent has verified the work and is ready to finish its Linear session, invoke
+the explicit script from within the selected repository:
+
+```bash
+node /Users/garystringham/github-revrebel/linear-agents/linear-agent-bridge/agents/trae/scripts/complete.mjs completed "Implementation tested and ready for review"
+```
+
+For an actual failure, pass `failed` and a brief error explanation. The
+script reads its session context from the current repository, sends the
+per-job capability token over HTTPS, and Ubuntu posts a terminal Agent Activity
+to the Worker before recording a confirmed ledger completion.
+
+The earlier Mac CLI exit is **not** treated as proof of completion. SSH
+closure leaves the ledger `awaiting_external` unless terminal completion
+has already been confirmed. The explicit completion script is currently a
+manual/agent-invoked contract; a live Trae desktop cycle has not been tested.
