@@ -12,12 +12,11 @@ export function buildSshArgs(env = process.env) {
 
 // An SSH process starting is not proof that the remote agent started.
 // Only the remote runner's explicit ACK is accepted as delivery.
-export function launchMacTrae({ job, jobKey, jobStore, env = process.env, spawnImpl = spawn, log = console }) {
+export function launchMacTrae({ job, jobKey, jobStore, onExit, env = process.env, spawnImpl = spawn, log = console }) {
   const args = buildSshArgs(env);
   const child = spawnImpl("ssh", args, { env, stdio: ["pipe", "pipe", "pipe"] });
   let accepted = false;
   let output = "";
-  let finished = false;
   let settle;
   let fail;
   const acknowledged = new Promise((resolve, reject) => { settle = resolve; fail = reject; });
@@ -46,16 +45,22 @@ export function launchMacTrae({ job, jobKey, jobStore, env = process.env, spawnI
     void jobStore.transition(jobKey, "failed", { error: error.message }).catch(log.error);
   });
   child.on("close", (code, signal) => {
-    finished = true;
     clearTimeout(timer);
     if (!accepted) {
       fail(Error("Mac SSH runner exited without acceptance (code " + code + ")"));
       return;
     }
-    void jobStore.transition(jobKey, code === 0 ? "completed" : "failed", {
-      exitCode: code, signal, executionHost: "macos",
-      ...(code !== 0 ? { error: "Remote runner exit code " + code } : {}),
-    }).catch(log.error);
+    // A process exit is not, by itself, a verified Linear completion.
+    // Notify Linear through the central bridge, then update the durable ledger.
+    void (async () => {
+      const confirmed = code === 0 && onExit ? await onExit(code, signal) : false;
+      const state = code !== 0 ? "failed" : confirmed ? "completed" : "awaiting_external";
+      await jobStore.transition(jobKey, state, {
+        exitCode: code, signal, executionHost: "macos",
+        ...(code !== 0 ? { error: "Remote runner exit code " + code } : {}),
+        ...(code === 0 && !confirmed ? { note: "Mac runner exited but Linear completion was not confirmed" } : {}),
+      });
+    })().catch(error => log.error("Unable to confirm Mac execution completion:", error));
   });
   // Single JSON request over the encrypted SSH channel; no shell interpolation of job text.
   child.stdin.end(JSON.stringify(job));
