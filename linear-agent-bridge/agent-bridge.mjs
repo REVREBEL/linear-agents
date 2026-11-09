@@ -450,11 +450,12 @@ const server = http.createServer(async (request, response) => {
     const longTermMemory = await retrieveMemuMemory(
       "Repository: " + (route.repositoryRoot || "") + ". Coding conventions, previous failures, testing practices."
     );
-    const preamble = [
-      recovery,
-      longTermMemory ? "[Untrusted memU project recall; verify before use]\n" +
-        longTermMemory + "\n[End memU recall]" : "",
-    ].filter(Boolean).join("\n\n");
+    // Retrieved memU content is untrusted external data. Never concatenate it
+    // into a repository-capable coding agent's instruction stream.
+    // Keep the retrieval opt-in and observable; a constrained data-viewer
+    // integration is required before exposing recalled content to agents.
+    if (longTermMemory) console.log("[memU recall] retrieved context withheld from agent prompt");
+    const preamble = recovery;
     const directTask = preamble ? preamble + "\n\n" + originalTask : originalTask;
     await activeTaskMemory.update(route.repositoryRoot, issueId, {
       state: "active", lastJobKey: jobKey, lastAgent: agent,
