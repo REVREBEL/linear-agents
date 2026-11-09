@@ -79,12 +79,17 @@ export function createReviewInbox(jobsDir) {
         return { ...record, state: "claimed", reviewer, claimedAt: new Date().toISOString() };
       });
     },
-    async finish(reviewId, { status, summary }) {
+    async finish(reviewId, { status, summary, delivery = null }) {
       if (!["reviewed", "blocked"].includes(status) || typeof summary !== "string" ||
           !summary.trim() || summary.length > 4000) throw Error("Invalid review outcome");
       return update(reviewId, record => {
         if (record.state !== "claimed") throw Error("Review must be claimed first");
-        return { ...record, state: status, summary: summary.trim(), reviewedAt: new Date().toISOString() };
+        if (status === "reviewed" && (!delivery || !Number.isSafeInteger(delivery.githubReviewId) ||
+            delivery.githubReviewedCommit !== record.headSha || !delivery.verifiedAt)) {
+          throw Error("Published GitHub review evidence required");
+        }
+        return { ...record, state: status, summary: summary.trim(),
+          ...(status === "reviewed" ? { delivery } : {}), reviewedAt: new Date().toISOString() };
       });
     },
   };
