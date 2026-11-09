@@ -2,6 +2,22 @@
 // No browser automation, ChatGPT cookies, or OpenAI API key required.
 // Completion is controlled by the Ubuntu bridge, not by a prompt-side curl.
 import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
+
+export async function checkOpenCodeReady({
+  binary = process.env.OPENCODE_BIN || "",
+  model = process.env.CHATGPT_OPENCODE_MODEL || "",
+  runAsUser = process.env.CHATGPT_OPENCODE_USER || "",
+  fsApi = fs,
+}) {
+  if (!binary || !binary.startsWith("/")) throw Error("Set OPENCODE_BIN to the absolute installed OpenCode CLI path");
+  if (!model.startsWith("openai/")) {
+    throw Error("Set CHATGPT_OPENCODE_MODEL to an authenticated openai/<model> (not local Ollama)");
+  }
+  if (runAsUser && !/^[a-z_][a-z0-9_-]{0,31}$/.test(runAsUser)) throw Error("Invalid CHATGPT_OPENCODE_USER");
+  await fsApi.access(binary, fs.constants.X_OK);
+  return true;
+}
 
 export function buildOpenCodeLaunch({
   binary = process.env.OPENCODE_BIN || "opencode",
