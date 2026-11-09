@@ -9,6 +9,7 @@ import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination,
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import { createReviewInbox } from "./review-inbox.mjs";
 import { notifyLinearReview } from "./review-linear-notifier.mjs";
+import { verifyPublishedGithubReview } from "./review-delivery.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
@@ -350,7 +351,24 @@ const server = http.createServer(async (request, response) => {
       }
       if (request.method === "POST" && url.pathname === "/reviews/complete") {
         const body = JSON.parse(await readBody(request));
-        const record = await reviewInbox.finish(body.reviewId, body);
+        const existing = await reviewInbox.get(body.reviewId);
+        if (!existing) return sendJson(response, 404, { ok: false, error: "Review task not found" });
+        let delivery = null;
+        if (body.status === "reviewed") {
+          // Only a published GitHub review by the configured identity counts.
+          if (existing.state !== "claimed") {
+            return sendJson(response, 409, { ok: false, error: "Review must be claimed first" });
+          }
+          try {
+            delivery = await verifyPublishedGithubReview(existing, body, {
+              token: process.env.CHATGPT_REVIEW_GITHUB_TOKEN,
+              reviewerLogin: process.env.CHATGPT_REVIEW_GITHUB_LOGIN,
+            });
+          } catch (error) {
+            return sendJson(response, 409, { ok: false, error: error.message });
+          }
+        }
+        const record = await reviewInbox.finish(body.reviewId, { ...body, delivery });
         return sendJson(response, record ? 200 : 404, { ok: Boolean(record), record });
       }
       return sendJson(response, 405, { ok: false, error: "Unsupported review operation" });
