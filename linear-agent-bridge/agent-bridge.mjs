@@ -8,6 +8,7 @@ import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, 
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import { createReviewInbox } from "./review-inbox.mjs";
+import { sendInitialReviewMessage } from "./review-message-handoff.mjs";
 import { notifyLinearReview } from "./review-linear-notifier.mjs";
 import { verifyPublishedGithubReview } from "./review-delivery.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
@@ -73,9 +74,32 @@ async function prepareGithubShortcutHandoff(event, source) {
         userId: process.env.CHATGPT_REVIEW_LINEAR_USER_ID,
       });
     }
+    let reviewMessageAttempted = false;
+    if (process.env.CHATGPT_REVIEW_SEND_MODE === "mac-ssh") {
+      const claim = await reviewInbox.beginMessageHandoff(stored.record.reviewId);
+      if (claim.started) {
+        try {
+          await sendInitialReviewMessage(claim.record);
+          await reviewInbox.finishMessageHandoff(stored.record.reviewId, { attempted: true });
+          reviewMessageAttempted = true;
+        } catch (error) {
+          await reviewInbox.finishMessageHandoff(stored.record.reviewId, {
+            attempted: false, error: error.message,
+          });
+          throw error;
+        }
+      } else if (claim.record.messageHandoff?.state === "attempted") {
+        reviewMessageAttempted = true;
+      } else {
+        // An unknown handoff outcome requires operator reconciliation.
+        // Retrying blindly could post duplicate messages to ChatGPT.
+        throw Error("ChatGPT message handoff is pending or uncertain; inspect Mac handoff before replay");
+      }
+    }
     return {
       reviewQueued: true, reviewId: stored.record.reviewId,
       handoffId: stored.record.reviewId, created: stored.created,
+      reviewMessageAttempted,
       reviewNotified: notification !== null, reviewIssue: notification?.identifier || null,
     };
   }
@@ -419,12 +443,12 @@ const server = http.createServer(async (request, response) => {
             if (recovered && !recovered.duplicate) {
               launchGithubShortcutHandoff(recovered);
               return sendJson(response, 202, { ok: true, duplicate: true, recoveredReviewDispatch: true,
-                delivery: event.delivery, handoffId: recovered.handoffId, reviewDispatched: !recovered.reviewQueued, reviewQueued: recovered.reviewQueued === true, reviewNotified: recovered.reviewNotified === true, reviewIssue: recovered.reviewIssue || null });
+                delivery: event.delivery, handoffId: recovered.handoffId, reviewDispatched: !recovered.reviewQueued, reviewQueued: recovered.reviewQueued === true, reviewNotified: recovered.reviewNotified === true, reviewMessageAttempted: recovered.reviewMessageAttempted === true, reviewIssue: recovered.reviewIssue || null });
             }
             return sendJson(response, 202, { ok: true, duplicate: true, delivery: event.delivery,
               reviewDispatched: recovered?.duplicate === true });
           } catch (recoveryError) {
-            return sendJson(response, 422, { ok: false, duplicate: true, error: recoveryError.message });
+            return sendJson(response, 503, { ok: false, duplicate: true, error: recoveryError.message });
           }
         }
         throw error;
@@ -445,11 +469,11 @@ const server = http.createServer(async (request, response) => {
         if (handoff && !handoff.duplicate) launchGithubShortcutHandoff(handoff);
         console.log(`GitHub event recorded: ${source} ${event.event} ${event.action} ${event.repository || ""} ${event.number || ""}`);
         return sendJson(response, 202, { ok: true, accepted: true, delivery: event.delivery,
-          ...(handoff && !handoff.duplicate ? { handoffId: handoff.handoffId, reviewDispatched: !handoff.reviewQueued, reviewQueued: handoff.reviewQueued === true, reviewNotified: handoff.reviewNotified === true, reviewIssue: handoff.reviewIssue || null, reviewId: handoff.reviewId } : { reviewDispatched: handoff?.duplicate === true && process.env.CHATGPT_REVIEW_MODE !== "inbox", reviewQueued: handoff?.duplicate === true && process.env.CHATGPT_REVIEW_MODE === "inbox" }) });
+          ...(handoff && !handoff.duplicate ? { handoffId: handoff.handoffId, reviewDispatched: !handoff.reviewQueued, reviewQueued: handoff.reviewQueued === true, reviewNotified: handoff.reviewNotified === true, reviewMessageAttempted: handoff.reviewMessageAttempted === true, reviewIssue: handoff.reviewIssue || null, reviewId: handoff.reviewId } : { reviewDispatched: handoff?.duplicate === true && process.env.CHATGPT_REVIEW_MODE !== "inbox", reviewQueued: handoff?.duplicate === true && process.env.CHATGPT_REVIEW_MODE === "inbox" }) });
       } catch (error) {
         await fs.unlink(claimFile).catch(() => {});
         if (handoff?.dispatchClaim) await fs.unlink(handoff.dispatchClaim).catch(() => {});
-        return sendJson(response, 422, { ok: false, error: error.message });
+        return sendJson(response, 503, { ok: false, error: error.message });
       }
     }
 
