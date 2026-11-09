@@ -13,7 +13,8 @@ does not change the GitHub-to-ChatGPT review notification flow.
   containing its step number and tool name only. No commands, tool arguments,
   model text or secrets enter these progress markers.
 - The bridge appends the most recent 20 milestones, with atomic writes and
-  serialized concurrent updates.
+  serialized concurrent updates, versioned revisions, cross-process locking,
+and secret redaction.
 - At the next same-issue assignment, the last six milestones are included in
   the non-authoritative recovery preamble. The agent must inspect actual code
   and tests.
@@ -26,10 +27,12 @@ does not change the GitHub-to-ChatGPT review notification flow.
 ### Optional long-term memU recall
 
 When `MEMU_RETRIEVAL_ENABLED=true`, the bridge calls `memu retrieve`
-with a project-conventions query before issuing an agent job. It adds up
-to 2,500 characters from at most five retrieval hits. It times out after
-five seconds and fails open when memU is unavailable. The retrieved text is
-labeled untrusted and never overrides code, tests, or the task ledger.
+with a project-conventions query before issuing an agent job. The adapter
+limits retrieval to 2,500 characters from at most five hits, times out
+after five seconds, and fails open with rate-limited operational warnings.
+**Untrusted retrieved text is not added to an agent prompt.** Until a
+constrained read-only data channel is implemented and audited, retrieval is
+only an operator-observable smoke test and does not influence coding.
 
 This is disabled by default until local memU is configured and tested.
 
@@ -42,7 +45,8 @@ memU's current *developer* interface requires:
 3. A commit only after executor success.
 
 The `scripts/memu-promote.mjs` adapter verifies a separate evidence file
-and invokes `memu memorize prepare`. It returns the actual
+and invokes `memu memorize prepare` on an isolated, private validated
+session snapshot with a bounded timeout. It returns the actual
 `executor_prompt`, `jobs`, and `next_command`. It intentionally does not
 run the evolve executor or automatically commit. Neither successful process
 exit nor a GitHub comment is proof of verified completion.
