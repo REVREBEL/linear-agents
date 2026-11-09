@@ -70,13 +70,26 @@ and `CHATGPT_REVIEW_MODE=inbox`:
 
 - `GET /reviews/pending`: oldest pending review tasks (up to 20)
 - `POST /reviews/claim`: JSON `{"reviewId":"<sha256>","reviewer":"chatgpt-user"}`
-- `POST /reviews/complete`: JSON `{"reviewId":"<sha256>","status":"reviewed","summary":"..."}`
-  or use `status=blocked` for findings requiring follow-up
+- `POST /reviews/complete`: a published review requires JSON
+  `{"reviewId":"<sha256>","status":"reviewed","summary":"...","githubReviewId":123456}`.
+  The bridge fetches the PR and submitted review directly from GitHub before accepting:
+  the configured reviewer login, current PR head and review commit must match.
+  A GitHub draft review, stale head, other author or made-up review ID is rejected.
+  Use `status=blocked` with a summary when the review has not been published;
+  blocked never asserts GitHub delivery.
 
-Only task details and review status are stored by this API. The review consumer
-must separately submit actual code review comments through its authenticated
-GitHub/Linear integration. Recording `reviewed` is **not** proof that a
-GitHub review was published, and the bridge does not approve or merge PRs.
+Configure `CHATGPT_REVIEW_GITHUB_TOKEN` as a read-only GitHub token with
+pull-request read access to the permitted repositories, and
+`CHATGPT_REVIEW_GITHUB_LOGIN` as the exact GitHub account expected to publish
+reviews. Keep this token separate from the inbox bearer token and from the
+ChatGPT CLI coding credentials. The bridge stores the verified published review
+ID, URL, author, state and commit as delivery evidence. A successful GitHub
+review is a prerequisite for `reviewed`, not an effect of the completion API.
+
+The review consumer must still publish a GitHub review via its authenticated
+GitHub integration; merely invoking this endpoint does not publish anything.
+The bridge does not approve or merge PRs, and no automatic ChatGPT conversation
+wake-up or unattended review executor is included in this milestone.
 
 ## Limits and deployment gate
 
