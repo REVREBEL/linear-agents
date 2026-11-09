@@ -1,5 +1,6 @@
 import { githubAppHomePage } from "../../shared/github-app-homepage";
 import { DurableObject } from "cloudflare:workers";
+import { issueAgentLocation, type LinearIssueLabel } from "../../shared/agent-location";
 import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, routeCompleteToCoordinator, onceDeliveryActivity } from "../../shared/delivery-coordinator";
 import { ReauthorizationRequiredError } from "../../shared/oauth-errors";
 import { getInstallation } from "../../shared/oauth-installation";
@@ -544,7 +545,7 @@ async function handleLinearWebhook(
   // Resolve the issue from the signed event, including the nested data variant.
   // A standalone Linear project is valid; an issue with no project is not
   // routable without an explicitly configured alternative mapping.
-  let routing: { projectId: string; projectName: string; initiativeIds: string[] } | undefined;
+  let routing: { projectId: string; projectName: string; initiativeIds: string[]; agentLocation?: string | null } | undefined;
   const issueId = stringValue(getNested(payload, "agentSession", "issueId")) ||
     stringValue(getNested(payload, "agentSession", "issue", "id")) ||
     stringValue(getNested(payload, "data", "agentSession", "issueId")) ||
@@ -553,12 +554,13 @@ async function handleLinearWebhook(
   if (issueId) {
     try {
       const result = await linearGraphql<{
-        issue: null | { identifier: string; project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
+        issue: null | { labels?: { nodes: LinearIssueLabel[] }; identifier: string; project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
       }>(installation.accessToken,
         `query BridgeIssueRouting($issueId: String!) {
           issue(id: $issueId) {
             identifier
             project { id name initiatives { nodes { id name } } }
+              labels { nodes { name parent { name } } }
           }
         }`, { issueId });
       if (result.issue?.project) {
@@ -566,6 +568,7 @@ async function handleLinearWebhook(
           projectId: result.issue.project.id,
           projectName: result.issue.project.name,
           initiativeIds: result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
+            agentLocation: issueAgentLocation(result.issue.labels?.nodes),
         };
       } else {
         routingFailure = result.issue
