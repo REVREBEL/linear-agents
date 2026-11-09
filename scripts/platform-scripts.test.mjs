@@ -102,3 +102,46 @@ test("Linux bridge status uses systemctl and local health without modifying serv
     rmSync(temp, { recursive: true, force: true });
   }
 });
+
+
+test("ChatGPT CLI KV setup provisions the dedicated namespace and .env binding", () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), "bridge-kv-test-"));
+  try {
+    const envFile = path.join(temp, ".env");
+    const namespaceId = "b".repeat(32);
+    writeFileSync(envFile, "CHATGPT_CLI_KV_NAMESPACE_ID=\\n");
+    const mockFetch = path.join(temp, "mock-fetch.mjs");
+    writeFileSync(mockFetch, `
+globalThis.fetch = async (url, options = {}) => {
+  const method = options.method || "GET";
+  if (!String(url).includes("/storage/kv/namespaces")) throw Error("Unexpected URL");
+  if (method === "GET") return { ok: true, success: true, json: async () =>
+    ({ success: true, result: [], result_info: { total_pages: 1 } }) };
+  if (method === "POST") {
+    const body = JSON.parse(options.body);
+    if (body.title !== "LINEAR_CHATGPT_CLI_DATA") throw Error("Wrong namespace title");
+    return { ok: true, json: async () =>
+      ({ success: true, result: { id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } }) };
+  }
+  throw Error("Unexpected Cloudflare call: " + method);
+};
+`);
+    const env = {
+      ...process.env,
+      CLOUDFLARE_ACCOUNT_ID: "a".repeat(32),
+      CLOUDFLARE_API_TOKEN: "test-only-fake-token",
+      CHATGPT_CLI_PREFIX: "chatgpt-cli",
+      REPO_ROOT: temp,
+      LINEAR_AGENTS_ENV_FILE: envFile,
+    };
+    const result = spawnSync(process.execPath, [
+      "--import", mockFetch, path.join(root, "scripts/setup-kv.mjs"), "chatgpt-cli",
+    ], { encoding: "utf8", env });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Created KV namespace LINEAR_CHATGPT_CLI_DATA/);
+    assert.match(readFileSync(envFile, "utf8"), new RegExp(`CHATGPT_CLI_KV_NAMESPACE_ID="[a-f0-9]{32}"`));
+    assert.ok(readFileSync(envFile, "utf8").includes(namespaceId));
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
