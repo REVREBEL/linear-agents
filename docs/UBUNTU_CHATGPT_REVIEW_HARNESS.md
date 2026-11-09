@@ -69,16 +69,24 @@ Set `CHATGPT_REVIEW_SEND_MODE=mac-ssh` on Ubuntu to enable the **initial
 message only**. The already-configured `codeReview.conversationUrl` is used;
 no new ChatGPT review consumer, CLI identity, GitHub integration, or review
 workflow is created. Ubuntu sends the review prompt by SSH stdin to a fixed
-Mac runner, which calls the existing `Linear ChatGPT Handoff` Shortcut.
+Mac runner. By default that runner invokes the **existing Playwright controller**
+with `--auto-send` to fill the intended conversation's composer and attempt Enter.
 ChatGPT then handles the PR using its existing GitHub and Linear tools.
 
 Requirements: `MAC_SSH_HOST`, `OSX_PROJECTS_ROOT`, optionally `MAC_NODE_BIN`
 and `MAC_REVIEW_RUNNER_PATH`. The default review runner is
 `<OSX_PROJECTS_ROOT>/linear-agents/scripts/macos/chatgpt-shortcuts/review-handoff.mjs`.
-Both hosts must have the updated branch; the Mac must have an unlocked
-authenticated ChatGPT GUI session, the installed Shortcut, and SSH key trust.
+Both hosts must have the updated branch; the Mac requires SSH key trust,
+the installed `scripts/chatgpt-playwright` dependencies, and an authenticated
+dedicated Chrome/CDP profile accessible to the SSH user. The controller needs
+the existing GUI browser session and must not expose its CDP port externally.
+The older Shortcut is only an opt-in fallback via
+`CHATGPT_REVIEW_MAC_CONTROLLER=shortcuts`; its documented open-and-copy flow
+does **not** establish that a message was submitted. In that mode the runner
+returns `HANDOFF_PREPARED`, which Ubuntu intentionally does not accept as
+`HANDOFF_ATTEMPTED`.
 
-The event request waits for the remote Shortcut process to exit and return
+The event request waits for the remote Playwright process to exit and return
 `HANDOFF_ATTEMPTED:<reviewId>` (60-second maximum). This is an **attempted
 submission**, not proof that ChatGPT received the message or completed the review.
 The inbox records `messageHandoff.state=attempted` separately from the review
@@ -88,7 +96,7 @@ records an `uncertain` result; it fails closed instead of automatically
 resubmitting, because the original message may have reached ChatGPT.
 Inspect the intended ChatGPT conversation before manually retrying.
 
-This path uses the existing macOS Shortcut. It does not require a new
+This path uses the existing macOS Playwright controller. It does not require a new
 Cloudflare Tunnel, a ChatGPT message API, or a Mac HTTP listener. The optional
 Linear-user issue notification can remain enabled independently.
 
