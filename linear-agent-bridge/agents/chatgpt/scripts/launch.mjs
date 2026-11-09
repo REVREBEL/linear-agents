@@ -65,12 +65,24 @@ export function parseOpenCodeEvent(line) {
   } catch { return null; }
 }
 
+// Only generic statuses leave the OpenCode process; never tool inputs.
+export function summarizeOpenCodeProgress(type) {
+  switch (type) {
+    case "step_start": return "ChatGPT CLI is analyzing the coding task.";
+    case "tool_use":
+    case "tool_call": return "ChatGPT CLI is working in the repository.";
+    case "step_finish": return "ChatGPT CLI completed an implementation step.";
+    default: return null;
+  }
+}
+
 export async function runOpenCode({
   launch, spawnImpl = spawn, onSession = async () => {},
   onProgress = () => {}, maxDurationMs = 30 * 60 * 1000,
 }) {
   const child = spawnImpl(launch.command, launch.args, launch.options);
   let buffer = "", observedSession = null, reportedError = false, finalText = "";
+  let progressChain = Promise.resolve(), lastProgressAt = 0, lastProgress = "";
   const sessionWrites = [];
   const timer = setTimeout(() => child.kill("SIGTERM"), maxDurationMs);
   child.stdout.on("data", chunk => {
@@ -88,7 +100,12 @@ export async function runOpenCode({
         observedSession = event.sessionId;
         sessionWrites.push(Promise.resolve().then(() => onSession(observedSession)));
       }
-      if (event.type) onProgress(event.type);
+      const progress = summarizeOpenCodeProgress(event.type);
+      if (progress && (progress !== lastProgress || Date.now() - lastProgressAt > 30000)) {
+        lastProgress = progress;
+        lastProgressAt = Date.now();
+        progressChain = progressChain.then(() => onProgress(progress));
+      }
     }
   });
   // Avoid dumping credentials, prompts or tool outputs from stderr into logs.
@@ -99,6 +116,7 @@ export async function runOpenCode({
       child.once("close", code => resolve(code));
     });
     await Promise.all(sessionWrites);
+    await progressChain;
     if (exitCode !== 0 || reportedError) throw Error("OpenCode execution failed (exit " + exitCode + ")");
     if (!finalText.trim()) throw Error("OpenCode emitted no final text; completion unverified");
     return { sessionId: observedSession, exitCode, summary: finalText };
