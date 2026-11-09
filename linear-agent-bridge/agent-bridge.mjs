@@ -1,6 +1,6 @@
 import { syncLinearCredential } from "./linear-credentials.mjs";
 import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
-import { launchMacTrae } from "./ssh-dispatch.mjs";
+import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
@@ -405,6 +405,19 @@ const server = http.createServer(async (request, response) => {
       const records = await jobStore.findByIssueId(issueId);
       let cleaned = 0;
       for (const record of records) {
+        if (record.executionHost === "macos" && record.remoteTask) {
+          if (record.inboxClearedAt) continue;
+          await cleanupMacTrae({ job: {
+            operation: "cleanup", agent: "trae",
+            jobId: record.remoteTask.jobId,
+            repository: record.remoteTask.repository,
+            projectId: record.remoteTask.projectId,
+            projectsRoot: OSX_PROJECTS_ROOT,
+          } });
+          await jobStore.transition(record.key, record.state, { inboxClearedAt: new Date().toISOString() });
+          cleaned++;
+          continue;
+        }
         const file = record.taskFile;
         if (typeof file !== "string" || !file.endsWith(".json") ||
             !file.includes(`${path.sep}.linear-agent${path.sep}projects${path.sep}`) ||
@@ -511,6 +524,7 @@ const server = http.createServer(async (request, response) => {
         executionHost: "macos", repository: route.repository,
         workspace: route.launchDirectory, agentSessionId: sessionId,
         issueId: message.job.issueId || null, attempts: 1,
+        remoteTask: { jobId: safeJobId, repository: route.repository, projectId: route.scopeKey },
       });
       try {
         await launchMacTrae({ job: message, jobKey, jobStore });
