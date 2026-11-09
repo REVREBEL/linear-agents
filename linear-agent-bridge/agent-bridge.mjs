@@ -1185,9 +1185,16 @@ async function startChatgptOpenCode(job, workspace, jobKey, credential) {
   });
   let result;
   try {
+    await sendOpenCodeActivity(callback, agentSessionId, "thought",
+      job.sessionAction === "prompted"
+        ? "ChatGPT CLI received a coding follow-up and is resuming its OpenCode session."
+        : "ChatGPT CLI accepted the coding assignment and is starting a new OpenCode session.")
+      .catch(error => console.warn("Initial ChatGPT CLI activity could not be published:", error.message));
     result = await runOpenCode({
       launch,
       onSession: async id => jobStore.transition(jobKey, "running", { opencodeSessionId: id }),
+      onProgress: message => sendOpenCodeActivity(callback, agentSessionId, "thought", message)
+        .catch(error => console.warn("ChatGPT CLI progress callback failed:", error.message)),
     });
   } catch (error) {
     await jobStore.transition(jobKey, "failed", { error: error.message });
