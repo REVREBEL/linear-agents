@@ -87,7 +87,7 @@ returns `HANDOFF_PREPARED`, which Ubuntu intentionally does not accept as
 `HANDOFF_ATTEMPTED`.
 
 The event request waits for the remote Playwright process to exit and return
-`HANDOFF_ATTEMPTED:<reviewId>` (60-second maximum). This is an **attempted
+`HANDOFF_ATTEMPTED:<reviewId>` (180-second maximum). This is an **attempted
 submission**, not proof that ChatGPT received the message or completed the review.
 The inbox records `messageHandoff.state=attempted` separately from the review
 state, which remains `pending`. A duplicate semantic event does not re-send
