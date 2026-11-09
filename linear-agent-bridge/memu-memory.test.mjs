@@ -64,3 +64,35 @@ test("memU prepare snapshots validated bytes and never runs on failed proof", as
     await assert.rejects(access(marker), error => error.code === "ENOENT");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("memU stalled prepare is terminated rather than blocking promotion", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "memu-timeout-"));
+  try {
+    const input = path.join(dir, "session.json"), proof = path.join(dir, "proof.json");
+    const cli = path.join(dir, "stalled-memu");
+    await writeFile(input, JSON.stringify(session));
+    await writeFile(proof, JSON.stringify(verified));
+    await writeFile(cli, "#!/bin/sh\nsleep 30\n");
+    await chmod(cli, 0o700);
+    await assert.rejects(
+      prepareMemuPromotion(input, proof, cli, { timeoutMs: 100 }),
+      /timed out/,
+    );
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("enabled memU failures warn without preventing task dispatch", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "memu-warning-"));
+  try {
+    const cli = path.join(dir, "invalid-memu");
+    const warnings = [];
+    await writeFile(cli, "#!/bin/sh\nprintf '%s' 'invalid-json'\n");
+    await chmod(cli, 0o700);
+    const result = await retrieveMemuMemory("repo", {
+      enabled: true, binary: cli, logger: { warn: message => warnings.push(message) },
+    });
+    assert.equal(result, "");
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /invalid response/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
