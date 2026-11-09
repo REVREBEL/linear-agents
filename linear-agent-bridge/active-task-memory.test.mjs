@@ -531,3 +531,64 @@ test("progress events are bounded, redacted, and survive restart", async () => {
     assert.match(mem.recoveryPreamble(latest), /Checkpoint: tool/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("schema v2 retains incremental progress, sanitizes nested credentials and enforces revision", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bridge-versioned-memory-"));
+  try {
+    const store = createActiveTaskMemory(root);
+    const first = await store.update("repo", "issue-123", {
+      state: "active", nextAction: "Run tests",
+      artifacts: [{ path: "src/index.ts", privateToken: "do-not-store" }],
+      source: { kind: "linear", metadata: { authorizationHeader: "Bearer hidden" } },
+      lastVerifiedResult: "ghp_12345678901234567890123456789012345",
+    });
+    assert.equal(first.schemaVersion, 2);
+    assert.equal(first.revision, 1);
+    assert.equal(first.artifacts[0].privateToken, "[REDACTED]");
+    assert.equal(first.source.metadata.authorizationHeader, "[REDACTED]");
+    assert.ok(!JSON.stringify(first).includes("do-not-store"));
+    assert.ok(!JSON.stringify(first).includes("ghp_12345678901234567890123456789012345"));
+    await store.progress("repo", "issue-123", { kind: "checkpoint", summary: "Step complete" });
+    const current = await store.read("repo", "issue-123");
+    assert.equal(current.revision, 2);
+    assert.equal(current.progress.length, 1);
+    await assert.rejects(
+      store.update("repo", "issue-123", { expectedRevision: 1, nextAction: "Stale overwrite" }),
+      error => error.code === "ECONFLICT",
+    );
+    assert.equal((await store.read("repo", "issue-123")).nextAction, "Run tests");
+    assert.match(store.recoveryPreamble(current), /Next action: Run tests/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("expired checkpoints omit stale next actions and lifecycle mismatch fails closed", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bridge-expired-memory-"));
+  try {
+    const store = createActiveTaskMemory(root);
+    const expired = await store.update("repo", "issue-expired", {
+      expiresAt: "2025-01-01T00:00:00Z", nextAction: "Dangerous stale instruction",
+    });
+    const preamble = store.recoveryPreamble(expired);
+    assert.match(preamble, /EXPIRED/);
+    assert.doesNotMatch(preamble, /Dangerous stale instruction/);
+    await assert.rejects(
+      store.update("repo", "issue-expired", { state: "active", status: "completed" }),
+      /Invalid checkpoint lifecycle/,
+    );
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("separate memory instances serialize concurrent progress using filesystem lock", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bridge-crossproc-memory-"));
+  try {
+    const a = createActiveTaskMemory(root);
+    const b = createActiveTaskMemory(root);
+    await Promise.all([
+      a.progress("repo", "issue-shared", { summary: "first" }),
+      b.progress("repo", "issue-shared", { summary: "second" }),
+    ]);
+    const record = await a.read("repo", "issue-shared");
+    assert.equal(record.progress.length, 2);
+    assert.equal(record.revision, 2);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
