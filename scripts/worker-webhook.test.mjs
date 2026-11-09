@@ -110,7 +110,7 @@ const installed = (expiresAt, refreshToken = "refresh") => JSON.stringify({
   organizationId: "org", accessToken: "access", expiresAt,
   refreshToken, scope: "read", installedAt: "2026-10-28T00:00:00Z"
 });
-const agents = ["antigravity", "chatgpt", "gemini", "trae", "mock"];
+const agents = ["antigravity", "chatgpt", "chatgpt-cli", "gemini", "trae", "mock"];
 
 test("antigravity: completion callback preserves explicit activity type", { concurrency: false }, async () => {
   const workerModule = await loadWorker("antigravity");
