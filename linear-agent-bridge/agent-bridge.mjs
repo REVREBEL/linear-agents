@@ -44,6 +44,19 @@ const jobStore = createJobStore(JOBS_DIR);
 const githubTaskMemory = createGithubTaskMemory(JOBS_DIR);
 const reviewInbox = createReviewInbox(JOBS_DIR);
 const activeTaskMemory = createActiveTaskMemory(JOBS_DIR);
+const pendingProgressWrites = new Set();
+function trackProgressWrite(promise) {
+  const tracked = promise.catch(error => {
+    console.error("Unable to checkpoint AGY progress:", error.message);
+  });
+  pendingProgressWrites.add(tracked);
+  void tracked.finally(() => pendingProgressWrites.delete(tracked));
+}
+async function drainProgressWrites() {
+  // Include all writes begun before this barrier. Each write resolves only
+  // after the durable checkpoint is renamed into place.
+  await Promise.all([...pendingProgressWrites]);
+}
 const agySessionQueue = createSessionQueue();
 const traeActivityState = new Map();
 // Serialize automated ChatGPT handoffs across the shared Chrome CDP browser.
@@ -734,6 +747,7 @@ const server = http.createServer(async (request, response) => {
     }
     const filename = path.join(taskDir, `${safeJobId}.json`);
     const issueId = job.issueMetadata?.id || job.issueId || null;
+    await drainProgressWrites();
     const priorTask = await activeTaskMemory.read(route.repositoryRoot, issueId);
     const originalTask = extractDirectTask(extractPromptContext(job));
     const recovery = activeTaskMemory.recoveryPreamble(priorTask);
@@ -1083,11 +1097,11 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
             void jobStore.transition(jobKey, "running", { conversationId: verifiedConversationId, conversationVerifiedAt: new Date().toISOString() }).catch(console.error);
           } else if (parsed.event === "progress" && typeof parsed.summary === "string" &&
                      /^Step [0-9]+: [A-Za-z0-9_.-]{1,60}$/.test(parsed.summary)) {
-            void jobStore.get(jobKey).then(record =>
+            trackProgressWrite(jobStore.get(jobKey).then(record =>
               activeTaskMemory.progress(record.repositoryRoot, record.issueId, {
                 kind: "tool", summary: parsed.summary, jobKey,
               })
-            ).catch(error => console.error("Unable to checkpoint AGY progress:", error.message));
+            ));
           } else if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
         } catch (error) { console.error("Invalid AGY exhaustion event:", error.message); }
       } else if (line) console.log("[Antigravity-Out]:", line);
@@ -1098,6 +1112,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
   agentProcess.on("close", (code, signal) => {
     void (async () => {
       await conversationPersist;
+      await drainProgressWrites();
       if (code === 75 && exhaustionEvent?.event === "on_exhaustion") {
         const conversationId = exhaustionEvent.conversation_id || verifiedConversationId;
         if (!conversationId) {
