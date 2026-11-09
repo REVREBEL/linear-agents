@@ -73,13 +73,17 @@ export function createReviewInbox(jobsDir) {
       return records.slice(0, limit);
     },
     async beginMessageHandoff(reviewId) {
-      return update(reviewId, record => {
-        if (record.messageHandoff?.state === "attempted" ||
-            record.messageHandoff?.state === "attempting") return record;
-        return { ...record, messageHandoff: {
+      let started = false;
+      const record = await update(reviewId, current => {
+        // A crash or timeout has an unknown submission outcome. Never
+        // automatically replay that prompt into the same conversation.
+        if (current.messageHandoff) return current;
+        started = true;
+        return { ...current, messageHandoff: {
           state: "attempting", at: new Date().toISOString(),
         } };
       });
+      return { started, record };
     },
     async finishMessageHandoff(reviewId, { attempted, error = "" }) {
       return update(reviewId, record => {
