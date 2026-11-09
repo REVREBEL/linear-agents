@@ -2,7 +2,7 @@
 
 **Status:** Phase-1 implementation-ready provider recovery proposal, aligned 2026-11-09 with merged PRs #31 and #32. **Provider adapters, native resume, PostgreSQL cutover and production canaries are not deployed or validated.**  
 **Project:** Antigravity Session Intelligence & Recovery (P-ABR-34).  
-**Related:** ABR-3 (existing checkpoint and PR #36); ABR-11 (source analysis), ABR-12 (risks), ABR-13 (component selection), ABR-14 (rollout).  
+**Related:** ABR-3 (storage coordinator), merged PR #31 (checkpoint foundation), merged PR #32 (architecture), closed PR #36 (unsafe alternative lock); ABR-11 (source analysis), ABR-12 (risks), ABR-13 (component selection), ABR-14 (rollout).  
 **Target repository:** `REVREBEL/linear-agents`; **no second service/repo unless justified**.  
 **Providers:** Antigravity (Ubuntu development, eventual Mac validation), OpenCode (Ubuntu, including local Ollama/Qwen with ~16k configured context), future providers via adapters.
 
@@ -204,7 +204,7 @@ No automatic rerun of a tool after timeout without idempotency proof or explicit
 ## 9. Durable sync and storage strategy
 
 ### v1: current bridge host, exact-key journal
-Use existing filesystem checkpoint store and job ledger after PR #36 is safely merged. Do not introduce a second independently writable `active-task-memory` directory on Ubuntu. If Mac is live runtime, Ubuntu provider events should send authenticated updates to the single authoritative bridge owner (or hold locally and later reconcile with explicit scope). Single-machine FSync/atomic rename do not imply cross-host CAS. Keep outbox with idempotency keys and replayable delivery.
+Use the existing filesystem checkpoint store and job ledger from merged PR #31; PR #36 was closed unmerged and must not be used as the storage baseline. Do not introduce a second independently writable `active-task-memory` directory on Ubuntu. If Mac is live runtime, Ubuntu provider events should send authenticated updates to the single authoritative bridge owner (or hold locally and later reconcile with explicit scope). Single-machine FSync/atomic rename do not imply cross-host CAS. Keep outbox with idempotency keys and replayable delivery.
 
 ### v2: PostgreSQL transaction boundary (separate work)
 Design migration to Postgres 17 `agent_memory`, schema `memory`, unique `(repository, issue_uuid)`, optimistic `revision`, owner lease, event-id unique index, transactional outbox, explicit migrations and security role separation. Use conditional `UPDATE ... WHERE revision = $expected RETURNING revision` in a transaction; do not depend on file-lock leasing across hosts. **No live DB migration until authorized and backed up.**
