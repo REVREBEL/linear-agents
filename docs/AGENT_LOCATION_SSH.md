@@ -1,6 +1,6 @@
 # Agent Location routing: Ubuntu dispatcher + macOS over SSH
 
-The Ubuntu bridge remains the only Linear webhook receiver, job ledger, and Cloudflare Tunnel origin. The Linear issue's **agent-location** group chooses execution location. No SCP or second bridge process is needed.
+The Ubuntu bridge remains the only Linear webhook receiver, job ledger, and Cloudflare Tunnel origin. Agent-specific commands live under `linear-agent-bridge/agents/<agent>/scripts/`, not in the generic bridge SSH dispatcher. The Trae script invokes the existing desktop CLI with `chat --reuse-window --maximize` from the selected Mac repository. No extra `launchctl` job is installed. The Linear issue's **agent-location** group chooses execution location. No SCP or second bridge process is needed.
 
 ## Ubuntu .env
 
@@ -8,11 +8,11 @@ The Ubuntu bridge remains the only Linear webhook receiver, job ledger, and Clou
 PROJECTS_ROOT="/home/agent-bridge/rebel"
 LINUX_PROJECTS_ROOT="/home/agent-bridge/rebel"
 OSX_PROJECTS_ROOT="/Users/garystringham/github-revrebel"
-MAC_SSH_HOST="mac-agent"
+MAC_SSH_HOST="macos"
 # Optional when SSH sessions do not have node in PATH:
 # MAC_NODE_BIN="/Users/garystringham/.volta/bin/node"
 # Optional if the Mac checkout lives elsewhere:
-# MAC_RUNNER_PATH="/Users/garystringham/github-revrebel/linear-agents/scripts/macos/remote-agent-runner.mjs"
+# MAC_RUNNER_PATH="/Users/garystringham/github-revrebel/linear-agents/linear-agent-bridge/agents/trae/scripts/launch.mjs"
 # Optional: MAC_TRAE_BIN="/path/to/trae"
 ```
 
@@ -22,8 +22,8 @@ MAC_SSH_HOST="mac-agent"
 
 ## Deploy to both computers
 
-1. Fetch this branch onto **both Ubuntu and Mac**: the Mac requires `scripts/macos/remote-agent-runner.mjs` at the configured path, and Ubuntu requires the bridge code and updated Worker deployments.
-2. Enable macOS Remote Login for the dedicated SSH user and configure the Ubuntu bridge service account's `~/.ssh/config` alias `mac-agent`, key-based authentication and a pinned known_hosts entry. Validate with `ssh -o BatchMode=yes mac-agent 'uname -s'` (expected `Darwin`).
+1. Fetch this branch onto **both Ubuntu and Mac**: the Mac requires `linear-agent-bridge/agents/trae/scripts/launch.mjs` at the configured path, and Ubuntu requires the bridge code and updated Worker deployments.
+2. Enable macOS Remote Login for the dedicated SSH user and configure the Ubuntu bridge service account's `~/.ssh/config` alias `macos`, key-based authentication and a pinned known_hosts entry. Validate with `ssh -o BatchMode=yes macos 'uname -s'` (expected `Darwin`).
 3. Ensure macOS SSH can find Node and the Trae CLI. Configure `MAC_NODE_BIN` and `MAC_TRAE_BIN` on Ubuntu if necessary.
 4. Deploy **all five** updated Linear Workers, since they query issue labels as well as project mapping.
 5. Restart only the Ubuntu `agent-bridge.service` after a successful build and tests. Do not run a second Linear web listener on the Mac.
@@ -31,7 +31,7 @@ MAC_SSH_HOST="mac-agent"
 
 ## Operational safeguards and current scope
 
-- Mac dispatch currently supports **Trae only**. An explicit Mac label for another agent fails closed with a clear error; no silent Ubuntu fallback.
+- Mac dispatch currently supports **Trae only**. The old `scripts/macos/remote-agent-runner.mjs` path remains a compatibility shim; new dispatch uses `linear-agent-bridge/agents/trae/scripts/launch.mjs`. An explicit Mac label for another agent fails closed with a clear error; no silent Ubuntu fallback.
 - An issue without Agent Location continues to use Ubuntu.
 - SSH has a 10-second connect timeout, strict host-key checking, no interactive password prompts, and a 20-second remote acceptance timeout.
 - The Mac validates that the real checkout and scope are inside its configured root before starting Trae. If SSH dies before ACK, the ledger records failure. Interrupted work is **not automatically replayed** because an agent may have already made changes.
