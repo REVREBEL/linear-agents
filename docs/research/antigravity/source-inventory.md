@@ -1,6 +1,6 @@
 # ABR-11 | Source inventory: Antigravity, OpenCode, and the Linear Bridge
 
-**Status:** source-analysis draft, 2026-11-07. No production host inspected or changed.  
+**Status:** reviewed source inventory, updated 2026-11-09. No production host inspected or changed. The pinned 2026-11-07 bridge baseline is historical; verify merged implementations against current `main`.  
 **Linear:** [ABR-11](https://linear.app/revrebel/issue/ABR-11) (Phase 1); related [ABR-3](https://linear.app/revrebel/issue/ABR-3) (checkpoint implementation) and [ABR-1](https://linear.app/revrebel/issue/ABR-1) (routing).  
 **Goal:** inventory reusable session-discovery, context-compaction, recovery and state-transfer mechanisms across providers; **not** implement raw session synchronization as a substitute for durable task state.
 
@@ -10,7 +10,7 @@
 | [chiriforge/brain-hub-antigravity](https://github.com/chiriforge/brain-hub-antigravity/tree/978b5c629896fce60edb6ac04effbdf85ebbd8b2) | `978b5c629896fce60edb6ac04effbdf85ebbd8b2` | Brain transcript discovery, UI, archive and sync |
 | [mrd9999/antigravity-sync](https://github.com/mrd9999/antigravity-sync/tree/938b24c5c04918bb49bd2fe67c1251cfb56df2d5) | `938b24c5c04918bb49bd2fe67c1251cfb56df2d5` | Native data synchronization and retry automation |
 | [anomalyco/opencode](https://github.com/anomalyco/opencode/tree/c33eaa170ed5093c08f1684862a695aae036dcda) | `c33eaa170ed5093c08f1684862a695aae036dcda` | OpenCode canonical repository; API/docs are evolving |
-| [REVREBEL/linear-agents](https://github.com/REVREBEL/linear-agents/tree/81e253ff9d2637aa1108d9de6ea448391649b140) | `81e253ff9d2637aa1108d9de6ea448391649b140` (main research baseline) | Existing bridge contracts. **PR #36 has newer unmerged changes; do not judge PR state from this baseline.** |
+| [REVREBEL/linear-agents](https://github.com/REVREBEL/linear-agents/tree/81e253ff9d2637aa1108d9de6ea448391649b140) | `81e253ff9d2637aa1108d9de6ea448391649b140` (main research baseline) | Existing bridge contracts. Historical pre-#31 snapshot; **#31 and #32 are merged, and #36 is closed unmerged**. This baseline is not the current implementation. |
 
 All third-party components require license/attribution review before reuse; repository badges/descriptions are not a substitute for checking committed LICENSE files.
 
@@ -22,9 +22,9 @@ All third-party components require license/attribution review before reuse; repo
 | [github-task-memory.mjs](../../linear-agent-bridge/github-task-memory.mjs) | PR event digest and review checkpoint | GitHub event delivery and review notification state |
 | [agy-conversation-state.mjs](../../linear-agent-bridge/agy-conversation-state.mjs) | Explicit AGY resume intent bookkeeping | Provider conversation identity, distinct from job success |
 | [run_agent.py](../../linear-agent-bridge/run_agent.py) | AGY runner, explicit `--conversation`, streamed conversation ID and quota-exhaustion event | AGY runtime identity and observed completion, not tests verified by exit code |
-| [AGENT_MEMORY_REVIEW_LOOP.md](../AGENT_MEMORY_REVIEW_LOOP.md) | Defines four distinct states and current limitations | Existing bridge design rules |
+| [AGENT_MEMORY_REVIEW_LOOP.md](../../AGENT_MEMORY_REVIEW_LOOP.md) | Defines four distinct states and current limitations | Existing bridge design rules |
 
-**Confirmed limitation:** at this baseline, there is no provider-neutral native-session inventory, cross-provider resume adapter or committed memU integration. Do not overwrite the current AGY job ledger or treat a session summary as proof a task was completed. **PR #36 is independently under code review**, and these docs should not create conflicting implementation changes.
+**Current target-main distinction (2026-11-09):** merged [#31](https://github.com/REVREBEL/linear-agents/pull/31) added versioned/revisioned checkpoints, redaction, fail-closed cross-process locking, ordered AGY tool milestones and bounded last-six recovery summaries; optional memU retrieval is **withheld from coding-agent prompts** and verified promotion is only a prepare adapter. Merged [#32](https://github.com/REVREBEL/linear-agents/pull/32) is the authoritative architecture. [#36](https://github.com/REVREBEL/linear-agents/pull/36) was closed unmerged because its unsafe lock-reclamation branch is superseded. **Still missing:** provider-neutral native-session inventory/adapter, cross-provider resume, authenticated OpenCode API verification, live PostgreSQL cutover, reliable cross-machine checkpoint ownership and complete memU promotion execution. These documents do not change the live runtime.
 
 ## Brain Hub source map (Antigravity)
 | Source | Supported behavior | Reuse direction |
@@ -72,3 +72,9 @@ README documents workspace-absolute-path dependency for visibility of copied con
 
 ## Security constraints
 Never sync `~/.gemini` or `~/.local/share/opencode` recursively. Tokens, provider credentials, browser artifacts and unfiltered raw prompts may live there. Native transcripts are untrusted data. Use read-only provider adapters, scoped export allowlists, secure at-rest encryption/retention, IDs + hashes for provenance and explicit human-gated deployment to production hosts. Do not accidentally overwrite Mac runtime files from Ubuntu. Maintain clear lineage on every fallback.
+
+## Reuse and change-control decision (2026-11-09)
+
+Reuse pinned third-party projects as **research only**. Copy no upstream code without auditing the pinned LICENSE and dependency/license notices. Do not use native provider databases or raw transcripts as the replicated operational record. Implementation against `main` should add independent adapter modules and explicit typed conversion to the existing checkpoint API, not replace `active-task-memory.mjs`, `job-store.mjs` or the GitHub-to-ChatGPT review loop.
+
+The original bridge SHA in the table was a reproducible *research snapshot*, **not** the source of the merged production contract. Before implementing a Phase-2 adapter, record target checkout SHA, active runner host, installed provider binary version, supported API routes and the actual user-authorized data roots in a separate sanitized capability report.
