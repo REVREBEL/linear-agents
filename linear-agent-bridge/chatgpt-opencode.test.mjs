@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { buildOpenCodeLaunch, parseOpenCodeEvent, runOpenCode } from "./agents/chatgpt/scripts/launch.mjs";
+import { buildOpenCodeLaunch, parseOpenCodeEvent, runOpenCode, checkOpenCodeReady } from "./agents/chatgpt/scripts/launch.mjs";
 
 test("OpenCode uses existing ChatGPT OAuth identity with no browser or bridge secrets", () => {
   const launch = buildOpenCodeLaunch({
@@ -68,4 +68,19 @@ test("no text or error events cannot be misreported as completed", async () => {
       }
     }), /completion unverified|execution failed/);
   }
+});
+
+test("preflight rejects local Ollama defaults and missing OpenCode config", async () => {
+  const exists = { async access() {} };
+  await assert.rejects(() => checkOpenCodeReady({
+    binary: "/home/opencode/.opencode/bin/opencode", model: "ollama/qwen3.5",
+    fsApi: exists,
+  }), /openai/);
+  await assert.rejects(() => checkOpenCodeReady({
+    binary: "", model: "openai/gpt-6", fsApi: exists,
+  }), /OPENCODE_BIN/);
+  assert.equal(await checkOpenCodeReady({
+    binary: "/home/opencode/.opencode/bin/opencode", model: "openai/gpt-6",
+    runAsUser: "opencode", fsApi: exists,
+  }), true);
 });
