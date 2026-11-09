@@ -1,6 +1,6 @@
 # ABR-11 | Recovery evaluation and implementation plan
 
-**Phase 1 source dossier / candidate test strategy.** Do not merge this into a production rollout without Phase-2 approval. See [source inventory](source-inventory.md) and [architecture](architecture.md).
+**Phase 1 source dossier / engineering test strategy, aligned 2026-11-09.** Research documentation may be merged independently. Do not treat its merge as authorization to deploy Phase-2 adapters or production host changes. See [source inventory](source-inventory.md) and [architecture](architecture.md).
 
 ## What can be reused and why
 
@@ -16,7 +16,7 @@
 | OpenCode official session API and event stream | **Preferred provider adapter (subject to Ubuntu version check)** | Read-only enumeration and continuation can avoid private SQLite writes |
 | OpenCode native compaction + `experimental.session.compacting` | **Adapt** | Enrich summary with verified task facts but preserve checkpoint independently |
 | OpenCode raw `opencode.db` file replication | **Reject** | Provider-owned SQLite and secrets, unsafe for concurrent host writes |
-| Existing bridge job store + issue/PR checkpoints | **Extend** | Already carries issue, job, callback and PR review identities |
+| Existing bridge job store + issue/PR checkpoints (merged #31) | **Extend** | Already carries issue, job, callback and PR review identities; versioned local checkpoints, AGY milestone queue and fail-closed lock are now present |
 | memU / PostgreSQL | **Separate track** | Promotes verified reusable knowledge, not immediate crash recovery |
 
 ## Step-by-step Phase 1: evidence
@@ -66,7 +66,7 @@ Record real prompt tokens, fixed overhead, compaction cycles, time-to-recover, c
 - Decide whether to use local checkpoint journal replication vs PostgreSQL transactions for cross-machine active writer authority. Avoid split-brain.
 - Specify a portable `RecoveryPacketV1` typed schema, source citations, revision/Etag, content hash, expiry policy, token budget and encryption boundaries.
 - Define provider plugin boundaries and bridge API: `provider.session.discovered`, `checkpoint.updated`, `compaction.started/ended`, `session.interrupted`, `recovery.requested`, `recovery.verified`; write to an idempotent bridge journal and reconcile after reconnect.
-- Prepare exact PR sequence with stable tests, plan for macOS validation on the real Mac, and explicit cloud/DB deployment gates.
+- Prepare exact PR sequence with stable tests, plan for macOS validation on the real Mac, and explicit cloud/DB deployment gates. Do not depend on closed unmerged #36; storage migrations follow the merged #32 architecture.
 
 ## Phase 3: proposed PR decomposition after approval
 | PR | Deliverable | Principal test |
@@ -80,6 +80,15 @@ Record real prompt tokens, fixed overhead, compaction cycles, time-to-recover, c
 | 7 | Host-specific canaries on Ubuntu OpenCode and AGY, separate macOS rollout | actual end-to-end resume, CI/review event handoff, rollback |
 
 Each PR should land behind disabled-by-default feature flags until the relevant target-specific test passes. No production copying of raw `.gemini/` or `opencode.db`.
+
+## Relationship to merged work and what this PR closes
+
+- [PR #31](https://github.com/REVREBEL/linear-agents/pull/31) has merged the local memory foundation. Its CI validates code and tests, not provider native-session recovery on the actual Ubuntu/Mac hosts.
+- [PR #32](https://github.com/REVREBEL/linear-agents/pull/32) has merged the authoritative storage and long-term memory migration specification.
+- [PR #36](https://github.com/REVREBEL/linear-agents/pull/36) was closed unmerged; avoid copying its unsafe stale-lock reclamation.
+- **This PR #46** closes only source-inventory reconciliation, architecture review and a controlled host-evidence/test plan. Ubuntu OpenCode version/API discovery, AGY portability experiments and observed 16k compaction measurements have **not yet been performed** in this PR. Their results require future authorized host execution and evidence commits.
+
+**Next implementation milestone:** a typed provider-neutral session reference, bounded recovery packet builder and deterministic tests can be proposed in a new PR. Separate follow-ups must cover real Ubuntu OpenCode read-only probes and AGY provider root/identity verification, then host-specific canaries. See [short-term-memory-spec.md](short-term-memory-spec.md) and the merged memory architecture for the authority and migration boundaries.
 
 ## Non-negotiable acceptance
 - Exactly-once logical transition from duplicate input (transport may retry).
