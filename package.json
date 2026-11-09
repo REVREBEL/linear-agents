@@ -5,6 +5,7 @@
   "workspaces": [
     "linear-antigravity-worker",
     "linear-chatgpt-worker",
+    "linear-chatgpt-cli-worker",
     "linear-gemini-worker",
     "linear-trae-worker",
     "linear-mock-worker"
