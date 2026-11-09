@@ -7,6 +7,7 @@ import { buildOpenCodeLaunch, runOpenCode, checkOpenCodeReady } from "./agents/c
 import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "./remote-trae-activity.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
+import { createReviewInbox } from "./review-inbox.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
@@ -37,6 +38,7 @@ const OSX_PROJECTS_ROOT = process.env.OSX_PROJECTS_ROOT || "";
 const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs");
 const jobStore = createJobStore(JOBS_DIR);
 const githubTaskMemory = createGithubTaskMemory(JOBS_DIR);
+const reviewInbox = createReviewInbox(JOBS_DIR);
 const activeTaskMemory = createActiveTaskMemory(JOBS_DIR);
 const agySessionQueue = createSessionQueue();
 const traeActivityState = new Map();
@@ -53,12 +55,19 @@ function enqueueChatgptHandoff(task) {
 
 async function prepareGithubShortcutHandoff(event, source) {
   if (!shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) return null;
-  if (process.env.CHATGPT_HANDOFF_MODE !== "shortcuts") {
-    throw new Error("GitHub PR review dispatch requires CHATGPT_HANDOFF_MODE=shortcuts");
+  if (process.env.CHATGPT_REVIEW_MODE !== "inbox" && process.env.CHATGPT_HANDOFF_MODE !== "shortcuts") {
+    throw new Error("GitHub PR review dispatch requires CHATGPT_REVIEW_MODE=inbox or legacy shortcuts");
   }
   const config = JSON.parse(await fs.readFile(ROUTING_CONFIG_FILE, "utf8"));
   const destination = resolveGithubReviewDestination(config, event.repository);
   if (!destination.ok) throw new Error(destination.error);
+  if (process.env.CHATGPT_REVIEW_MODE === "inbox") {
+    const stored = await reviewInbox.enqueue(event, { source, destination });
+    return {
+      reviewQueued: true, reviewId: stored.record.reviewId,
+      handoffId: stored.record.reviewId, created: stored.created,
+    };
+  }
   const handoffId = crypto.createHash("sha256").update(`github:${source}:${event.delivery}`).digest("hex");
   const handoffDir = path.join(JOBS_DIR, "github-events", "handoffs");
   const handoffFile = path.join(handoffDir, `${source}-${event.delivery}.chatgpt-handoff.json`);
@@ -95,6 +104,7 @@ async function claimGithubReviewDispatch(event, source) {
 }
 
 function launchGithubShortcutHandoff(handoff) {
+  if (handoff.reviewQueued) return;
   const script = path.resolve(PROJECT_DIR, "../scripts/chatgpt-shortcuts/handoff.mjs");
   void enqueueChatgptHandoff(() => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, "--handoff-file", handoff.handoffFile], {
@@ -307,6 +317,35 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 202, { ok: true, accepted: true, handoffId, status });
     }
 
+    // Independent review-user handoff. Never accepts the ChatGPT CLI OAuth
+    // token; use a dedicated secret to claim and acknowledge review tasks.
+    if (url.pathname.startsWith("/reviews/")) {
+      if (process.env.CHATGPT_REVIEW_MODE !== "inbox") {
+        return sendJson(response, 404, { ok: false, error: "Review inbox disabled" });
+      }
+      const expected = process.env.CHATGPT_REVIEW_INBOX_TOKEN || "";
+      const supplied = request.headers.authorization?.startsWith("Bearer ")
+        ? request.headers.authorization.slice(7) : "";
+      if (expected.length < 32 || !safeTokenEqual(supplied, expected)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized review consumer" });
+      }
+      if (request.method === "GET" && url.pathname === "/reviews/pending") {
+        return sendJson(response, 200, { ok: true,
+          reviews: await reviewInbox.list({ limit: 20 }) });
+      }
+      if (request.method === "POST" && url.pathname === "/reviews/claim") {
+        const body = JSON.parse(await readBody(request));
+        const record = await reviewInbox.claim(body.reviewId, body.reviewer);
+        return sendJson(response, record ? 200 : 404, { ok: Boolean(record), record });
+      }
+      if (request.method === "POST" && url.pathname === "/reviews/complete") {
+        const body = JSON.parse(await readBody(request));
+        const record = await reviewInbox.finish(body.reviewId, body);
+        return sendJson(response, record ? 200 : 404, { ok: Boolean(record), record });
+      }
+      return sendJson(response, 405, { ok: false, error: "Unsupported review operation" });
+    }
+
     if (request.method === "POST" && url.pathname === "/github/events") {
       if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized" });
@@ -318,11 +357,19 @@ const server = http.createServer(async (request, response) => {
       let event;
       try { event = sanitizeGithubEvent(JSON.parse(await readBody(request))); }
       catch (error) { return sendJson(response, 400, { ok: false, error: error.message }); }
-      // Linux currently has no supported automatic ChatGPT review launcher.
-      // Do not consume delivery or semantic claims when dispatch cannot happen.
-      if (process.platform !== "darwin" && shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) {
+      // The review queue is a durable handoff, NOT a completed review
+      // or a notification to the ChatGPT user. Legacy Shortcuts stays Mac-only.
+      if (process.platform !== "darwin" &&
+          process.env.CHATGPT_REVIEW_MODE !== "inbox" &&
+          shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) {
         return sendJson(response, 503, { ok: false, accepted: false,
           reviewDispatched: false, error: "ChatGPT review handoff unavailable on Linux; no delivery or review claim created" });
+      }
+      if (process.env.CHATGPT_REVIEW_MODE === "inbox" &&
+          shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF) &&
+          (!process.env.CHATGPT_REVIEW_INBOX_TOKEN || process.env.CHATGPT_REVIEW_INBOX_TOKEN.length < 32)) {
+        return sendJson(response, 503, { ok: false, accepted: false,
+          error: "Review inbox requires a separate 32+ character CHATGPT_REVIEW_INBOX_TOKEN" });
       }
       const eventDir = path.join(JOBS_DIR, "github-events");
       // Atomic create prevents duplicate webhook retries from being journaled twice.
@@ -336,7 +383,7 @@ const server = http.createServer(async (request, response) => {
             if (recovered && !recovered.duplicate) {
               launchGithubShortcutHandoff(recovered);
               return sendJson(response, 202, { ok: true, duplicate: true, recoveredReviewDispatch: true,
-                delivery: event.delivery, handoffId: recovered.handoffId, reviewDispatched: true });
+                delivery: event.delivery, handoffId: recovered.handoffId, reviewDispatched: !recovered.reviewQueued, reviewQueued: recovered.reviewQueued === true });
             }
             return sendJson(response, 202, { ok: true, duplicate: true, delivery: event.delivery,
               reviewDispatched: recovered?.duplicate === true });
@@ -362,7 +409,7 @@ const server = http.createServer(async (request, response) => {
         if (handoff && !handoff.duplicate) launchGithubShortcutHandoff(handoff);
         console.log(`GitHub event recorded: ${source} ${event.event} ${event.action} ${event.repository || ""} ${event.number || ""}`);
         return sendJson(response, 202, { ok: true, accepted: true, delivery: event.delivery,
-          ...(handoff && !handoff.duplicate ? { handoffId: handoff.handoffId, reviewDispatched: true } : { reviewDispatched: handoff?.duplicate === true }) });
+          ...(handoff && !handoff.duplicate ? { handoffId: handoff.handoffId, reviewDispatched: !handoff.reviewQueued, reviewQueued: handoff.reviewQueued === true, reviewId: handoff.reviewId } : { reviewDispatched: handoff?.duplicate === true && process.env.CHATGPT_REVIEW_MODE !== "inbox", reviewQueued: handoff?.duplicate === true && process.env.CHATGPT_REVIEW_MODE === "inbox" }) });
       } catch (error) {
         await fs.unlink(claimFile).catch(() => {});
         if (handoff?.dispatchClaim) await fs.unlink(handoff.dispatchClaim).catch(() => {});
