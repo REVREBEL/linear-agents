@@ -72,9 +72,11 @@ test("Linux status uses configured loopback host and port", () => {
 });
 test("Linux handoff source does not claim an unsupported automatic GitHub review", () => {
   const src = readFileSync(path.join(root, "linear-agent-bridge/agent-bridge.mjs"), "utf8");
-  const guard = src.indexOf('process.platform !== "darwin" && shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)');
+  const guard = src.indexOf('process.env.CHATGPT_REVIEW_MODE !== "inbox" &&');
   const claim = src.indexOf('const claimFile = path.join(eventDir');
-  assert.ok(guard !== -1 && guard < claim, "Linux guard must precede delivery claim");
+  assert.ok(guard !== -1 && guard < claim, "Linux unsupported-mode guard must precede delivery claim");
+  const tokenGuard = src.indexOf('CHATGPT_REVIEW_INBOX_TOKEN.length < 32');
+  assert.ok(tokenGuard !== -1 && tokenGuard < claim, "Inbox mode must validate the consumer token before claiming delivery");
   assert.match(src, /Linux ChatGPT browser\/Shortcuts handoff unsupported/);
 });
 
