@@ -3,7 +3,7 @@ import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
 import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";
 import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
-import { buildOpenCodeLaunch, runOpenCode } from "./agents/chatgpt/scripts/launch.mjs";
+import { buildOpenCodeLaunch, runOpenCode, checkOpenCodeReady } from "./agents/chatgpt/scripts/launch.mjs";
 import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "./remote-trae-activity.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
@@ -511,6 +511,15 @@ const server = http.createServer(async (request, response) => {
       sharedSecret: SHARED_SECRET,
       persist: route.executionHost !== "macos",
     }) : null;
+    if (agent === "chatgpt" && process.env.CHATGPT_HANDOFF_MODE === "opencode") {
+      try { await checkOpenCodeReady(); }
+      catch (error) {
+        return sendJson(response, 503, {
+          ok: false, accepted: false,
+          error: "OpenCode ChatGPT runtime not ready: " + error.message,
+        });
+      }
+    }
     const claimed = await jobStore.claim(jobKey, { agent, deliveryId: String(deliveryId), jobId: safeJobId });
     if (!claimed.created) {
       const state = claimed.record?.state || "claimed";
