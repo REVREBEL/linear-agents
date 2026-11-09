@@ -1,0 +1,34 @@
+/** @format */
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "linear-chatgpt-agent",
+  "main": "src/index.ts",
+  "routes": [
+    { "pattern": "linear-${CHATGPT_CLI_PREFIX}.${DOMAIN}", "custom_domain": true },
+
+  ],
+  "compatibility_date": "2026-07-01",
+	"workers_dev": false,
+	"preview_urls": false,
+  "observability": {
+    "enabled": true,
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "DELIVERY_COORDINATOR", "class_name": "DeliveryCoordinator" }]
+  },
+  "exports": {
+    "DeliveryCoordinator": { "type": "durable-object", "storage": "sqlite" }
+  },
+  "kv_namespaces": [
+    {
+      "binding": "LINEAR_DATA",
+      "id": "${CHATGPT_CLI_KV_NAMESPACE_ID}",
+    },
+  ],
+  "vars": {
+    "SERVICE_NAME": "linear-${CHATGPT_CLI_PREFIX}-agent",
+    "LINEAR_REDIRECT_URI": "https://linear-${CHATGPT_CLI_PREFIX}.${DOMAIN}/oauth/callback",
+    "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
+    "BRIDGE_URL": "https://${CHATGPT_CLI_PREFIX}-agent.${DOMAIN}/jobs"
+  },
+}
