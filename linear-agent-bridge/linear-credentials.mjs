@@ -9,6 +9,7 @@ export const LINEAR_AGENT_VARS = Object.freeze({
   trae: "TRAE_LINEAR_API_KEY",
   gemini: "GEMINI_LINEAR_API_KEY",
   chatgpt: "CHATGPT_LINEAR_API_KEY",
+  "chatgpt-cli": "CHATGPT_CLI_LINEAR_API_KEY",
   mock: "MOCK_LINEAR_API_KEY",
 });
 const locks = new Map();
@@ -62,7 +63,7 @@ export async function syncLinearCredential({ agent, repositoryRoot, organization
       origin.pathname !== "/complete" || !origin.hostname.startsWith("linear-")) {
     throw new Error("Unexpected worker completion URL");
   }
-  const pinned = process.env["LINEAR_" + agent.toUpperCase() + "_WORKER_URL"];
+  const pinned = process.env["LINEAR_" + agent.toUpperCase().replaceAll("-", "_") + "_WORKER_URL"];
   if (pinned && new URL(pinned).origin !== origin.origin) throw new Error("Worker origin mismatch");
   const response = await fetchImpl(new URL("/bridge/access-token", origin.origin), {
     method: "POST",
