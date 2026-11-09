@@ -46,15 +46,11 @@ const reviewInbox = createReviewInbox(JOBS_DIR);
 const activeTaskMemory = createActiveTaskMemory(JOBS_DIR);
 const pendingProgressWrites = new Set();
 function trackProgressWrite(promise) {
-  const tracked = promise.catch(error => {
-    console.error("Unable to checkpoint AGY progress:", error.message);
-  });
+  const tracked = promise.catch(error => console.error("Unable to checkpoint AGY progress:", error.message));
   pendingProgressWrites.add(tracked);
   void tracked.finally(() => pendingProgressWrites.delete(tracked));
 }
 async function drainProgressWrites() {
-  // Include all writes begun before this barrier. Each write resolves only
-  // after the durable checkpoint is renamed into place.
   await Promise.all([...pendingProgressWrites]);
 }
 const agySessionQueue = createSessionQueue();
@@ -754,13 +750,9 @@ const server = http.createServer(async (request, response) => {
     const longTermMemory = await retrieveMemuMemory(
       "Repository: " + (route.repositoryRoot || "") + ". Coding conventions, previous failures, testing practices."
     );
-    // Retrieved memU content is untrusted external data. Never concatenate it
-    // into a repository-capable coding agent's instruction stream.
-    // Keep the retrieval opt-in and observable; a constrained data-viewer
-    // integration is required before exposing recalled content to agents.
+    // Never put untrusted recalled text into a coding agent's instruction stream.
     if (longTermMemory) console.log("[memU recall] retrieved context withheld from agent prompt");
-    const preamble = recovery;
-    const directTask = preamble ? preamble + "\n\n" + originalTask : originalTask;
+    const directTask = recovery ? recovery + "\n\n" + originalTask : originalTask;
     await activeTaskMemory.update(route.repositoryRoot, issueId, {
       state: "active", lastJobKey: jobKey, lastAgent: agent,
       lastWorkspace: workspace,
