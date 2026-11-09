@@ -7,16 +7,14 @@ Do **not** route these through the same Linear Worker or conversation history.
 | Trigger | A coding issue assigned to **ChatGPT CLI** | A PR review request, actionable GitHub event, or review follow-up |
 | Host | `chatgpt-cli-agent.<DOMAIN>` (Tunnel) → Ubuntu bridge | Existing `chatgpt-agent.<DOMAIN>` (legacy agent) and GitHub event channel; review-user dispatch is distinct |
 | Worker | Dedicated `linear-chatgpt-cli-worker/` with independent OAuth registration, KV and Durable Object | Existing ChatGPT/PR review integration is preserved |
-| Execution | Headless OpenCode with the already connected OpenAI/ChatGPT OAuth | **Review harness workstream**, not the coding CLI worker |
+| Execution | Headless OpenCode with the already connected OpenAI/ChatGPT OAuth | **Review inbox + optional Linear-user notification**, not the coding CLI worker |
 | Session | New OpenCode session on `created`; reuse verified session for the same Linear `prompted` follow-up | Review context scoped by repository and PR, not coding issue session |
 | Response | `/complete` on the **CLI Worker's** domain, using its Linear Agent Session ID | Review report belongs to the review surface, not the coding agent's Agent Session |
 | Credentials | `CHATGPT_CLI_LINEAR_*` and dedicated app installation | Separate ChatGPT user identity and existing GitHub review identity |
 
 This PR splits the coding-side identity and adds OpenCode progress activities. It
 **does not** silently convert the existing Linear ChatGPT user into an agent,
-nor assume a user can receive an `agentActivityCreate` message. The PR review
-harness and notification/response transport need their own verified endpoint
-and tests before Ubuntu can claim to deliver PR review requests to the user.
+nor assume a user can receive an `agentActivityCreate` message. The PR review harness now queues actionable GitHub events in an authenticated\nuser review inbox. Optional Linear review issues can be assigned to a verified\nChatGPT user via `CHATGPT_REVIEW_NOTIFY_MODE=linear-user`. This is not a\nChatGPT conversation wake-up; see `docs/UBUNTU_CHATGPT_REVIEW_HARNESS.md`.
 
 ## Register the separate Linear app
 
