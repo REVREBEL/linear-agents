@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { issueAgentLocation, type LinearIssueLabel } from "../../shared/agent-location";
 import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, routeCompleteToCoordinator, onceDeliveryActivity } from "../../shared/delivery-coordinator";
 import { ReauthorizationRequiredError } from "../../shared/oauth-errors";
 import { getInstallation } from "../../shared/oauth-installation";
@@ -476,18 +477,19 @@ async function handleLinearWebhook(
   completionUrl.search = "";
 
   // Enrich the signed session with stable Linear IDs; do not infer paths from issue prose.
-  let routing: { projectId: string; projectName: string; initiativeIds: string[] } | undefined;
+  let routing: { projectId: string; projectName: string; initiativeIds: string[]; agentLocation?: string | null } | undefined;
   if (agentSessionId) {
     const issueId = stringValue(getNested(payload, "agentSession", "issueId")) ||
       stringValue(getNested(payload, "agentSession", "issue", "id"));
     if (issueId) {
       try {
         const result = await linearGraphql<{
-          issue: { project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
+          issue: { labels?: { nodes: LinearIssueLabel[] }; project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
         }>(installation.accessToken,
           `query BridgeIssueRouting($issueId: String!) {
             issue(id: $issueId) {
               project { id name initiatives { nodes { id name } } }
+              labels { nodes { name parent { name } } }
             }
           }`, { issueId });
         if (result.issue?.project) {
@@ -495,6 +497,7 @@ async function handleLinearWebhook(
             projectId: result.issue.project.id,
             projectName: result.issue.project.name,
             initiativeIds: result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
+            agentLocation: issueAgentLocation(result.issue.labels?.nodes),
           };
         }
       } catch (error) {
