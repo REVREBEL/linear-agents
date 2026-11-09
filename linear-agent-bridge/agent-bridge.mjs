@@ -3,6 +3,7 @@ import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
 import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";
 import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
+import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint } from "./remote-trae-activity.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
@@ -371,15 +372,24 @@ const server = http.createServer(async (request, response) => {
       try { activity = JSON.parse(await readBody(request)); }
       catch { return sendJson(response, 400, { ok: false, error: "Invalid JSON payload" }); }
       const workspace = typeof activity.workspace === "string" ? path.resolve(activity.workspace) : "";
-      const projectsRoot = path.resolve(PROJECTS_ROOT);
-      if (!workspace || (workspace !== projectsRoot && !workspace.startsWith(projectsRoot + path.sep))) {
-        return sendJson(response, 400, { ok: false, error: "Invalid Trae workspace" });
-      }
-      const context = await readTraeActivityContext(workspace);
-      if (!context || typeof activity.token !== "string" ||
-          !safeTokenEqual(activity.token, context.token) ||
-          activity.agentSessionId !== context.agentSessionId) {
-        return sendJson(response, 401, { ok: false, error: "Invalid Trae activity context" });
+      let context;
+      if (typeof activity.jobKey === "string" && activity.jobKey.startsWith("trae:")) {
+        const record = await jobStore.get(activity.jobKey).catch(() => null);
+        if (!validateRemoteTraeActivity(activity, record)) {
+          return sendJson(response, 401, { ok: false, error: "Invalid remote Trae activity context" });
+        }
+        context = { agentSessionId: record.agentSessionId, completionUrl: record.remoteCompletionUrl };
+      } else {
+        const projectsRoot = path.resolve(PROJECTS_ROOT);
+        if (!workspace || (workspace !== projectsRoot && !workspace.startsWith(projectsRoot + path.sep))) {
+          return sendJson(response, 400, { ok: false, error: "Invalid Trae workspace" });
+        }
+        context = await readTraeActivityContext(workspace);
+        if (!context || typeof activity.token !== "string" ||
+            !safeTokenEqual(activity.token, context.token) ||
+            activity.agentSessionId !== context.agentSessionId) {
+          return sendJson(response, 401, { ok: false, error: "Invalid Trae activity context" });
+        }
       }
       const body = sanitizeTraeActivityBody(activity.body);
       if (!body) return sendJson(response, 400, { ok: false, error: "Invalid Trae activity body" });
@@ -504,12 +514,23 @@ const server = http.createServer(async (request, response) => {
         return sendJson(response, 422, { ok: false, accepted: false, error: "Missing remote prompt or credential" });
       }
       const sessionId = extractAgentSessionId(job);
+      const remoteActivityToken = crypto.randomBytes(32).toString("hex");
+      const remoteCompletionUrl = job.completionUrl || job.payload?.data?.completionUrl;
+      if (!sessionId || !remoteCompletionUrl) {
+        await jobStore.transition(jobKey, "failed", { error: "Missing Mac Trae session or completion URL" });
+        return sendJson(response, 422, { ok: false, accepted: false, error: "Missing Mac Trae callback context" });
+      }
+      const activityHost = process.env.TRAE_HOST || "trae-agent.revrebel.io";
+      const activityEndpoint = validateActivityEndpoint(
+        process.env.MAC_TRAE_ACTIVITY_URL || `https://${activityHost}/trae-activity`, activityHost
+      );
       const message = {
         agent: "trae", jobId: safeJobId,
         projectId: route.scopeKey, repository: route.repository,
         projectsRoot: OSX_PROJECTS_ROOT,
         projectScope: route.projectScope, launchFromScope: route.launchFromScope,
         prompt: promptContext, agentSessionId: sessionId,
+        activityEndpoint, activityToken: remoteActivityToken, jobKey,
         accessToken: credential.accessToken,
         traeBin: process.env.MAC_TRAE_BIN || "trae",
         githubAppName: process.env.TRAE_GITHUB_APP_NAME || "revrebel-trae",
@@ -527,6 +548,8 @@ const server = http.createServer(async (request, response) => {
         workspace: route.launchDirectory, agentSessionId: sessionId,
         issueId: message.job.issueId || null, attempts: 1,
         remoteTask: { jobId: safeJobId, repository: route.repository, projectId: route.scopeKey },
+        remoteActivityTokenHash: hashRemoteToken(remoteActivityToken),
+        remoteCompletionUrl,
       });
       try {
         await launchMacTrae({ job: message, jobKey, jobStore });
