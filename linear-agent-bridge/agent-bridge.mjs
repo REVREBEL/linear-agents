@@ -1164,9 +1164,15 @@ async function startChatgptOpenCode(job, workspace, jobKey, credential) {
   const prior = job.sessionAction === "prompted"
     ? await jobStore.findLatestOpenCodeSessionBySessionId(agentSessionId, jobKey, workspace)
     : null;
-  const launch = buildOpenCodeLaunch({
-    workspace, prompt, sessionId: prior?.opencodeSessionId || null,
-  });
+  let launch;
+  try {
+    launch = buildOpenCodeLaunch({
+      workspace, prompt, sessionId: prior?.opencodeSessionId || null,
+    });
+  } catch (error) {
+    await jobStore.transition(jobKey, "failed", { error: error.message });
+    return;
+  }
   await jobStore.transition(jobKey, "running", {
     runtime: "opencode", opencodeSessionId: prior?.opencodeSessionId || null,
     executionHost: "bridge-server",
