@@ -1,12 +1,12 @@
 # ABR-11 / ABR-13: Short-Term Agent Memory v1 Engineering Specification
 
-**Status:** implementation-ready proposal for review, **not deployed or approved to modify production**. Date: 2026-11-07.  
+**Status:** Phase-1 implementation-ready provider recovery proposal, aligned 2026-11-09 with merged PRs #31 and #32. **Provider adapters, native resume, PostgreSQL cutover and production canaries are not deployed or validated.**  
 **Project:** Antigravity Session Intelligence & Recovery (P-ABR-34).  
 **Related:** ABR-3 (existing checkpoint and PR #36); ABR-11 (source analysis), ABR-12 (risks), ABR-13 (component selection), ABR-14 (rollout).  
 **Target repository:** `REVREBEL/linear-agents`; **no second service/repo unless justified**.  
 **Providers:** Antigravity (Ubuntu development, eventual Mac validation), OpenCode (Ubuntu, including local Ollama/Qwen with ~16k configured context), future providers via adapters.
 
-> **Implementation precondition:** PR #36's checkpoint locking remains under review. Do **not** alter `active-task-memory.mjs` concurrently, merge unsafe locking, or assume Linux development = macOS live deployment. This specification defines interfaces and acceptance, not permission to run an agent or deploy.
+> **Implementation baseline:** PR #31 merged the versioned local checkpoint, cross-process fail-closed lock, ordered AGY milestone recording and bounded recovery preamble. PR #32 merged the authoritative storage/memU architecture. PR #36 was **closed unmerged** because its stale-lock reclamation has unsafe races. Do **not** port its directory-reclamation/heartbeat code. This specification proposes *new provider adapters* and migration interfaces, not permission to change production hosts.
 
 ## 1. Definition of done
 
@@ -28,7 +28,7 @@ The system MUST:
 | Existing module | Keep | Extend via |
 | --- | --- | --- |
 | `linear-agent-bridge/job-store.mjs` | job receipt, dedupe, transitions and startup interruption reconciliation | read-only lookup + idempotent event/outbox linkage |
-| `linear-agent-bridge/active-task-memory.mjs` (PR #36) | issue+repo operational checkpoint, state, revision, redaction | **after merge** migrate to v3 schema via explicit adapter; no competing writer |
+| `linear-agent-bridge/active-task-memory.mjs` (merged #31) | issue+repo operational checkpoint, v2 revision, redaction, bounded progress, expiry and fail-closed lock | add v3-compatible typed adapter and migration tests; no competing writer |
 | `linear-agent-bridge/github-task-memory.mjs` | PR review digest and actionable event state | link checkpoint to issue/job and observed head |
 | `linear-agent-bridge/agy-conversation-state.mjs` | AGY explicit resume bookkeeping | provider-neutral session ref companion, do not replace AGY path blindly |
 | `linear-agent-bridge/run_agent.py` | AGY runner and observed IDs, exhaustion events | adapter observation and exact session verification |
@@ -99,14 +99,14 @@ type ActiveCheckpointV3 = {
 };
 ```
 
-`review-ready` can be an independent review substate if existing `state` enum cannot safely change; mapping must be explicit, **not** an unreviewed breaking change to PR #36. Never persist a giant transcript in `objective`, `completed`, or `evidence.summary`.
+`review-ready` can be an independent review substate if existing `state` enum cannot safely change; mapping must be explicit, **not** an unreviewed breaking change to merged #31. Never persist a giant transcript in `objective`, `completed`, or `evidence.summary`.
 
 ### Validation
 - On update, derive issue/repository/runner/machine scope from authenticated job context, never from untrusted agent text.
 - Reject cross-project session references even if provider IDs collide.
 - Require `expectedRevision` (or server-managed CAS) for reads that precede writes; retry on conflict after re-read and reclassification.
-- Maintain schema migration v1 → v2 → v3 that preserves `lastJobKey`, `lastSessionId`, `conversationId`, `idempotencyKey` and PR references.
-- Unknown states/statuses fail closed, as in review feedback for PR #36.
+- Maintain schema migration v1 → v2 (already merged) → proposed v3 that preserves `lastJobKey`, `lastSessionId`, `conversationId`, `idempotencyKey` and PR references.
+- Unknown states/statuses fail closed, as implemented in merged #31.
 - Require no raw API tokens, OAuth cookies or arbitrary secret-bearing free text. Use typed allowlists, secret scanning, bounded size, and persisted-byte tests; do not claim perfect regex coverage.
 - Distinguish `completed` (agent exited) from `verified` (tests/CI observed on a particular commit).
 
@@ -232,7 +232,7 @@ GitHub/Linear events -> existing authenticated Workers -> durable bridge journal
 **A. Core store and concurrency**
 1. Same `issueUuid` + eventId delivered 20 times → one logical transition and one handoff.
 2. Concurrent updates on same issue from separate OS processes → exactly one CAS succeeds; no lost revision.
-3. Owner dies during transition → no blind reexecution; recover locks safely or fail closed; test dead owner/contending reclaimers and in-flight heartbeat turnover per PR #36.
+3. Owner dies during transition → no blind reexecution; recover locks safely or fail closed; do not use unsafe PR #36 auto-reclamation; test that an abandoned lock fails closed, is observable, and requires supervised recovery.
 4. Process crashes after commit before ack → replay dedupes and returns recorded result.
 5. Verify schema v1/v2 migration preserves all operational IDs.
 
@@ -277,7 +277,23 @@ These require real authorized host inspection and are **not claims of completed 
 - Installed OpenCode Ubuntu version, active session API availability, plugin hook contract, effective Qwen/Ollama context metrics.
 - AGY actual filesystem roots and safe native session read; same-host native resume versus cross-host new session.
 - Upstream license acceptance and source attribution before copying nontrivial code.
-- Current PR #36 merge resolution/lock correctness and migration contract.
+- PR #36 is closed unmerged. Current #31 fail-closed lock behavior and a safe supervised stale-lock recovery runbook before any new lock lifecycle changes.
 - Actual Mac bridge deployment topology/ownership, and network path to future Postgres coordinator.
 
 **Deliverable to AGY:** implement to these contracts only after Phase-2 review; do not infer unspecified behavior, silently create clones, access secrets, or deploy across hosts.
+
+## 14. Reconciliation with merged implementation and acceptance ownership
+
+**Already present in main (PR #31):** local `createActiveTaskMemory(root)` with `read(repo, issue)`, `update(repo, issue, patch)`, `progress(repo, issue, event)`, and `recoveryPreamble(record)`; v2 checkpoint revision and redact-before-write; bounded 20 milestones and latest-six recovery; AGY metadata-only tool events and an ordered ingestion queue; guarded memU retrieval and promotion preparation. Do **not** duplicate these APIs in `memory/` or claim they provide multi-host transactional authority.
+
+**Architecture authority (merged PR #32):** the storage migration, tenants, PostgreSQL schema proposals, CAS semantics, retention, credential protection and memU promotion lifecycle. This specification owns the **provider-neutral read-only adapter, bounded recovery packet and exact-session verification**. If these documents conflict, the merged architecture is authoritative on storage/tenancy, and installed provider API probes are authoritative on actual capabilities.
+
+**Implementation acceptance sequence:**
+1. Add pure `SessionRefV1` and `RecoveryPacketV1` validation and deterministic unit tests. Preserve existing v2 checkpoint files and jobs.
+2. Record a sanitized OpenCode Ubuntu host capability probe (version, authenticated API routes, actual session ID, context accounting), **without reading auth tokens or writing provider SQLite**.
+3. Implement a read-only OpenCode adapter against a pinned API with synthetic missing-session/disconnect fixtures. No native resume claims until verified provider events.
+4. Record approved AGY session roots and observed runner conversation IDs; implement read-only, path-contained discovery and malformed/transcript-size guards.
+5. Implement reconciliation/lineage and context-budgeted new-session handoff behind disabled feature flags. Require same-session verification, dedupe and recovery tests before any production rollout.
+6. Run distinct Ubuntu and macOS canaries, measure restart/compaction recovery and update the operational runbook. A CI pass on mocks is **not** live host proof.
+
+No code in this research PR implements these six phases. The related Linear issues are the scheduling authority, and each subsequent runtime PR must document its exact scope and tests.
