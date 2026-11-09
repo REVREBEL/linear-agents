@@ -3,7 +3,9 @@
 // Reads exactly one JSON request on stdin; no shell evaluation or SCP required.
 import fs from "node:fs/promises";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { promisify } from "node:util";
+const run = promisify(execFile);
 
 const maxBytes = 1024 * 1024;
 async function input() {
@@ -36,10 +38,24 @@ export async function validateRemoteJob(message, fsApi = fs) {
   if (typeof message.accessToken !== "string" || !message.accessToken) throw Error("Missing agent access token");
   return { root, workspace };
 }
+export async function excludeAgentRuntime(root, fsApi = fs, runGit = run) {
+  const { stdout } = await runGit("git", ["-C", root, "rev-parse", "--git-path", "info/exclude"]);
+  const file = path.isAbsolute(stdout.trim()) ? stdout.trim() : path.resolve(root, stdout.trim());
+  await fsApi.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  let content = "";
+  try { content = await fsApi.readFile(file, "utf8"); }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  if (!content.split(/\r?\n/).includes("/.linear-agent/")) {
+    await fsApi.appendFile(file, (content.endsWith("\n") || !content ? "" : "\n") + "/.linear-agent/\n", { mode: 0o600 });
+  }
+  const tracked = await runGit("git", ["-C", root, "ls-files", "--", ".linear-agent"]);
+  if (tracked.stdout.trim()) throw Error("Refusing agent runtime writes: .linear-agent is tracked");
+}
 export async function main() {
   if (process.platform !== "darwin") throw Error("Remote runner must execute on macOS");
   const message = await input();
   const { root, workspace } = await validateRemoteJob(message);
+  await excludeAgentRuntime(root);
   const taskDir = path.join(root, ".linear-agent", "projects", message.projectId, "inbox");
   await fs.mkdir(taskDir, { recursive: true, mode: 0o700 });
   const taskFile = path.join(taskDir, message.jobId + ".json");
