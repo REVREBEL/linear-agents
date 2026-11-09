@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { buildOpenCodeLaunch, parseOpenCodeEvent, runOpenCode, checkOpenCodeReady } from "./agents/chatgpt/scripts/launch.mjs";
+import { buildOpenCodeLaunch, parseOpenCodeEvent, runOpenCode, checkOpenCodeReady, summarizeOpenCodeProgress } from "./agents/chatgpt/scripts/launch.mjs";
 
 test("OpenCode uses existing ChatGPT OAuth identity with no browser or bridge secrets", () => {
   const launch = buildOpenCodeLaunch({
@@ -83,4 +83,38 @@ test("preflight rejects local Ollama defaults and missing OpenCode config", asyn
     binary: "/home/opencode/.opencode/bin/opencode", model: "openai/gpt-6",
     runAsUser: "opencode", fsApi: exists,
   }), true);
+});
+
+test("CLI progress is filtered and delivered in order without tool inputs", async () => {
+  assert.equal(summarizeOpenCodeProgress("text"), null);
+  assert.equal(summarizeOpenCodeProgress("reasoning"), null);
+  assert.equal(summarizeOpenCodeProgress("tool_use"), "ChatGPT CLI is working in the repository.");
+  const { EventEmitter } = await import("node:events");
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = () => {};
+  const events = [];
+  const result = runOpenCode({
+    launch: buildOpenCodeLaunch({ workspace: "/tmp/repo", prompt: "Implement issue" }),
+    spawnImpl: () => {
+      queueMicrotask(() => {
+        for (const data of [
+          {type:"step_start",sessionID:"ses_test123"},
+          {type:"tool_use",sessionID:"ses_test123",part:{tool:"bash",state:{input:{command:"PRIVATE_TOKEN=secret"},output:"hidden"}}},
+          {type:"step_finish",sessionID:"ses_test123"},
+          {type:"text",sessionID:"ses_test123",part:{text:"Implementation complete"}},
+        ]) child.stdout.emit("data", JSON.stringify(data) + "\n");
+        child.emit("close", 0);
+      });
+      return child;
+    },
+    onProgress: async summary => events.push(summary),
+  });
+  await result;
+  assert.equal(events.length, 3);
+  assert.equal(JSON.stringify(events).includes("PRIVATE_TOKEN"), false);
+  assert.equal(JSON.stringify(events).includes("secret"), false);
+  assert.ok(events[0].includes("analyzing"));
+  assert.ok(events[2].includes("completed an implementation step"));
 });
