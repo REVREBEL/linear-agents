@@ -85,12 +85,16 @@ export async function main() {
   const { root, workspace } = await validateRemoteJob(message);
   if (typeof message.activityToken !== "string" || !/^[0-9a-f]{64}$/.test(message.activityToken) ||
       typeof message.jobKey !== "string" || !message.jobKey.startsWith("trae:") ||
-      typeof message.activityEndpoint !== "string") throw Error("Invalid remote activity context");
+      typeof message.activityEndpoint !== "string" || typeof message.completionEndpoint !== "string") throw Error("Invalid remote activity context");
   const endpoint = new URL(message.activityEndpoint);
   if (endpoint.protocol !== "https:" || endpoint.pathname !== "/trae-activity" ||
       endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
     throw Error("Invalid remote activity endpoint");
   }
+  const completion = new URL(message.completionEndpoint);
+  if (completion.protocol !== "https:" || completion.origin !== endpoint.origin ||
+      completion.pathname !== "/trae-complete" || completion.username || completion.password ||
+      completion.search || completion.hash) throw Error("Invalid remote completion endpoint");
   await excludeAgentRuntime(root);
   const taskDir = path.join(root, ".linear-agent", "projects", message.projectId, "inbox");
   await fs.mkdir(taskDir, { recursive: true, mode: 0o700 });
@@ -110,6 +114,7 @@ export async function main() {
     agentSessionId: message.agentSessionId,
     workspace,
     activityEndpoint: endpoint.toString(),
+    completionEndpoint: completion.toString(),
     updatedAt: new Date().toISOString(),
   }, null, 2), { mode: 0o600 });
   const binary = message.traeBin || "trae";
