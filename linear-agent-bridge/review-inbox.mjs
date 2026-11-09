@@ -72,6 +72,26 @@ export function createReviewInbox(jobsDir) {
       records.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       return records.slice(0, limit);
     },
+    async beginMessageHandoff(reviewId) {
+      return update(reviewId, record => {
+        if (record.messageHandoff?.state === "attempted" ||
+            record.messageHandoff?.state === "attempting") return record;
+        return { ...record, messageHandoff: {
+          state: "attempting", at: new Date().toISOString(),
+        } };
+      });
+    },
+    async finishMessageHandoff(reviewId, { attempted, error = "" }) {
+      return update(reviewId, record => {
+        if (record.messageHandoff?.state !== "attempting")
+          throw Error("Message handoff not in progress");
+        return { ...record, messageHandoff: {
+          state: attempted ? "attempted" : "uncertain",
+          at: new Date().toISOString(),
+          ...(attempted ? {} : { error: String(error).slice(0, 300) }),
+        } };
+      });
+    },
     async claim(reviewId, reviewer) {
       if (!reviewer || typeof reviewer !== "string" || reviewer.length > 128) throw Error("Missing reviewer");
       return update(reviewId, record => {
