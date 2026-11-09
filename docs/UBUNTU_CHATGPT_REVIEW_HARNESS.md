@@ -63,6 +63,35 @@ retries after network uncertainty idempotent. A Linear issue update may not
 generate a fresh notification on every revision; do not confuse it with
 verified delivery to ChatGPT's conversation UI.
 
+## Initial message delivery to the existing ChatGPT conversation
+
+Set `CHATGPT_REVIEW_SEND_MODE=mac-ssh` on Ubuntu to enable the **initial
+message only**. The already-configured `codeReview.conversationUrl` is used;
+no new ChatGPT review consumer, CLI identity, GitHub integration, or review
+workflow is created. Ubuntu sends the review prompt by SSH stdin to a fixed
+Mac runner, which calls the existing `Linear ChatGPT Handoff` Shortcut.
+ChatGPT then handles the PR using its existing GitHub and Linear tools.
+
+Requirements: `MAC_SSH_HOST`, `OSX_PROJECTS_ROOT`, optionally `MAC_NODE_BIN`
+and `MAC_REVIEW_RUNNER_PATH`. The default review runner is
+`<OSX_PROJECTS_ROOT>/linear-agents/scripts/macos/chatgpt-shortcuts/review-handoff.mjs`.
+Both hosts must have the updated branch; the Mac must have an unlocked
+authenticated ChatGPT GUI session, the installed Shortcut, and SSH key trust.
+
+The event request waits for the remote Shortcut process to exit and return
+`HANDOFF_ATTEMPTED:<reviewId>` (60-second maximum). This is an **attempted
+submission**, not proof that ChatGPT received the message or completed the review.
+The inbox records `messageHandoff.state=attempted` separately from the review
+state, which remains `pending`. A duplicate semantic event does not re-send
+the same initial message. If the SSH session times out or fails, the ledger
+records an `uncertain` result; it fails closed instead of automatically
+resubmitting, because the original message may have reached ChatGPT.
+Inspect the intended ChatGPT conversation before manually retrying.
+
+This path uses the existing macOS Shortcut. It does not require a new
+Cloudflare Tunnel, a ChatGPT message API, or a Mac HTTP listener. The optional
+Linear-user issue notification can remain enabled independently.
+
 ## Consumer API
 
 All routes require `Authorization: Bearer <CHATGPT_REVIEW_INBOX_TOKEN>`
