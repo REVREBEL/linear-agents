@@ -513,13 +513,7 @@ const server = http.createServer(async (request, response) => {
         issueId: message.job.issueId || null, attempts: 1,
       });
       try {
-        await launchMacTrae({
-          job: message, jobKey, jobStore,
-          onExit: async () => postTraeActivity({
-            agentSessionId: sessionId,
-            completionUrl: job.completionUrl || job.payload?.data?.completionUrl,
-          }, "Trae completed its macOS execution.", "response"),
-        });
+        await launchMacTrae({ job: message, jobKey, jobStore });
       } catch (error) {
         await jobStore.transition(jobKey, "failed", { error: String(error), executionHost: "macos" });
         return sendJson(response, 503, { ok: false, accepted: false,
