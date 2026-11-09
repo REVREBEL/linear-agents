@@ -1,136 +1,192 @@
-# Agent memory architecture (proposal)
+# LinearBridge agent memory architecture
 
-Status: **design proposal**, not deployed. Linear: [REV-176](https://linear.app/revrebel/issue/REV-176) (Postgres/pgvector) and [REV-177](https://linear.app/revrebel/issue/REV-177) (memory coordinator).
+**Status:** Implementation-aligned architecture and delivery specification. Updated 2026-11-09 after [PR #31](https://github.com/REVREBEL/linear-agents/pull/31) merged. This file is not evidence of a PostgreSQL or memU production deployment.
 
-## Problem and non-goals
+**Ownership:** [ABR-10 / PR #32](https://github.com/REVREBEL/linear-agents/pull/32). Related: [ABR-8 / #31](https://github.com/REVREBEL/linear-agents/pull/31) (implemented checkpoint foundation), [ABR-9 / #36](https://github.com/REVREBEL/linear-agents/pull/36) (checkpoint hardening, incorporated where applicable), [ABR-11 / #46](https://github.com/REVREBEL/linear-agents/pull/46) (provider research), [ABR-3](https://linear.app/revrebel/issue/ABR-3) (coordinator), [ABR-5](https://linear.app/revrebel/issue/ABR-5) (database provisioning).
 
-The bridge currently routes Linear conversations and code/review workflows across local agents, but model context windows, process restarts, and separate agent sessions do not inherently preserve what an agent learned. A longer context window is not durable memory. Memory must survive independently of the process and remain available to a new session, without requiring the full original transcript.
+## 1. Principles and authoritative boundaries
 
-Do not replace the bridge's authoritative job/session state, GitHub PR state, or Linear issue state with a vector database. Those are operational source-of-truth records. Do not treat retrieved text as commands, or let memory retrieval start new work automatically. ChatGPT's actionable review notification is a separate event-delivery requirement, not something semantic memory fixes.
+**Operational truth** remains the bridge job ledger, verified Linear issue/agent-session state, Git checkout and GitHub PR/CI/review state. Neither a language-model summary nor a vector hit can override these sources. A "successful" process exit does not prove reviewed code, completed CI or published GitHub review.
 
-## Two tiers plus a source-of-truth layer
+**Short-term memory** is a bounded, exact-key, per-issue checkpoint. It preserves last-known intent and milestone evidence across context loss and process restarts. It is not a shared live conversation database. Provider-native session history remains provider-owned.
 
-| Layer | Purpose | Storage | Lookup | Lifecycle |
-| --- | --- | --- | --- | --- |
-| Operational truth | Current Linear issue, agent session, attempts, leases, PR/CI and actionability | Existing bridge job store and Linear/GitHub APIs | Exact IDs | Existing transaction and reconciliation policies |
-| Short-term working memory | Compact task state/checkpoint, decisions, next action, blockers and handoff for resuming an agent | Existing durable bridge store initially; PostgreSQL later if justified | Exact scoped ID | Update on state transition; TTL after completion; promote useful outcomes |
-| Long-term recall | Project architecture, durable decisions, historical failure patterns, reusable lessons, code review conventions | Self-hosted memU with PostgreSQL + pgvector and readable Markdown recall files | Scoped lexical/vector search + provenance | Supersede/reconcile, review and delete; durable by policy |
+**Long-term memory** is optional, scoped, verified, reusable knowledge. memU and PostgreSQL/pgvector are candidates for the durable recall layer. Long-term recall is untrusted data, never an instruction channel; promotion requires provenance, review, and independent verification.
 
-Prefer **explicit, structured state** over embedding a large raw conversation. An agent must continue correctly even when embeddings are unavailable. A checkpoint is authoritative only for the agent's *last known* intent; the live code, issue and PR status must still be revalidated before changes.
+The GitHub-to-ChatGPT initial message/review delivery loop and the separate ChatGPT CLI coding agent are **not** part of the memory state machine. Memory cannot autonomously awaken a ChatGPT conversation, perform a review or mark one delivered.
 
-## Proposed flow
+## 2. Verified implementation inventory
+
+| Capability | Current implementation in `main` | Boundary |
+| --- | --- | --- |
+| Operational jobs and session routing | `linear-agent-bridge/job-store.mjs`, `agent-bridge.mjs`, provider routing and reconciliation modules | Must remain source of operational truth |
+| Issue checkpoint | `linear-agent-bridge/active-task-memory.mjs`: `createActiveTaskMemory(root).read/update/progress/recoveryPreamble` | Host-local files under `linear-jobs/active-task-memory`; not PostgreSQL |
+| Checkpoint hardening | `schemaVersion: 2`, monotonically increasing `revision`, atomic rename, per-key cross-process lock, optimistic expected revision, secret redaction, expiry suppression | Existing `version: 1` compatibility retained; lock files require operational recovery policy |
+| Incremental AGY milestones | `run_agent.py` emits privacy-limited `AGY_BRIDGE_EVENT`; bridge queues, writes, and drains ordered progress before recovery/completion | Not yet equivalent for Trae/Gemini/OpenCode; no raw tool args/transcripts |
+| Bounded handoff | Most recent 20 saved progress items; last six rendered into non-authoritative recovery preamble | Fresh issue/Git/CI check still required |
+| Optional memU retrieval | `memu-memory.mjs`: disabled by default, bounded, timed, fail-open with warning | Retrieved text is intentionally **withheld** from coding-agent prompts pending a constrained data interface |
+| Verified memU promotion preparation | `scripts/memu-promote.mjs`: canonical session validation, matching review/test head evidence, private validated snapshot, timeout | No trusted evolve executor, actual session capture, commit automation or verified deployed backend |
+| Long-term memory database | PostgreSQL/pgvector environment is a separately managed infrastructure workstream | No migration, connection test, role/schema verification or deployment is implied here |
+
+See [AGENT_MEMORY_BACKENDS.md](AGENT_MEMORY_BACKENDS.md) for current adapter behavior. This document supersedes the older proposal's claim that checkpoint schema, ordered AGY writes and retrieval adapters are entirely unimplemented.
+
+## 3. Logical architecture and event flow
 
 ```text
-Linear webhook / GitHub PR event
-  -> existing verification, dedupe and authenticated routing
-  -> resolve scope (organization/project/repository/issue/agent/session)
-  -> load exact checkpoint and fresh authoritative status
-  -> retrieve relevant scoped long-term recall (optional, fail-open)
-  -> create bounded handoff context for the local agent
-  -> existing agent dispatch
-  -> persist checkpoint on meaningful transitions
-  -> on final result: agent proposes selected durable Markdown memories
-  -> validate scope, provenance, secrets, staleness and dedupe
-  -> commit approved memories to memU
-  -> actionable review-ready event emitted by notification subsystem
+Authenticated Linear / GitHub event
+  -> bridge authentication + existing dedupe/claim
+  -> job ledger + verified repository/issue identity
+  -> optional reconciliation of recent provider milestones
+  -> exact-key checkpoint read (local current backend)
+  -> refresh live issue / checkout / PR / CI evidence
+  -> bounded recovery packet (trusted, structured checkpoint fields)
+  -> optional memU shadow retrieval (data only; NOT a prompt)
+  -> approved provider runner
+  -> ordered milestone/checkpoint updates
+  -> completion verification and distinct review notification flow
+  -> optional provenance-checked long-term promotion proposal
+  -> explicit approved evolve execution -> commit -> audit record
 ```
 
-No memory operations before authentication and tenant resolution. Never reconstruct a session by blindly concatenating retrieved passages.
+Do not introduce a second authority for retries, leases, job completion, PR review or human approvals. When job events are replayed, use stable dedupe IDs and transactional revision checks before side effects. If a native agent session cannot be verified, create a **new child lineage**, never assert exact-session continuation solely from a stored ID.
 
-## Short-term checkpoint contract (v1)
+## 4. Stable checkpoint and coordinator contract
 
-A versioned JSON record with fields:
-- `schemaVersion`, `checkpointId`, `updatedAt`, `revision`, `expiresAt`.
-- `scope`: authenticated workspace/organization, project/repository, Linear issue ID, agent identity.
-- `execution`: bridge job ID, Linear agent session ID, provider conversation ID (when available), attempt number, idempotency key.
-- `task`: goal, user-approved constraints, current phase, checklist, completed steps, next intended step.
-- `artifacts`: branch, commit, PR, CI/review permalink, document references.
-- `status`: running / awaiting external / exhausted / review-ready / done / failed and associated reasons.
-- `handoff`: compact agent-authored summary, validation evidence, blockers, last tool/error summary and retry eligibility.
-- `source`: canonical URLs, timestamps and event identifiers for claims in the checkpoint.
-
-Write by compare-and-swap revision / single-writer lease appropriate to the existing job store. A repeated event must not duplicate a transition. Avoid introducing a second competing state machine. Cap record size and redact credentials, auth headers, secrets, personal data and full transcripts.
-
-### Checkpoint triggers
-
-Persist after successful dispatch claim, phase/branch/PR transitions, before quota exhaustion or clean shutdown when available, on error/blocker, on actionable review-ready state, and at final completion. A periodic heartbeat may update only liveness metadata, not fabricate progress.
-
-On resume, load the checkpoint; verify current Linear/GitHub reality; then pass a bounded `resumeContext` that includes source links and the same provider conversation ID where supported. When it cannot resume the exact provider conversation, start a new session with checkpoint context and explicitly record a new session lineage.
-
-## Long-term memory: memU adapter
-
-The open-source memU system currently offers self-hosted Postgres + pgvector, a local SQLite option, agent-authored Markdown recall files, searchable segments, and a generic adapter. Its Python service exposes `list_all_recall_files`, `progressive_retrieve`, and `commit_results`. Verify its installed release API and compatibility before locking the integration. Its memory service does **not** perform LLM summarization; the host agent must decide what to preserve.
-
-Keep memU isolated behind `MemoryCoordinator` so bridge and workers do not depend on the Python internals. Prefer a local authenticated service or sidecar reachable from the bridge; do not expose the memory database or Python service publicly. Pin version and migrate via tested scripts.
-
-Suggested interface (illustrative, not committed API):
+Treat the existing function names and stored fields as the compatibility baseline:
 
 ```ts
-interface MemoryCoordinator {
-  getCheckpoint(scope: Scope, executionId: string): Promise<Checkpoint | null>;
-  putCheckpoint(checkpoint: Checkpoint, expectedRevision: number): Promise<void>;
-  retrieve(scope: Scope, query: string, limit: number): Promise<RecallHit[]>;
-  proposeMemory(scope: Scope, draft: MemoryDraft): Promise<MemoryProposal>;
-  commitMemory(scope: Scope, approved: MemoryProposal): Promise<void>;
-  supersedeMemory(scope: Scope, oldId: string, replacementId: string): Promise<void>;
+type CheckpointKey = {
+  tenantId: string;     // authenticated organization/workspace identity
+  repositoryId: string; // canonical approved repository identity
+  issueId: string;      // canonical Linear issue ID, not displayed title
+};
+
+type CheckpointV2 = {
+  version: 1; schemaVersion: 2; revision: number;
+  repositoryRoot: string; issueId: string;
+  state: "active" | "pending" | "agent-finished" | "needs-recovery";
+  status: "active" | "pending" | "completed" | "needs-recovery";
+  updatedAt: string; expiresAt?: string | null;
+  lastJobKey?: string | null; lastAgent?: string | null;
+  lastWorkspace?: string | null; lastSessionId?: string | null;
+  lastSeenAt?: string | null; lastVerifiedResult?: string | null;
+  nextAction?: string | null;
+  progress?: Array<{ at: string; kind: string; summary: string; jobKey?: string | null }>;
+  lastProgressAt?: string | null; artifacts?: unknown[];
+  source?: unknown; promotion?: unknown;
+};
+
+interface CheckpointStore {
+  read(key: CheckpointKey): Promise<CheckpointV2 | null>;
+  update(key: CheckpointKey, patch: object, expectedRevision?: number):
+    Promise<CheckpointV2>;
+  appendProgress(key: CheckpointKey, event: NormalizedMilestone):
+    Promise<CheckpointV2>;
 }
 ```
 
-`RecallHit` must include memory ID, scope, summary, source link(s), source date, last verification date, relevance score, version/supersession state and a small excerpt; never only opaque vector text.
+**Important distinction:** `CheckpointKey` and `CheckpointStore` above define the *future scoped storage boundary*, not APIs currently exported by `active-task-memory.mjs`. The current implementation is keyed by `(repositoryRoot, issueId)`. Introduce an explicit authenticated tenant/project mapping and a compatibility adapter before any migration. Never infer tenancy from arbitrary model-produced strings. Keep job/session state in the existing ledger.
 
-### Memory categories
+**Additional fields proposed, not implemented:** `provider`, `runnerId`, `machineId`, opaque `nativeSessionRef`, `lineage`, `sourceEventId`, `verifiedGitHead`, `checkpointHash`, `ownerLease`, `retentionClass`. Add through a versioned migration with forward/backward reader tests; do not silently write them into current records.
 
-- **Project decisions:** architecture and configuration choices, alternatives, rationale, implementation state.
-- **Reusable procedures:** tested setup, failure recovery and review practices.
-- **Task episodes:** what worked or failed on one task, linked to issues and PRs.
-- **User-approved preferences/policies:** relevant durable operating constraints, only within their approved sharing scope.
+**Lifecycle policy:** A checkpoint is historical context. Refresh live authorization/issue/branch/CI before acting. If `expiresAt` is in the past, omit the stored next-action text, not merely prepend a warning. Completion, review-ready, quota exhaustion and retry authority remain ledger-driven. Checkpoint absence or corruption must not fabricate a successful recovery.
 
-Always distinguish a *proposal*, a *confirmed implementation*, and a *historical fact*. Attach code SHA/PR or ticket evidence; when later evidence contradicts a memory, supersede or flag it instead of silently merging the claims.
+**Concurrency:** Require one active writer per issue or a transactional lease. A source event is idempotent by its canonical dedupe key, while each accepted checkpoint append increments revision. Conflicting writes must return an explicit conflict and reread. Process-local queues alone do not protect cross-machine writes.
 
-### Retrieval rules
+## 5. PostgreSQL persistence and migration design
 
-1. Verify authenticated scope and ask authoritative APIs for live issue/PR state.
-2. Fetch exact session/project checkpoints deterministically.
-3. Retrieve a small number of memory hits constrained to the authorized organization and project; optionally include explicitly shareable organization-level memories.
-4. Combine keyword/exact matches with semantic similarity, rerank for recency, source confidence, scope specificity, and currentness.
-5. Cap memory tokens and include references; explicitly label memory as historical/untrusted context.
-6. If Postgres/embedding backend is down, continue with live sources + checkpoints and record degraded recall; never block completion callbacks solely for a missing vector result.
+The existing PostgreSQL 17 / pgvector environment and `agent_memory` database are infrastructure context, **not verified live connectivity in this PR**. Before DDL, inspect actual server distribution/version, existing schemas, DB grants, extension install, backups, authorized IP allowlists, TLS policy and active workloads. Preserve other production databases and services.
 
-Store embedding model name/version and actual vector dimension with its index; a change of model may require re-embedding and parallel indexes. pgvector supports exact search and optional HNSW; start exact before measuring recall and performance. No universal production embedding dimension should be assumed.
+**Recommended logical tables:**
 
-## Security and isolation
+| Table | Exact identity and essential fields | Safety rule |
+| --- | --- | --- |
+| `checkpoint` | `(tenant_id, repository_id, issue_id)` unique; `schema_version`, `revision`, `payload_jsonb`, `updated_at`, `expires_at` | Transactional CAS: `UPDATE ... WHERE revision = expected`; no last-write-wins |
+| `checkpoint_event` | `event_id` unique per tenant/source; checkpoint key, sequence, event type, redacted payload, timestamp | Append idempotently; event recorded in same transaction as revision |
+| `session_lineage` | provider, runner, machine, native opaque session ID, parent reference, verified evidence, cursor | Never claim a cross-provider native session is portable |
+| `memory_proposal` | scope, canonical session hash, evidence refs, proposed content, review state, idempotency key | No publication without approval/evidence |
+| `memory_record` | memory ID, scope, content hash, source refs, verification SHA, lifecycle/supersession, embedding model/dimension | Only approved recall-visible knowledge |
+| `memory_audit` | actor, action, reference IDs, scope, timestamp, decision | Store metadata, not credentials or full transcripts |
 
-- Dedicated least-privileged DB role, private network access, encrypted remote connections, backups and versioned migrations.
-- Row-level tenant/project scoping enforced at the coordinator/storage boundary, not inferred from agent-generated prompts.
-- Memory writes include explicit provenance, idempotency keys, sensitive-data filters, and source retention rules.
-- Secrets, OAuth refresh/access tokens, cookies, raw authentication payloads and private full transcripts are prohibited in recall files/embeddings.
-- Prompt-injection-resistant rendering: memory is quoted data, never system instructions or tool authority.
-- Audit create/update/supersede/delete and retrieve operations without logging secret content.
-- Provide project/user scope deletion and a mechanism to invalidate stale records.
+Suggested DDL and indexes are to be authored **in a separate migration PR**, validated against a disposable database and then approved. A schema proposal here does not authorize schema creation. Include foreign keys, bounded JSON sizes, deterministic record IDs, expiry indexes and unique event IDs. Protect all tenant-scoped rows via least-privilege roles and defense-in-depth RLS; ensure every connection sets a trusted tenant identity from the bridge auth layer, not caller JSON.
 
-## Staged implementation
+**Migration sequence:**
+1. Add backend-neutral storage adapter and schema tests while local files remain authoritative.
+2. Add a PostgreSQL adapter behind a disabled feature flag. Run transactional tests for CAS, scope, duplicates, serializable ordering, and restarts.
+3. Inventory and hash local checkpoint files. Export normalized, redacted records into a private staging table. Quarantine malformed/ambiguous records and never import one across tenants by guessing.
+4. Shadow-read both backends, compare canonical records and revisions, and measure discrepancies without changing dispatch behavior.
+5. Quiesce writers or install a tested single-writer cutover barrier. Copy remaining deltas, verify counts/checksums and replay idempotency, then atomically switch the read/write authority.
+6. Retain a bounded read-only rollback snapshot; keep old writer **disabled** to prevent split-brain. Roll back through an explicit reverse migration and reconcile journal offsets, not a toggle that reinstates stale state.
 
-1. **No database dependency:** map current job/session store and add checkpoint schema, idempotent writes, resume builder and restart tests. Keep existing routing intact.
-2. **Provision datastore:** execute REV-176 safely, smoke test vector extension, permissions and backup/restore.
-3. **Evaluate memU:** pin a release and demonstrate commit/retrieve across two agents, authorized scope filtering, readable recall, and correct handling of embedding outages.
-4. **Integrate:** add opt-in coordinator service, proposal/commit process and scoped retrieval injection.
-5. **Shadow mode:** retrieve and log only metadata/relevance diagnostics without changing agent prompts; compare with human-reviewed expected recalls.
-6. **Canary:** enable for one test agent/project, then expand after restart, multi-agent and security tests pass.
+**Rollback:** If DB connectivity fails after cutover, do not silently turn local files back into an independent writer. The bridge may preserve operational jobs and reject/defer checkpoint writes with a visible degraded state until a controlled recovery or replay. Long-term recall failures alone must never block safe operational work.
 
-## Minimum acceptance test matrix
+## 6. memU lifecycle and trusted boundaries
 
-- Two jobs with the same webhook/event ID produce one checkpoint transition.
-- Kill and restart bridge mid-task; task resumes with same conversation identity where provider supports it, otherwise records explicit lineage.
-- Quota/exhaustion checkpoint survives until authorized retry; does not spam agents.
-- Review-ready state persists independently of task completion and produces a deduped actionable notification through the event-delivery path.
-- Two agents sharing one project can retrieve a verified project decision; a different project/tenant cannot.
-- Obsolete decision is superseded and no longer ranked as current.
-- Missing embeddings, PostgreSQL outage, and malformed recall content do not crash dispatch or completion.
-- No secrets appear in stored checkpoints, recall files, embeddings, or telemetry.
-- Existing `npm run bridge:test` and `npm run test:reliability` remain green.
+The current adapter exposes `retrieveMemuMemory` and `prepareMemuPromotion`. Do **not** claim a public stable memU API until the exact self-hosted version, CLI flags, PostgreSQL backend behavior and Ollama embedding configuration have been pinned and tested on Ubuntu.
 
-## Sources and implementation notes
+**Retrieval:** Query exact allowed scope, apply limit and timeout, return typed candidates with `memoryId`, tenant/project, source, age, verified SHA, supersession flag and content hash. Reject cross-scope hits. A future agent-facing interface must expose results as **quoted, read-only evidence** with an explicit trust boundary, not concatenate raw hit prose into `directTask`. Test malicious retrieved text that instructs tool execution, file edits or secret disclosure. The current production-default behavior continues withholding hits from prompts.
 
-- [memU repository](https://github.com/NevaMind-AI/memU), [memU storage](https://memu.pro/ai-agent-memory-storage), [memU architecture notes](https://github.com/NevaMind-AI/memU/blob/main/AGENTS.md).
-- [pgvector documentation](https://github.com/pgvector/pgvector): verify server-major compatibility; `CREATE EXTENSION vector` per target database; vector index method depends on measured workload.
-- Code locations should be confirmed against the current checkout before implementation; this proposal intentionally does not assert that new API files already exist.
+**Promotion:** Capture an authentic sanitized canonical provider session and immutable manifest. Obtain independently verified PR/head and CI evidence (and review where applicable). Validate same SHA and approved scope, then stage immutable bytes; prepare memU jobs; execute every returned evolve job in a trusted serialized executor; inspect results; commit and audit only on success. An agent exit or synthetic evidence JSON must not authorize promotion. Failed prepare/evolve/commit is retriable by idempotency key without publishing duplicates.
+
+**Knowledge policy:** distinguish `proposed`, `verified`, `superseded`, `revoked` and `expired`; link changes to source IDs and commits. Deny embedding of secrets, auth headers, private raw transcripts, tokens, or personal data that has no explicit retention basis. Version the embedding model, actual dimension and index; model changes require a measured re-embedding/backfill strategy. Start with exact/lexical lookup and baseline pgvector recall before tuning approximate indexes.
+
+## 7. Provider-neutral session and recovery boundary
+
+Define `SessionRef` as `{provider, runnerId, machineId, workspaceId, nativeSessionId, version}` and never use a conversation ID alone as authorization. The provider adapter should expose *capabilities* before invoking optional native features:
+
+```ts
+interface ProviderSessionAdapter {
+  capabilities(): Promise<{
+    readSession: boolean; resumeNative: boolean;
+    readTranscript: boolean; observeCompaction: boolean;
+  }>;
+  inspectSession(ref: SessionRef): Promise<{
+    exists: boolean; state: "idle" | "busy" | "unknown";
+    lastVerifiedCursor?: string;
+  }>;
+  captureReadOnly(ref: SessionRef, cursor?: string): Promise<{
+    nextCursor: string; contentHash: string; sourceIds: string[];
+  }>;
+}
+```
+
+Adapters are **planned interfaces**. They must not write provider-owned SQLite, `.pb`, native user profiles, cookies, credentials or private session databases. A provider event is evidence to verify, not permission to execute. Reconcile discontinuous streams against the authoritative job ledger and live provider API; record source/machine identity, cursor and lineage.
+
+**Current adapters:** AGY emits narrow tool milestones through `run_agent.py`. Trae, Gemini and OpenCode do not yet have equivalent normalized milestone/session adapters. [PR #46](https://github.com/REVREBEL/linear-agents/pull/46) owns the Ubuntu OpenCode capability probe, Antigravity read-only transcript discovery, compaction experiments, and provider-specific proposals. Avoid copying its unverified assumptions into this authoritative contract.
+
+**Resume packet:** only current verified issue objective/constraints, current branch and commit/head evidence, recent checkpoint progress, blockers, next authorized action, expiration, and source pointers. Truncate to a measured provider-specific token budget. Native same-session resume must be verified by provider event/API; otherwise create explicit child lineage and new-session bounded handoff. An existing session file is not proof that the runtime resumed it.
+
+## 8. Security, observability and operations
+
+- **Authorization:** resolve authenticated workspace/tenant + repository + issue before checkpoint lookup or memU retrieval. Use distinct DB roles and revocable service credentials.
+- **Transport:** TLS for remote DB connections; private firewall/IP allowlist. No public anonymous memU endpoints or provider session endpoints.
+- **Secret policy:** redact typed sensitive fields and free text before persistence, logging, indexing and promotion. Test actual on-disk bytes, including deeply nested structures. Prevent credential-like paths and uncontrolled artifacts.
+- **Injection policy:** treat external memory and provider transcripts as untrusted data, with no direct execution authority.
+- **Observability:** checkpoint conflict/retry rate, stale lock incidents, recovery packet size, missed-cursor reconciliation, DB lag, recall latency/miss/degraded rate, promotion queue age, supersession and scope-denial counts. Never log raw retrieved content or secrets.
+- **Retention:** document per-tenant retention periods and deletion propagation (checkpoint files, database rows, memory indexes, snapshots, backups). A logical delete must suppress retrieval immediately while backups age out by policy.
+- **Failures:** a database outage must not imply job success or allow duplicate side effects. A memU/embedding outage may degrade recall while operational jobs continue. A mismatch of Git head/CI/review evidence blocks promotion.
+- **Deployment:** separate host-specific Ubuntu, Mac and provider canaries. No live DB or host changes are performed by this documentation PR.
+
+## 9. Delivery milestones and acceptance gates
+
+| Phase | Deliverable | Acceptance gate |
+| --- | --- | --- |
+| **A: Foundation (merged #31)** | Local versioned checkpoints, ordered AGY milestones, guarded memU adapters | Existing regression suite green; live host rollout remains separate |
+| **B: Store contract (ABR-3)** | Typed exact-key coordinator and PostgreSQL schema/migrations | CAS+duplicate+tenant isolation tests; backup/restore dry run |
+| **C: Cutover (ABR-5 + coordinator)** | Shadow reads, verified export, one authoritative writer, rollback | Record/hash parity, no lost revisions, no cross-host split-brain |
+| **D: Provider bridge (#46 follow-on)** | Read-only AGY/OpenCode adapters, explicit lineage, bounded recovery packet | Verified provider IDs, process restart, small context, missing session |
+| **E: Long-term memU** | Pinned compatible backend, scoped recall, verified evolve+commit | Cross-scope denial, poisoning resistance, real captured session, idempotent promotion |
+| **F: Canary** | One approved project/agent in each host environment | Zero duplicate side effects, no secret leakage, measured resume correctness, rollback drill |
+
+**Required test matrix:** same-event replay; two concurrent writers; crash during write; process restart; stale/expired action; exact latest-six recovery milestones; cross-tenant read denial; missing native session/new lineage; interrupted provider stream and cursor replay; unsupported compaction event; corrupted local file; failed DB; unavailable memU; oversized/malicious retrieval; invalid CI/review head; stalled evolve; supersession and deletion; backup restore and full cutover rollback.
+
+The output of **this PR** is an agreed, implementation-ready specification with honest status boundaries, not production rollout. New runtime code, schema migrations, service configuration and host-specific testing are separate reviewed changes.
+
+## Related implementation and research
+
+- [Merged checkpoint and memU adapter PR #31](https://github.com/REVREBEL/linear-agents/pull/31)
+- [Existing adapter behavior](AGENT_MEMORY_BACKENDS.md)
+- [Provider-neutral research PR #46](https://github.com/REVREBEL/linear-agents/pull/46)
+- [pgvector](https://github.com/pgvector/pgvector)
+- [memU upstream](https://github.com/NevaMind-AI/memU)
+
+*When adapting against a new memU/OpenCode release, verify its current documentation and installed runtime rather than assuming this architecture specifies released APIs.*
