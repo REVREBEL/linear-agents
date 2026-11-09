@@ -3,7 +3,7 @@ import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
 import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";
 import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
-import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint } from "./remote-trae-activity.mjs";
+import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "./remote-trae-activity.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
 import { createGithubTaskMemory } from "./github-task-memory.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
@@ -405,6 +405,38 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 202, { ok: true, accepted: true });
     }
 
+    if (request.method === "POST" && url.pathname === "/trae-complete") {
+      let activity;
+      try { activity = JSON.parse(await readBody(request)); }
+      catch { return sendJson(response, 400, { ok: false, error: "Invalid JSON payload" }); }
+      if (typeof activity?.jobKey !== "string" || !activity.jobKey.startsWith("trae:")) {
+        return sendJson(response, 401, { ok: false, error: "Invalid completion context" });
+      }
+      const record = await jobStore.get(activity.jobKey).catch(() => null);
+      if (record?.state === "completed" && record.remoteActivityTokenHash &&
+          validateRemoteTraeActivity(activity, { ...record, state: "awaiting_external" })) {
+        return sendJson(response, 202, { ok: true, duplicate: true });
+      }
+      if (!validateRemoteTraeActivity(activity, record)) {
+        return sendJson(response, 401, { ok: false, error: "Invalid completion context" });
+      }
+      if (!["completed", "failed"].includes(activity.status) ||
+          typeof activity.body !== "string" || !activity.body.trim() ||
+          activity.body.length > 4000) {
+        return sendJson(response, 422, { ok: false, error: "Invalid terminal activity" });
+      }
+      const posted = await postTraeActivity(
+        { agentSessionId: record.agentSessionId, completionUrl: record.remoteCompletionUrl },
+        activity.body.trim(), activity.status === "completed" ? "response" : "error"
+      );
+      if (!posted) return sendJson(response, 502, { ok: false, error: "Linear completion not confirmed" });
+      await jobStore.transition(record.key, activity.status, {
+        remoteCompletionConfirmedAt: new Date().toISOString(),
+        remoteCompletionStatus: activity.status,
+      });
+      return sendJson(response, 202, { ok: true, status: activity.status });
+    }
+
     if (request.method === "POST" && url.pathname === "/issue-completed") {
       if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized" });
@@ -515,7 +547,10 @@ const server = http.createServer(async (request, response) => {
       }
       const sessionId = extractAgentSessionId(job);
       const remoteActivityToken = crypto.randomBytes(32).toString("hex");
-      const remoteCompletionUrl = job.completionUrl || job.payload?.data?.completionUrl;
+      const completionHost = process.env.TRAE_WORKER_HOST || `linear-${process.env.TRAE_PREFIX || "trae"}.${process.env.DOMAIN || "revrebel.io"}`;
+      const rawCompletionUrl = job.completionUrl || job.payload?.data?.completionUrl;
+      const remoteCompletionUrl = rawCompletionUrl
+        ? validateTraeCompletionUrl(rawCompletionUrl, completionHost) : null;
       if (!sessionId || !remoteCompletionUrl) {
         await jobStore.transition(jobKey, "failed", { error: "Missing Mac Trae session or completion URL" });
         return sendJson(response, 422, { ok: false, accepted: false, error: "Missing Mac Trae callback context" });
@@ -530,7 +565,9 @@ const server = http.createServer(async (request, response) => {
         projectsRoot: OSX_PROJECTS_ROOT,
         projectScope: route.projectScope, launchFromScope: route.launchFromScope,
         prompt: promptContext, agentSessionId: sessionId,
-        activityEndpoint, activityToken: remoteActivityToken, jobKey,
+        activityEndpoint, completionEndpoint: validateActivityEndpoint(
+          activityEndpoint.replace("/trae-activity", "/trae-complete"), activityHost, "/trae-complete"
+        ), activityToken: remoteActivityToken, jobKey,
         accessToken: credential.accessToken,
         traeBin: process.env.MAC_TRAE_BIN || "trae",
         githubAppName: process.env.TRAE_GITHUB_APP_NAME || "revrebel-trae",
