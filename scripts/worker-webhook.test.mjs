@@ -395,3 +395,36 @@ test("replayed signed body cannot bypass dedupe by changing unsigned delivery he
     assert.equal(forwarded, 1);
   } finally { globalThis.fetch = oldFetch; }
 });
+
+test("trae: Agent Location label is forwarded to the Ubuntu bridge", { concurrency: false }, async () => {
+  const workerModule = await loadWorker("trae");
+  const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
+  const request = await signedEvent("mac-location-trae");
+  const original = globalThis.fetch;
+  let forwarded;
+  try {
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes("api.linear.app/graphql")) {
+        const input = JSON.parse(options.body);
+        if (String(input.query).includes("BridgeIssueRouting")) {
+          return Response.json({ data: {
+            issue: { project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } },
+              labels: { nodes: [{ name: "macos", parent: { name: "agent-location" } }] } }
+          } });
+        }
+        return Response.json({ data: { agentActivityCreate: { success: true } } });
+      }
+      if (String(url).includes("bridge.test")) {
+        forwarded = JSON.parse(options.body);
+        return Response.json({ ok: true, accepted: true }, { status: 202 });
+      }
+      throw Error("Unexpected test fetch: " + url);
+    };
+    const response = await workerModule.default.fetch(request(), config, {});
+    assert.equal(response.status, 200);
+    assert.equal(forwarded.routing.agentLocation, "macos");
+    assert.equal(forwarded.routing.projectId, "project-1");
+  } finally { globalThis.fetch = original; }
+});
