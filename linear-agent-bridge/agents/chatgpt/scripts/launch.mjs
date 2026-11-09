@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 export function buildOpenCodeLaunch({
   binary = process.env.OPENCODE_BIN || "opencode",
   model = process.env.CHATGPT_OPENCODE_MODEL || "",
+  runAsUser = process.env.CHATGPT_OPENCODE_USER || "",
   workspace, prompt, sessionId = null,
   env = process.env,
 }) {
@@ -25,7 +26,11 @@ export function buildOpenCodeLaunch({
   // secrets or unrelated personal/Linear credentials into model tools.
   for (const key of ["BRIDGE_SHARED_SECRET", "LINEAR_API_KEY", "LINEAR_ACCESS_TOKEN",
     "CHATGPT_LINEAR_API_KEY", "CLOUDFLARE_API_TOKEN"]) delete childEnv[key];
-  return { command: binary, args, options: {
+  if (runAsUser && !/^[a-z_][a-z0-9_-]{0,31}$/.test(runAsUser)) throw Error("Invalid CHATGPT_OPENCODE_USER");
+  if (runAsUser && !binary.startsWith("/")) throw Error("OPENCODE_BIN must be absolute when using CHATGPT_OPENCODE_USER");
+  return { command: runAsUser ? "/usr/bin/sudo" : binary,
+    args: runAsUser ? ["-n", "-H", "-u", runAsUser, "--", binary, ...args] : args,
+    options: {
     cwd: workspace, env: childEnv, stdio: ["ignore", "pipe", "pipe"],
   } };
 }
