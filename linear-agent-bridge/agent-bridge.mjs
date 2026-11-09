@@ -142,6 +142,7 @@ const AGENT_JOB_DIRS = {
   antigravity: path.join(JOBS_DIR, "antigravity"),
   mock: path.join(JOBS_DIR, "mock"),
   chatgpt: path.join(JOBS_DIR, "chatgpt"),
+  "chatgpt-cli": path.join(JOBS_DIR, "chatgpt-cli"),
   trae: path.join(JOBS_DIR, "trae"),
   gemini: path.join(JOBS_DIR, "gemini"),
   unknown: path.join(JOBS_DIR, "unknown"),
@@ -158,6 +159,7 @@ const ANTIGRAVITY_HOST =
 const MOCK_HOST = process.env.MOCK_HOST || "mock-agent.revrebel.io";
 const CHATGPT_HOST =
   process.env.CHATGPT_HOST || "chatgpt-agent.revrebel.io";
+const CHATGPT_CLI_HOST = process.env.CHATGPT_CLI_HOST || "chatgpt-cli-agent.revrebel.io";
 const TRAE_HOST =
   process.env.TRAE_HOST || "trae-agent.revrebel.io";
 const GEMINI_HOST =
@@ -511,7 +513,7 @@ const server = http.createServer(async (request, response) => {
       sharedSecret: SHARED_SECRET,
       persist: route.executionHost !== "macos",
     }) : null;
-    if (agent === "chatgpt" && process.env.CHATGPT_HANDOFF_MODE === "opencode") {
+    if (agent === "chatgpt-cli") {
       try { await checkOpenCodeReady(); }
       catch (error) {
         return sendJson(response, 503, {
@@ -730,11 +732,14 @@ const server = http.createServer(async (request, response) => {
         console.error("AGY queued execution failed:", error);
         await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(console.error);
       });
+    } else if (agent === "chatgpt-cli") {
+      void enqueueChatgptHandoff(() => startChatgptOpenCode(routedJob, workspace, jobKey, credential))
+        .catch(async error => {
+          console.error("ChatGPT CLI execution failed:", error.message);
+          await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(console.error);
+        });
     } else if (agent === "chatgpt") {
-      if (process.env.CHATGPT_HANDOFF_MODE === "opencode") {
-        void enqueueChatgptHandoff(() => startChatgptOpenCode(routedJob, workspace, jobKey, credential))
-          .catch(error => console.error("OpenCode ChatGPT execution failed:", error.message));
-      } else if (!route.chatgptProjectUrl) {
+      if (!route.chatgptProjectUrl) {
         await jobStore.transition(jobKey, "failed", { error: "No chatgpt.projectUrl in Linear project mapping" });
         console.error("ChatGPT handoff stopped: project mapping has no chatgpt.projectUrl");
       } else if (process.platform !== "darwin") {
@@ -821,6 +826,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Local Linear agent router listening on http://${HOST}:${PORT}`);
   console.log(`Antigravity host: ${ANTIGRAVITY_HOST}`);
   console.log(`ChatGPT host: ${CHATGPT_HOST}`);
+  console.log(`ChatGPT CLI host: ${CHATGPT_CLI_HOST}`);
   console.log(`Mock host: ${MOCK_HOST}`);
   console.log(`Trae host: ${TRAE_HOST}`);
   console.log(`Gemini host: ${GEMINI_HOST}`);
@@ -1154,8 +1160,8 @@ async function startChatgptOpenCode(job, workspace, jobKey, credential) {
     return;
   }
   const url = new URL(callback);
-  const expected = process.env.CHATGPT_WORKER_HOST ||
-    `linear-${process.env.CHATGPT_PREFIX || "chatgpt"}.${process.env.DOMAIN || "revrebel.io"}`;
+  const expected = process.env.CHATGPT_CLI_WORKER_HOST ||
+    `linear-${process.env.CHATGPT_CLI_PREFIX || "chatgpt-cli"}.${process.env.DOMAIN || "revrebel.io"}`;
   if (url.protocol !== "https:" || url.hostname !== expected || url.pathname !== "/complete" ||
       url.port || url.search || url.hash || url.username || url.password) {
     await jobStore.transition(jobKey, "failed", { error: "Invalid ChatGPT Worker completion destination" });
@@ -1691,6 +1697,7 @@ function agentForHost(host) {
   if (matchesHost(host, MOCK_HOST)) return "mock";
   if (matchesHost(host, ANTIGRAVITY_HOST)) return "antigravity";
   if (matchesHost(host, CHATGPT_HOST)) return "chatgpt";
+  if (matchesHost(host, CHATGPT_CLI_HOST)) return "chatgpt-cli";
   if (matchesHost(host, TRAE_HOST)) return "trae";
   if (matchesHost(host, GEMINI_HOST)) return "gemini";
   return "unknown";
