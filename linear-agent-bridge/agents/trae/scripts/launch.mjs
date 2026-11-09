@@ -83,6 +83,14 @@ export async function main() {
     return;
   }
   const { root, workspace } = await validateRemoteJob(message);
+  if (typeof message.activityToken !== "string" || !/^[0-9a-f]{64}$/.test(message.activityToken) ||
+      typeof message.jobKey !== "string" || !message.jobKey.startsWith("trae:") ||
+      typeof message.activityEndpoint !== "string") throw Error("Invalid remote activity context");
+  const endpoint = new URL(message.activityEndpoint);
+  if (endpoint.protocol !== "https:" || endpoint.pathname !== "/trae-activity" ||
+      endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+    throw Error("Invalid remote activity endpoint");
+  }
   await excludeAgentRuntime(root);
   const taskDir = path.join(root, ".linear-agent", "projects", message.projectId, "inbox");
   await fs.mkdir(taskDir, { recursive: true, mode: 0o700 });
@@ -93,6 +101,17 @@ export async function main() {
   } };
   // Do not copy the access token into the long-term task file.
   await fs.writeFile(taskFile, JSON.stringify(task, null, 2), { flag: "wx", mode: 0o600 });
+  // The Mac hook runs outside Ubuntu's loopback network. Store a narrowly
+  // scoped capability beside the checkout, never the bridge-wide secret.
+  const activityContextFile = path.join(root, ".linear-agent", "trae-active-session.json");
+  await fs.writeFile(activityContextFile, JSON.stringify({
+    token: message.activityToken,
+    jobKey: message.jobKey,
+    agentSessionId: message.agentSessionId,
+    workspace,
+    activityEndpoint: endpoint.toString(),
+    updatedAt: new Date().toISOString(),
+  }, null, 2), { mode: 0o600 });
   const binary = message.traeBin || "trae";
   if (!/^(?:[a-zA-Z0-9_.-]+|\/[a-zA-Z0-9_./-]+)$/.test(binary) || binary.includes("..")) {
     throw Error("Invalid Trae executable");
