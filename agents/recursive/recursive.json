@@ -1,0 +1,16 @@
+{
+  "id": "recursive",
+  "displayName": "recursive",
+  "kind": "debugging and repairs",
+  "provider": "openrouter",
+  "model": "recursive/flint-v1.0:free",
+  "runtime": "openrouter-agent-sdk",
+  "permissions": {
+    "workspace": "write",
+    "githubWrite": true,
+    "linearWrite": true,
+    "deployment": true
+  },
+  "linearAgentApp": null,
+  "status": "isolated-evaluation"
+}
