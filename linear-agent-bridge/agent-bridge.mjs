@@ -1,4 +1,3 @@
-import { runGemmaIsolated } from "../agents/coding/gemma/isolated-launch.mjs";
 import { syncLinearCredential } from "./linear-credentials.mjs";
 import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
@@ -1396,6 +1395,7 @@ async function startGemma(job, workspace, jobKey, credential) {
   }
   await jobStore.transition(jobKey, "running", { runtime: "openrouter-agent-sdk", model: "google/gemma-4-31b-it:free", workspace: canonicalWorkspace });
   try {
+    const { runGemmaIsolated } = await import("../agents/coding/gemma/isolated-launch.mjs");
     const result = await runGemmaIsolated({
       workspace: canonicalWorkspace, prompt,
       onStatus: async message => sendOpenCodeActivity(callback, agentSessionId, "thought", message),
