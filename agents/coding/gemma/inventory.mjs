@@ -29,6 +29,8 @@ export async function makeReadOnlyInventoryTools(workspace, sdk, fsApi = fs) {
     if (stat.isSymbolicLink()) throw Error("Symlinks are not permitted");
     const real = await fsApi.realpath(candidate);
     if (!within(root, real)) throw Error("Outside workspace");
+    // Resolve the canonical path again to block hidden directories reached through a symlink.
+    permittedRelative(path.relative(root, real));
     return { real, stat };
   }
   const listDirectory = tool({
