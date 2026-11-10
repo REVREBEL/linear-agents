@@ -5,6 +5,8 @@ on:
     paths:
       - 'linear-*-worker/**'
       - 'linear-agent-bridge/**'
+      - 'agents/**'
+      - 'integrations/**'
       - 'shared/**'
       - 'scripts/**'
       - 'package.json'
