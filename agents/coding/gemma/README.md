@@ -30,3 +30,20 @@ The command above is an illustration of environment injection, not a recommendat
 5. Only then dispatch ABR-28 **P0** to Gemma. No unattended file writes, merges, or deployments in this evaluation stage.
 
 Source: https://openrouter.ai/docs/sdks/agent-migration
+
+## Coding execution under /home/rebel
+
+Gemma now has a **development coding** profile in `dev-runner.mjs`, separate from the original read-only inventory evaluator. Tools support source read/write/move/delete, approved `npm run` tests, git status/diff/commit on a feature branch. Remote push/merge/deploy are **not** agent tools yet.
+
+The authenticated bridge must **not** execute model tools directly. The bridge invokes `isolated-launch.mjs`, which uses `sudo -n -H -u rebel -- <GEMMA_NODE_BIN> <worker-process.mjs>` with a scrubbed environment and JSON task on stdin. A narrowly scoped, root-owned sudoers rule must authorize only the resolved Node executable + Gemma worker process; do not permit a wildcard Node command or arbitrary scripts. The service account must not otherwise have unrestricted sudo access. The target Node executable and script paths must be verified on Ubuntu.
+
+The Gemma OS account reads its own OpenRouter key from `/home/rebel/.config/linearbridge/openrouter.key` (owned by `rebel`, mode `0600`) outside the Git checkout. The `bridge` service must not inherit or receive the key. Do not place the key in a shell argument or Linear issue.
+
+Keep `GEMMA_ENABLED=false` until:
+1. Dedicated Gemma Linear OAuth app/Worker in PR #69 is deployed and installed, and the `gemma-agent.revrebel.io` Tunnel routes to the current authenticated bridge.
+2. The target checkout is a disposable Git repo **directly under** `/home/rebel/` on a non-protected branch, with its work and local state backed up or expendable.
+3. The unprivileged user can run the pinned OpenRouter SDK and project build tools. Verify the OS user cannot access production bridge environment, job directory, 1Password credentials, service controls or unrelated repos.
+4. A signed test webhook reaches Gemma, and the worker confirms the Linear completion.
+5. The initial assignment is ABR-28 P0 on a task branch; review its changes before further phases.
+
+**Recovery:** after verifying the intended remote, `git fetch origin && git reset --hard origin/main && git clean -fd` restores a disposable checkout's tracked and non-ignored untracked source. Never run `git clean -fdx` on an environment containing secrets or live ignored data.
