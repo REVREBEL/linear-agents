@@ -38,7 +38,7 @@
     "bridge:macos-setup": "bash scripts/macos/install-launchagent.sh",
     "log:messages": "npx wrangler tail linear-mock-agent --format pretty",
     "typecheck": "node scripts/workspace-typecheck.mjs",
-    "test:reliability": "node --test scripts/platform-scripts.test.mjs scripts/oauth-errors.test.mjs scripts/check-trae-callbacks.test.mjs scripts/worker-webhook.test.mjs scripts/macos/chatgpt-shortcuts/review-handoff.test.mjs agents/coding/gemma/inventory.test.mjs linear-agent-bridge/*.test.mjs",
+    "test:reliability": "node --test scripts/platform-scripts.test.mjs scripts/oauth-errors.test.mjs scripts/check-trae-callbacks.test.mjs scripts/worker-webhook.test.mjs scripts/macos/chatgpt-shortcuts/review-handoff.test.mjs agents/coding/gemma/inventory.test.mjs agents/coding/gemma/dev-tools.test.mjs linear-agent-bridge/*.test.mjs",
     "bridge:setup": "bash scripts/platform-setup.sh",
     "bridge:linux-setup": "bash scripts/linux/install-systemd.sh",
     "bridge:linux-publisher-setup": "bash scripts/linux/install-github-event-publisher.sh"
