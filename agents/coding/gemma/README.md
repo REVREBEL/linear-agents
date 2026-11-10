@@ -76,7 +76,11 @@ GEMMA_LITELLM_MODEL=gemma-coding
 
 The unprivileged `rebel` execution process reads its *LiteLLM proxy* key from `/home/rebel/.config/linearbridge/litellm.key` (owner `rebel`, mode 0600). The upstream OpenRouter key remains isolated in the LiteLLM proxy's service configuration, rather than being shared with Gemma. No API credentials cross the bridge's JSON job pipe.
 
-Smoke-check the loopback gateway's model catalog via an authenticated `GET /v1/models` request, then run a disposable Gemma issue and confirm a tool-call round trip. LiteLLM must be configured to forward function/tool calls for the chosen model. The OpenRouter SDK remains an option through `GEMMA_PROVIDER=openrouter` and is not removed.
+Smoke-check the loopback gateway's model catalog via an authenticated `GET /v1/models` request, then run a disposable Gemma issue and confirm a tool-call round trip. LiteLLM must be configured to forward function/tool calls for the chosen model. The Node bridge now uses the official **OpenAI Node SDK** (`openai@7.52.0`, pinned in the Gemma package) to call the LiteLLM OpenAI-compatible proxy. Only the selected model alias and a restricted LiteLLM proxy key are passed to this client. The OpenRouter SDK remains an option through `GEMMA_PROVIDER=openrouter` and is not removed.
+
+**Authentication note:** `apiKey: "AnythingYouWant"` in generic examples works only when the proxy does not enforce authentication. Our bridge requires a real configured proxy key. For per-agent virtual keys with spend/model permissions, LiteLLM's virtual-key system needs its supported database configuration; do not assume installing LiteLLM creates virtual keys. <https://docs.litellm.ai/docs/proxy/virtual_keys>
+
+**Node SDK topology:** `new OpenAI({ baseURL: "http://127.0.0.1:4000/v1", apiKey: proxyKey })` is invoked from the restricted `rebel` runner only. The proxy is started by the `bridge` Python environment. `/v1/chat/completions` carries tool calls and results over the standard compatible protocol. <https://docs.litellm.ai/docs/proxy/docker_quick_start>
 
 **Important:** The existing `/home/bridge/agent-bridge` checkout is owned by `bridge` and contains an ignored `.env` and `.venv`. Do not reset or clean this live checkout. Gemma's source write permissions apply only to its disposable development repository under `/home/rebel/`.
 
