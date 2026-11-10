@@ -1,5 +1,6 @@
 import { runOpenRouterAgent } from "../../../integrations/openrouter/agent-runtime.mjs";
 import { runLiteLLMAgent } from "../../../integrations/litellm/agent-runtime.mjs";
+import OpenAI from "openai";
 import { loadOpenRouterAgentSdk } from "./sdk.mjs";
 import { createDevOperations, makeGemmaDevTools } from "./dev-tools.mjs";
 import { makeLiteLLMDevelopmentTools } from "./litellm-tools.mjs";
@@ -19,6 +20,7 @@ export async function runGemmaDevelopment({
   if (provider === "litellm") {
     return runLiteLLMAgent({
       baseUrl: liteLLMBaseUrl, apiKey, model,
+      clientFactory: options => new OpenAI(options),
       input: prompt, instructions,
       tools: makeLiteLLMDevelopmentTools(ops),
       maxSteps: 12, onStatus,
