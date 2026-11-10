@@ -14,23 +14,23 @@ test("LiteLLM executes the approved move tool and reports completion", async () 
     remove: async () => "", runTest: async () => "passed", gitStatus: async () => "",
     gitDiff: async () => "", commit: async () => "",
   });
-  const fetchImpl = async (url, opts) => {
-    requests.push({ url: String(url), auth: opts.headers.authorization, body: JSON.parse(opts.body) });
+  const clientFactory = options => ({ chat: { completions: { create: async body => {
+    requests.push({ options, body });
     return requests.length === 1
       ? response({ role: "assistant", content: null, tool_calls: [{
           id: "c1", type: "function", function: { name: "move_path",
             arguments: JSON.stringify({ source: "old", destination: "agents/coding/gemma/old" }) },
         }] }, "tool_calls")
       : response({ role: "assistant", content: "Moved files." });
-  };
+  } } } });
   const result = await runLiteLLMAgent({
     apiKey: "test-only", model: "gemma", input: "Reorganize folders", instructions: "Inspect repository",
-    tools, fetchImpl, onStatus: async x => progress.push(x),
+    tools, clientFactory, onStatus: async x => progress.push(x),
   });
   assert.equal(result.text, "Moved files.");
   assert.deepEqual(moves, [["old", "agents/coding/gemma/old"]]);
-  assert.equal(requests[0].url, "http://127.0.0.1:4000/v1/chat/completions");
-  assert.equal(requests[0].auth, "Bearer test-only");
+  assert.equal(requests[0].options.baseURL, "http://127.0.0.1:4000/v1");
+  assert.equal(requests[0].options.apiKey, "test-only");
   assert.equal(requests[1].body.messages.at(-1).tool_call_id, "c1");
   assert.ok(progress.includes("LiteLLM executed move_path"));
 });
@@ -43,21 +43,21 @@ test("LiteLLM rejects remote proxy URLs and unsafe tool names", async () => {
   assert.doesNotThrow(() => validateLiteLLMConfig({ baseUrl: "http://localhost:4000/v1", apiKey: "test", model: "gemma" }));
   await assert.rejects(runLiteLLMAgent({
     apiKey: "test", model: "gemma", input: "Deploy", instructions: "Test",
-    fetchImpl: async () => response({ role: "assistant", tool_calls: [{
+    clientFactory: () => ({ chat: { completions: { create: async () => response({ role: "assistant", tool_calls: [{
       type: "function", id: "t1", function: { name: "deploy", arguments: "{}" },
-    }] }, "tool_calls"),
+    }] }, "tool_calls") } } }),
   }), /unavailable tool/);
 });
 test("LiteLLM handles rate limits, malformed output, and step exhaustion", async () => {
   await assert.rejects(runLiteLLMAgent({
     apiKey: "test", model: "gemma", input: "test", instructions: "test",
-    fetchImpl: async () => ({ ok: false, status: 429 }),
+    clientFactory: () => ({ chat: { completions: { create: async () => { const error = new Error("LiteLLM request failed (HTTP 429)"); error.status = 429; throw error; } } } }),
   }), /HTTP 429/);
   await assert.rejects(runLiteLLMAgent({
     apiKey: "test", model: "gemma", input: "test", instructions: "test",
-    maxSteps: 1, fetchImpl: async () => response({ role: "assistant", content: null, tool_calls: [{
+    maxSteps: 1, clientFactory: () => ({ chat: { completions: { create: async () => response({ role: "assistant", content: null, tool_calls: [{
       type: "function", id: "t2", function: { name: "git_status", arguments: "{}" },
-    }] }, "tool_calls"),
+    }] }, "tool_calls") } } }),
     tools: [{ name: "git_status", description: "Git status", parameters: { type: "object" }, execute: async () => "ok" }],
   }), /step budget/);
 });
