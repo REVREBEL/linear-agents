@@ -5,6 +5,8 @@ on:
     paths:
       - 'linear-*-worker/**'
       - 'linear-agent-bridge/**'
+      - 'agents/**'
+      - 'integrations/**'
       - 'shared/**'
       - 'scripts/**'
       - 'package.json'
@@ -35,3 +37,8 @@ jobs:
         run: npm run typecheck
       - name: Run reliability and bridge regression tests
         run: npm run test:reliability
+      - name: Validate isolated Gemma SDK dependency and test package
+        run: |
+          npm install --prefix agents/coding/gemma --ignore-scripts --no-audit --no-fund
+          npm run test --prefix agents/coding/gemma
+          node agents/coding/gemma/verify-sdk.mjs
