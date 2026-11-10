@@ -15,5 +15,13 @@
     "deployment": false
   },
   "linearAgentApp": null,
-  "status": "pending-bridge-activation"
+  "status": "pending-bridge-activation",
+  "supportedProviders": [
+    "openrouter",
+    "litellm"
+  ],
+  "litellm": {
+    "endpoint": "http://127.0.0.1:4000/v1",
+    "modelAlias": "configured-in-proxy"
+  }
 }
