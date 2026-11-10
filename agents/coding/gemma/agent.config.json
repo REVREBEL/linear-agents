@@ -1,0 +1,16 @@
+{
+  "id": "gemma",
+  "displayName": "Gemma 4 31B",
+  "kind": "coding-evaluation",
+  "provider": "openrouter",
+  "model": "google/gemma-4-31b-it:free",
+  "runtime": "openrouter-agent-sdk",
+  "permissions": {
+    "workspace": "read-only",
+    "githubWrite": false,
+    "linearWrite": false,
+    "deployment": false
+  },
+  "linearAgentApp": null,
+  "status": "isolated-evaluation"
+}
