@@ -1,4 +1,4 @@
-import { runGemmaDevelopment } from "../agents/coding/gemma/dev-runner.mjs";
+import { runGemmaIsolated } from "../agents/coding/gemma/isolated-launch.mjs";
 import { syncLinearCredential } from "./linear-credentials.mjs";
 import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
@@ -1372,8 +1372,8 @@ async function startGemma(job, workspace, jobKey, credential) {
   const callback = job.completionUrl || job.payload?.data?.completionUrl;
   const prompt = extractPromptContext(job);
   const agentSessionId = extractAgentSessionId(job);
-  if (process.env.GEMMA_ENABLED !== "true" || !process.env.OPENROUTER_API_KEY) {
-    await jobStore.transition(jobKey, "failed", { error: "Gemma is disabled or OpenRouter credentials unavailable" });
+  if (process.env.GEMMA_ENABLED !== "true") {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma is disabled" });
     return;
   }
   if (typeof prompt !== "string" || !prompt || !agentSessionId || !credential?.accessToken || !callback) {
@@ -1396,8 +1396,8 @@ async function startGemma(job, workspace, jobKey, credential) {
   }
   await jobStore.transition(jobKey, "running", { runtime: "openrouter-agent-sdk", model: "google/gemma-4-31b-it:free", workspace: canonicalWorkspace });
   try {
-    const result = await runGemmaDevelopment({
-      workspace: canonicalWorkspace, prompt, apiKey: process.env.OPENROUTER_API_KEY,
+    const result = await runGemmaIsolated({
+      workspace: canonicalWorkspace, prompt,
       onStatus: async message => sendOpenCodeActivity(callback, agentSessionId, "thought", message),
     });
     const confirmed = await sendOpenCodeActivity(callback, agentSessionId, "response", result.text);
