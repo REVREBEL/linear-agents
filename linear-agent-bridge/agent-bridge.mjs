@@ -1396,8 +1396,13 @@ async function startGemma(job, workspace, jobKey, credential) {
   await jobStore.transition(jobKey, "running", { runtime: "openrouter-agent-sdk", model: "google/gemma-4-31b-it:free", workspace: canonicalWorkspace });
   try {
     const { runGemmaIsolated } = await import("../agents/coding/gemma/isolated-launch.mjs");
+    const provider = process.env.GEMMA_PROVIDER || "openrouter";
+    if (!["openrouter", "litellm"].includes(provider)) throw Error("Unknown Gemma provider");
+    const model = provider === "litellm" ? process.env.GEMMA_LITELLM_MODEL || "" : "";
+    if (provider === "litellm" && !model) throw Error("Gemma LiteLLM model alias not configured");
     const result = await runGemmaIsolated({
-      workspace: canonicalWorkspace, prompt,
+      workspace: canonicalWorkspace, prompt, provider, model,
+      baseUrl: provider === "litellm" ? (process.env.GEMMA_LITELLM_BASE_URL || "http://127.0.0.1:4000/v1") : "",
       onStatus: async message => sendOpenCodeActivity(callback, agentSessionId, "thought", message),
     });
     const confirmed = await sendOpenCodeActivity(callback, agentSessionId, "response", result.text);
