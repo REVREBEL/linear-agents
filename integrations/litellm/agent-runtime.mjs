@@ -15,7 +15,7 @@ export function validateLiteLLMConfig({ baseUrl = DEFAULT_ENDPOINT, model, apiKe
   if (typeof apiKey !== "string" || !apiKey.trim() || /[\r\n]/.test(apiKey)) {
     throw Error("Missing LiteLLM virtual API key");
   }
-  return { url: new URL("/v1/chat/completions", url.origin), model };
+  return { baseURL: new URL("/v1", url.origin).toString().replace(/\\/$/, ""), model };
 }
 
 function parseToolArgs(raw) {
@@ -28,13 +28,16 @@ function parseToolArgs(raw) {
 export async function runLiteLLMAgent({
   baseUrl = DEFAULT_ENDPOINT, apiKey, model, input, instructions,
   tools = [], maxSteps = 12, onStatus = async () => {},
-  fetchImpl = fetch, timeoutMs = 45000,
+  clientFactory, timeoutMs = 45000,
 }) {
   const config = validateLiteLLMConfig({ baseUrl, model, apiKey });
   if (typeof input !== "string" || !input.trim() || input.length > 12000 ||
       typeof instructions !== "string" || instructions.length > 10000) throw Error("Invalid LiteLLM prompt");
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 1 || maxSteps > 24) throw Error("Invalid LiteLLM step limit");
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 120000) throw Error("Invalid LiteLLM timeout");
+  if (typeof clientFactory !== "function") throw Error("LiteLLM requires an OpenAI SDK client factory");
+  const client = clientFactory({ baseURL: config.baseURL, apiKey, timeout: timeoutMs, maxRetries: 0 });
+  if (typeof client?.chat?.completions?.create !== "function") throw Error("Invalid OpenAI SDK client");
   const lookup = new Map(tools.map(t => [t.name, t]));
   if (lookup.size !== tools.length || tools.some(t => !t.name || typeof t.execute !== "function" || !t.parameters)) {
     throw Error("Invalid LiteLLM tools");
@@ -52,14 +55,9 @@ export async function runLiteLLMAgent({
         function: { name: t.name, description: t.description, parameters: t.parameters },
       })), tool_choice: "auto" } : {}),
     };
-    const response = await fetchImpl(config.url, {
-      method: "POST",
-      headers: { authorization: "Bearer " + apiKey, "content-type": "application/json" },
-      body: JSON.stringify(request),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) throw Error("LiteLLM request failed (HTTP " + response.status + ")");
-    const result = await response.json();
+    // Call the locally hosted LiteLLM OpenAI-compatible endpoint through the
+    // official OpenAI Node SDK, not a hand-maintained HTTP transport.
+    const result = await client.chat.completions.create(request);
     const choice = result?.choices?.[0];
     if (!choice?.message || typeof choice.message !== "object") throw Error("LiteLLM response missing message");
     const message = choice.message;
