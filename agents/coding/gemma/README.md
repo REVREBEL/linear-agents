@@ -47,3 +47,37 @@ Keep `GEMMA_ENABLED=false` until:
 5. The initial assignment is ABR-28 P0 on a task branch; review its changes before further phases.
 
 **Recovery:** after verifying the intended remote, `git fetch origin && git reset --hard origin/main && git clean -fd` restores a disposable checkout's tracked and non-ignored untracked source. Never run `git clean -fdx` on an environment containing secrets or live ignored data.
+
+## Optional LiteLLM gateway (installed on the Ubuntu bridge)
+
+The Ubuntu `bridge` account has LiteLLM installed in `/home/bridge/agent-bridge/.venv/bin/` (confirmed from operator's directory listing on November 9, 2026). **An installed Python package is not yet a running proxy.** No running port or model aliases have been verified.
+
+Use the already-installed LiteLLM package to serve an OpenAI-compatible loopback-only API. Example provider configuration (store actual upstream credentials only in protected service environment, not the YAML or Git):
+
+```yaml
+model_list:
+  - model_name: gemma-coding
+    litellm_params:
+      model: openrouter/google/gemma-4-31b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+```
+
+Run the gateway with the **installed** binary from `/home/bridge/agent-bridge/.venv/bin/litellm`, bound to `127.0.0.1:4000`; a separately supervised systemd service with restricted credentials is preferred. Confirm the installed CLI flags with `litellm --help` before applying a service unit. Do **not** run it on `0.0.0.0` or expose its virtual key to the model tools.
+
+With a local gateway healthy, set in the bridge environment:
+
+```bash
+GEMMA_PROVIDER=litellm
+GEMMA_LITELLM_BASE_URL=http://127.0.0.1:4000/v1
+GEMMA_LITELLM_MODEL=gemma-coding
+```
+
+The unprivileged `rebel` execution process reads its *LiteLLM proxy* key from `/home/rebel/.config/linearbridge/litellm.key` (owner `rebel`, mode 0600). The upstream OpenRouter key remains isolated in the LiteLLM proxy's service configuration, rather than being shared with Gemma. No API credentials cross the bridge's JSON job pipe.
+
+Smoke-check the loopback gateway's model catalog via an authenticated `GET /v1/models` request, then run a disposable Gemma issue and confirm a tool-call round trip. LiteLLM must be configured to forward function/tool calls for the chosen model. The OpenRouter SDK remains an option through `GEMMA_PROVIDER=openrouter` and is not removed.
+
+**Important:** The existing `/home/bridge/agent-bridge` checkout is owned by `bridge` and contains an ignored `.env` and `.venv`. Do not reset or clean this live checkout. Gemma's source write permissions apply only to its disposable development repository under `/home/rebel/`.
+
+Deployment remains opt-in. `GEMMA_ENABLED=false` until the app identity, gateway, unprivileged runner, and Linear completion loop have been verified.
