@@ -2,7 +2,8 @@
 // No shell, write, Git, SSH, Linear, or Cloudflare tools are exposed to the model.
 import fs from "node:fs/promises";
 import path from "node:path";
-import { runOpenRouterAgent, loadOpenRouterAgentSdk } from "../../../integrations/openrouter/agent-runtime.mjs";
+import { runOpenRouterAgent } from "../../../integrations/openrouter/agent-runtime.mjs";
+import { loadOpenRouterAgentSdk } from "./sdk.mjs";
 
 export const GEMMA_MODEL = "google/gemma-4-31b-it:free";
 const DENIED = new Set([".git", ".env", ".dev.vars", ".secrets", "node_modules", ".linear-agent", "linear-jobs", ".ssh", ".config", "credentials", "private", "__pycache__"]);
