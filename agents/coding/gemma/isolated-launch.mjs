@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 const script = fileURLToPath(new URL("./worker-process.mjs", import.meta.url));
 export async function runGemmaIsolated({
-  workspace, prompt, onStatus = async () => {},
+  workspace, prompt, provider = "openrouter", model = "", baseUrl = "", onStatus = async () => {},
   spawnImpl = spawn,
   nodeBin = process.env.GEMMA_NODE_BIN || "/usr/bin/node",
   user = "rebel",
@@ -14,6 +14,10 @@ export async function runGemmaIsolated({
   }
   // sudoers must allow ONLY this absolute executable/script pair for the
   // dedicated account, with no password. Do not pass bridge environment.
+  if (!["openrouter", "litellm"].includes(provider) ||
+      (provider === "litellm" && (!model || !/^[-a-zA-Z0-9_./:]{1,128}$/.test(model)))) {
+    throw Error("Invalid Gemma provider configuration");
+  }
   const child = spawnImpl("/usr/bin/sudo", ["-n", "-H", "-u", user, "--", nodeBin, script], {
     cwd: "/home/rebel",
     env: { PATH: "/usr/bin:/bin", HOME: "/home/rebel", USER: user, LOGNAME: user },
@@ -22,7 +26,7 @@ export async function runGemmaIsolated({
   const messages = [];
   let buffer = "", total = 0, result = null;
   const timeout = setTimeout(() => child.kill("SIGTERM"), 6 * 60 * 1000);
-  child.stdin.end(JSON.stringify({ workspace, prompt }));
+  child.stdin.end(JSON.stringify({ workspace, prompt, provider, model, baseUrl }));
   child.stdout.on("data", chunk => {
     total += chunk.length;
     if (total > 250000) { child.kill("SIGTERM"); return; }
