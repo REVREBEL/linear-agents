@@ -15,7 +15,7 @@ export function validateLiteLLMConfig({ baseUrl = DEFAULT_ENDPOINT, model, apiKe
   if (typeof apiKey !== "string" || !apiKey.trim() || /[\r\n]/.test(apiKey)) {
     throw Error("Missing LiteLLM virtual API key");
   }
-  return { baseURL: new URL("/v1", url.origin).toString().replace(/\\/$/, ""), model };
+  return { baseURL: new URL("/v1", url.origin).toString().replace(/[/]$/, ""), model };
 }
 
 function parseToolArgs(raw) {
