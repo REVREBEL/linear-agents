@@ -4,11 +4,11 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
-const agents = ["antigravity", "chatgpt", "chatgpt-cli", "gemini", "trae", "mock"];
+const agents = ["antigravity", "chatgpt", "chatgpt-cli", "gemini", "gemma", "trae", "mock"];
 const [command, requestedArg, ...extra] = process.argv.slice(2);
 const requested = requestedArg || (command === "types" ? "all" : undefined);
 if (!["dev", "deploy", "install", "types", "kv"].includes(command) || !requested || (requested !== "all" && !agents.includes(requested))) {
-  console.error("Usage: npm run setup|setup:kv|dev|deploy|types -- <antigravity|chatgpt|chatgpt-cli|gemini|trae|mock|all> [args]");
+  console.error("Usage: npm run setup|setup:kv|dev|deploy|types -- <antigravity|chatgpt|chatgpt-cli|gemini|gemma|trae|mock|all> [args]");
   process.exit(2);
 }
 if (command === "dev" && requested === "all") {

@@ -6,10 +6,10 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const tsc = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "tsc.cmd" : "tsc");
-const agents = ["antigravity", "chatgpt", "chatgpt-cli", "gemini", "trae", "mock"];
+const agents = ["antigravity", "chatgpt", "chatgpt-cli", "gemini", "gemma", "trae", "mock"];
 
 for (const agent of agents) {
-  const project = path.join(root, `linear-${agent}-worker`, "tsconfig.json");
+  const project = path.join(root, agent === "gemma" ? "agents/coding/gemma/worker" : `linear-${agent}-worker`, "tsconfig.json");
   console.log(`Checking ${agent}...`);
   const result = spawnSync(tsc, ["--project", project, "--noEmit"], {
     cwd: root,
@@ -21,4 +21,4 @@ for (const agent of agents) {
   }
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
-console.log("All six Worker TypeScript checks passed.");
+console.log("All seven Worker TypeScript checks passed.");

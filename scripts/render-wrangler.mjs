@@ -3,7 +3,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 const [agent, output] = process.argv.slice(2);
-if (!/^(antigravity|chatgpt|chatgpt-cli|gemini|trae|mock)$/.test(agent) || !output) throw Error("Usage: node render-wrangler.mjs <agent> <output>");
+if (!/^(antigravity|chatgpt|chatgpt-cli|gemini|gemma|trae|mock)$/.test(agent) || !output) throw Error("Usage: node render-wrangler.mjs <agent> <output>");
 const key=agent.toUpperCase().replaceAll('-', '_'), domain=process.env.DOMAIN;
 const prefix=process.env[`${key}_PREFIX`] || agent;
 if (!/^[a-z][a-z0-9-]*$/.test(prefix)) throw Error(`Invalid ${key}_PREFIX`);
@@ -13,7 +13,7 @@ const webhookUrl=`https://linear-${prefix}.${domain}/webhook`;
 const id=process.env[`${key}_KV_NAMESPACE_ID`];
 if (!domain || !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(domain)) throw Error("DOMAIN must be a valid configured domain");
 if (!id || !/^[a-f0-9]{32}$/i.test(id)) throw Error(`Missing or invalid ${key}_KV_NAMESPACE_ID in .env`);
-const folder=path.join(process.env.REPO_ROOT || process.cwd(), `linear-${agent}-worker`);
+const folder=path.join(process.env.REPO_ROOT || process.cwd(), agent === "gemma" ? "agents/coding/gemma/worker" : `linear-${agent}-worker`);
 let config=readFileSync(path.join(folder,"wrangler.jsonc"),"utf8");
 const replacements=[
   [/"id"\s*:\s*"[^"]+"/, `"id": "${id}"`],

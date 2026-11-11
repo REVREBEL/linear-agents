@@ -1,0 +1,30 @@
+{
+  "$schema": "https://linear.app/.well-known/oauth-app-manifest.schema.json",
+  "schemaVersion": "1.0.0",
+  "distribution": "private",
+  "display": {
+    "description": "Gemma coding agent for REVREBEL LinearBridge, powered by OpenRouter with approved repository permissions."
+  },
+  "developer": {
+    "name": "REVREBEL"
+  },
+  "oauth": {
+    "client_name": "Gemma",
+    "client_uri": "https://github.com/REVREBEL/linear-agents",
+    "redirect_uris": [
+      "https://linear-gemma.revrebel.io/oauth/callback"
+    ],
+    "grant_types": [
+      "authorization_code"
+    ]
+  },
+  "webhook": {
+    "enabled": true,
+    "url": "https://linear-gemma.revrebel.io/webhook",
+    "resourceTypes": [
+      "AgentSessionEvent",
+      "OAuthAuthorization",
+      "PermissionChange"
+    ]
+  }
+}

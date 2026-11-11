@@ -3,9 +3,9 @@
 import { readFileSync, writeFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-const agents = new Set(["antigravity", "chatgpt", "chatgpt-cli", "gemini", "trae", "mock"]);
+const agents = new Set(["antigravity", "chatgpt", "chatgpt-cli", "gemini", "gemma", "trae", "mock"]);
 const agent = process.argv[2];
-if (!agents.has(agent)) throw new Error("Usage: npm run setup:kv -- <antigravity|chatgpt|chatgpt-cli|gemini|trae|mock>");
+if (!agents.has(agent)) throw new Error("Usage: npm run setup:kv -- <antigravity|chatgpt|chatgpt-cli|gemini|gemma|trae|mock>");
 const key = agent.toUpperCase().replaceAll("-", "_");
 const prefix = process.env[`${key}_PREFIX`] || agent;
 if (!/^[a-z][a-z0-9-]*$/.test(prefix)) throw new Error("Invalid agent prefix");

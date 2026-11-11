@@ -2,9 +2,9 @@
   "name": "@revrebel/gemma-evaluation",
   "private": true,
   "type": "module",
-  "description": "Isolated, read-only Gemma evaluation using OpenRouter Agent SDK",
+  "description": "Gemma OpenRouter Agent SDK coding runner for disposable development checkouts",
   "scripts": {
-    "test": "node --test ./inventory.test.mjs",
+    "test": "node --test ./inventory.test.mjs ./dev-tools.test.mjs",
     "evaluate": "node ./evaluate.mjs"
   },
   "dependencies": {
