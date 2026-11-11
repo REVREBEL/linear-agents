@@ -1,0 +1,17 @@
+
+{
+  "id": "liquid",
+  "displayName": "liquid",
+  "kind": "deterministic workflow suggestions",
+  "provider": "openrouter",
+  "model": "liquid/lfm-3-1.7b:free",
+  "runtime": "openrouter-agent-sdk",
+  "permissions": {
+    "workspace": "write",
+    "githubWrite": true,
+    "linearWrite": true,
+    "deployment": true
+  },
+  "linearAgentApp": null,
+  "status": "isolated-evaluation"
+}

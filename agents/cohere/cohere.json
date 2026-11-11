@@ -1,0 +1,16 @@
+{
+  "id": "cohere",
+  "displayName": "cohere",
+  "kind": "coding-evaluation",
+  "provider": "openrouter",
+  "model": "cohere/north-mini-code:free",
+  "runtime": "openrouter-agent-sdk",
+  "permissions": {
+    "workspace": "write",
+    "githubWrite": true,
+    "linearWrite": true,
+    "deployment": true
+  },
+  "linearAgentApp": null,
+  "status": "isolated-evaluation"
+}
