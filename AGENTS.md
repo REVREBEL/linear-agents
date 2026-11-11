@@ -56,3 +56,13 @@ Use `npm run deploy -- <agent>` for a Worker and the `scripts/with-env.sh` wrapp
 3. Prefer minimal targeted changes; preserve security checks, agent/session identity, job idempotency and issue-vs-session distinction.
 4. For any new retry/resume mechanism, document persistence, maximum retries, restart recovery, concurrency and failure conditions; add tests where possible.
 5. Never commit real OAuth credentials, app secrets, local `.env`, private project routing values or task payloads.
+
+---------------------------
+
+** SKILLS **
+
+## GitHub App Bot Workflow (`rebel-antigravity[bot]`)
+Use this skill whenever you need to commit changes, push Git branches, or open Pull Requests across REVREBEL repositories.
+
+## Linear-issues-workflow includes instructions for ensuring the task is submitted sucessfuly for code reveiw and merged into main.
+Entry-point router for Antigravity tasks received through Linear. Use to select a work-order type and the appropriate lifecycle skill for research, audits, validation, implementation, documentation, deployment, review and final completion; discover repository Git scripts and available Linear and GitHub MCP tools.

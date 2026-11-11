@@ -241,7 +241,31 @@ export async function withCrossProcessLock(lockDir, fn, options = {}) {
             if (isSameHost && typeof parsed.pid === "number") {
               const alive = isProcessAlive(parsed.pid);
               if (!alive) {
-                // Owner PID is dead on this host! Attempt atomic rename reclamation.
+                // Owner PID is dead on this host! Attempt safe reclamation by removing dead owner file(s).
+                // Identify dead owner files (could be multiple due to previous crashes).
+                const deadOwnerFiles = ownerFiles.filter(f => {
+                  try {
+                    const content = fs.readFileSync(path.join(lockDir, f), "utf8");
+                    const parsed = JSON.parse(content);
+                    return parsed.hostname === os.hostname() && !isProcessAlive(parsed.pid);
+                  } catch {
+                    return false;
+                  }
+                });
+                // Attempt to unlink each dead owner file.
+                for (const deadFile of deadOwnerFiles) {
+                  try {
+                    await fs.unlink(path.join(lockDir, deadFile));
+                  } catch {}
+                }
+                // After cleaning dead owners, try removing the lock directory if it is now empty.
+                try {
+                  await fs.rmdir(lockDir);
+                  // Directory removed, retry acquisition.
+                  continue;
+                } catch {
+                  // Could not remove (likely non‑empty or race). Abort reclamation this round.
+                }
                 const reclaimTmp = `${lockDir}.reclaim.${crypto.randomUUID()}`;
                 try {
                   // Atomically move the lock directory to a temporary name.
@@ -256,13 +280,10 @@ export async function withCrossProcessLock(lockDir, fn, options = {}) {
             }
             // Owner process is alive: NEVER STEAL. Wait for release.
           } else {
-            // Lock directory exists but empty (abandoned before owner file written or during release)
-            try {
-              await fs.rmdir(lockDir);
-              continue;
-            } catch {
-              // Concurrently created or removed
-            }
+// Lock directory exists but empty (abandoned before owner file written or during release)
+                // Instead of deleting, wait briefly and retry acquisition to avoid race with concurrent creator.
+                await new Promise(r => setTimeout(r, retryIntervalMs));
+                continue;
           }
         } catch {
           // Directory inaccessible or concurrently modified; proceed to retry
