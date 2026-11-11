@@ -201,6 +201,7 @@ const AGENT_JOB_DIRS = {
   "chatgpt-cli": path.join(JOBS_DIR, "chatgpt-cli"),
   trae: path.join(JOBS_DIR, "trae"),
   gemini: path.join(JOBS_DIR, "gemini"),
+  gemma: path.join(JOBS_DIR, "gemma"),
   unknown: path.join(JOBS_DIR, "unknown"),
 };
 
@@ -220,6 +221,7 @@ const TRAE_HOST =
   process.env.TRAE_HOST || "trae-agent.revrebel.io";
 const GEMINI_HOST =
   process.env.GEMINI_HOST || "gemini-agent.revrebel.io";
+const GEMMA_HOST = process.env.GEMMA_HOST || "gemma-agent.revrebel.io";
 
 // Legacy agent workspace overrides referred to an older checkout location.
 // All actual jobs now launch from resolveJobRoute(), using routing.json.
@@ -270,6 +272,7 @@ const server = http.createServer(async (request, response) => {
         mockHost: MOCK_HOST,
         traeHost: TRAE_HOST,
         geminiHost: GEMINI_HOST,
+        gemmaHost: GEMMA_HOST,
         python: PYTHON_BIN,
         antigravityWorkspace: ANTIGRAVITY_WORKSPACE,
         antigravityMode: process.env.ANTIGRAVITY_MODE || "cli",
@@ -924,6 +927,11 @@ const server = http.createServer(async (request, response) => {
       }
     } else if (agent === "trae") {
       await startTrae(routedJob, filename, workspace, jobKey, credential, route.repositoryRoot);
+    } else if (agent === "gemma") {
+      void startGemma(routedJob, workspace, jobKey, credential).catch(async error => {
+        console.error("Gemma execution failed:", error.message);
+        await jobStore.transition(jobKey, "failed", { error: "Gemma execution failure" }).catch(console.error);
+      });
     } else if (agent === "gemini") {
       await startGemini(routedJob, filename, workspace, jobKey, credential);
     } else {
@@ -954,6 +962,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Mock host: ${MOCK_HOST}`);
   console.log(`Trae host: ${TRAE_HOST}`);
   console.log(`Gemini host: ${GEMINI_HOST}`);
+  console.log(`Gemma host: ${GEMMA_HOST}`);
   console.log(`Antigravity workspace: ${ANTIGRAVITY_WORKSPACE}`);
   console.log(`Antigravity mode: ${process.env.ANTIGRAVITY_MODE || "cli"}`);
   console.log(`ChatGPT workspace: ${CHATGPT_WORKSPACE}`);
@@ -1356,6 +1365,52 @@ async function sendOpenCodeActivity(url, agentSessionId, activityType, body) {
   });
   if (!response.ok) throw Error("ChatGPT Worker completion callback returned HTTP " + response.status);
   return true;
+}
+
+async function startGemma(job, workspace, jobKey, credential) {
+  const callback = job.completionUrl || job.payload?.data?.completionUrl;
+  const prompt = extractPromptContext(job);
+  const agentSessionId = extractAgentSessionId(job);
+  if (process.env.GEMMA_ENABLED !== "true") {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma is disabled" });
+    return;
+  }
+  if (typeof prompt !== "string" || !prompt || !agentSessionId || !credential?.accessToken || !callback) {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma session, prompt, or callback missing" });
+    return;
+  }
+  const url = new URL(callback);
+  const expectedHost = process.env.GEMMA_WORKER_HOST || `linear-${process.env.GEMMA_PREFIX || "gemma"}.${process.env.DOMAIN || "revrebel.io"}`;
+  if (url.protocol !== "https:" || url.hostname !== expectedHost || url.pathname !== "/complete" ||
+      url.port || url.search || url.hash || url.username || url.password) {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma completion callback origin mismatch" });
+    return;
+  }
+  // The checkout must be disposable and owned by a dedicated unprivileged OS user.
+  // Never use the live bridge's repository or an arbitrary workspace outside /home/rebel.
+  const canonicalWorkspace = await fs.realpath(workspace);
+  if (!canonicalWorkspace.startsWith("/home/rebel/")) {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma workspace must be under /home/rebel/" });
+    return;
+  }
+  await jobStore.transition(jobKey, "running", { runtime: "openrouter-agent-sdk", model: "google/gemma-4-31b-it:free", workspace: canonicalWorkspace });
+  try {
+    const { runGemmaIsolated } = await import("../agents/coding/gemma/isolated-launch.mjs");
+    const provider = process.env.GEMMA_PROVIDER || "openrouter";
+    if (!["openrouter", "litellm"].includes(provider)) throw Error("Unknown Gemma provider");
+    const model = provider === "litellm" ? process.env.GEMMA_LITELLM_MODEL || "" : "";
+    if (provider === "litellm" && !model) throw Error("Gemma LiteLLM model alias not configured");
+    const result = await runGemmaIsolated({
+      workspace: canonicalWorkspace, prompt, provider, model,
+      baseUrl: provider === "litellm" ? (process.env.GEMMA_LITELLM_BASE_URL || "http://127.0.0.1:4000/v1") : "",
+      onStatus: async message => sendOpenCodeActivity(callback, agentSessionId, "thought", message),
+    });
+    const confirmed = await sendOpenCodeActivity(callback, agentSessionId, "response", result.text);
+    await jobStore.transition(jobKey, confirmed ? "completed" : "awaiting_external", { ...(confirmed ? { completionConfirmedAt: new Date().toISOString() } : {}) });
+  } catch (error) {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma SDK execution failed" });
+    await sendOpenCodeActivity(callback, agentSessionId, "error", "Gemma execution failed; see restricted bridge diagnostics.").catch(() => {});
+  }
 }
 
 async function startGemini(job, filename, workspace, jobKey, credential) {
@@ -1841,6 +1896,7 @@ function agentForHost(host) {
   if (matchesHost(host, CHATGPT_CLI_HOST)) return "chatgpt-cli";
   if (matchesHost(host, TRAE_HOST)) return "trae";
   if (matchesHost(host, GEMINI_HOST)) return "gemini";
+  if (matchesHost(host, GEMMA_HOST)) return "gemma";
   return "unknown";
 }
 

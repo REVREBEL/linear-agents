@@ -1,16 +1,27 @@
 {
   "id": "gemma",
   "displayName": "Gemma 4 31B",
-  "kind": "coding-evaluation",
+  "kind": "coding",
   "provider": "openrouter",
   "model": "google/gemma-4-31b-it:free",
   "runtime": "openrouter-agent-sdk",
   "permissions": {
-    "workspace": "read-only",
-    "githubWrite": false,
-    "linearWrite": false,
+    "workspace": "development-checkout",
+    "sourceWrite": true,
+    "directoryMoves": true,
+    "gitCommit": true,
+    "gitPush": false,
+    "autoMerge": false,
     "deployment": false
   },
   "linearAgentApp": null,
-  "status": "isolated-evaluation"
+  "status": "pending-bridge-activation",
+  "supportedProviders": [
+    "openrouter",
+    "litellm"
+  ],
+  "litellm": {
+    "endpoint": "http://127.0.0.1:4000/v1",
+    "modelAlias": "configured-in-proxy"
+  }
 }

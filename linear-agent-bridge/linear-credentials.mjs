@@ -8,6 +8,7 @@ export const LINEAR_AGENT_VARS = Object.freeze({
   antigravity: "ANTIGRAVITY_LINEAR_API_KEY",
   trae: "TRAE_LINEAR_API_KEY",
   gemini: "GEMINI_LINEAR_API_KEY",
+  gemma: "GEMMA_LINEAR_API_KEY",
   chatgpt: "CHATGPT_LINEAR_API_KEY",
   "chatgpt-cli": "CHATGPT_CLI_LINEAR_API_KEY",
   mock: "MOCK_LINEAR_API_KEY",
