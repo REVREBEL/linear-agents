@@ -20,7 +20,7 @@ set +a
 
 usage() {
   echo "Usage: scripts/with-env.sh terraform <terraform args...>" >&2
-  echo "       scripts/with-env.sh worker <antigravity|trae|chatgpt|gemini|mock> <dev|deploy|sync-secrets|types>" >&2
+  echo "       scripts/with-env.sh worker <antigravity|trae|chatgpt|chatgpt-cli|gemini|gemma|mock> <dev|deploy|sync-secrets|types>" >&2
   echo "       scripts/with-env.sh bridge <node args...>" >&2
   echo "       scripts/with-env.sh linear-projects" >&2
   exit 2
@@ -83,6 +83,7 @@ case "${1:-}" in
       chatgpt) worker_dir="${REPO_ROOT}/linear-chatgpt-worker"; prefix="CHATGPT" ;;
       chatgpt-cli) worker_dir="${REPO_ROOT}/linear-chatgpt-cli-worker"; prefix="CHATGPT_CLI" ;;
       gemini) worker_dir="${REPO_ROOT}/linear-gemini-worker"; prefix="GEMINI" ;;
+      gemma) worker_dir="${REPO_ROOT}/agents/coding/gemma/worker"; prefix="GEMMA" ;;
       mock) worker_dir="${REPO_ROOT}/linear-mock-worker"; prefix="MOCK" ;;
       *) usage ;;
     esac

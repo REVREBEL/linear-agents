@@ -28,7 +28,7 @@ jobs:
       - name: Prepare isolated local Worker configuration
         run: |
           echo 'DOMAIN=example.com' > .env
-          for agent in ANTIGRAVITY CHATGPT CHATGPT_CLI GEMINI TRAE MOCK; do
+          for agent in ANTIGRAVITY CHATGPT CHATGPT_CLI GEMINI GEMMA TRAE MOCK; do
             echo "${agent}_KV_NAMESPACE_ID=00000000000000000000000000000000" >> .env
           done
       - name: Generate Worker runtime types
