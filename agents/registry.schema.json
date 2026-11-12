@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://revrebel.io/schemas/agent-registry.v1.schema.json",
-  "title": "REVREBEL Agent Registry v1",
-  "description": "Versioned physical agent/Worker discovery contract; no secrets or live credential values.",
+  "$id": "https://revrebel.io/schemas/agent-registry.v2.schema.json",
+  "title": "REVREBEL Agent Registry v2",
+  "description": "Agent discovery and execution policy contract with backward-compatible Worker locator. Policy metadata is not permission enforcement.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,11 +11,11 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "agents": {
       "type": "array",
-      "minItems": 7,
+      "minItems": 1,
       "items": {
         "$ref": "#/$defs/agent"
       }
@@ -36,19 +36,15 @@
         "packageDir",
         "worker",
         "execution",
-        "linear"
+        "linear",
+        "profile",
+        "runtimeContract",
+        "executionPolicy"
       ],
       "properties": {
         "id": {
-          "enum": [
-            "antigravity",
-            "chatgpt",
-            "chatgpt-cli",
-            "gemini",
-            "gemma",
-            "trae",
-            "mock"
-          ]
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]+$"
         },
         "role": {
           "enum": [
@@ -119,6 +115,15 @@
               "pattern": "^[A-Z][A-Z0-9_]+$"
             }
           }
+        },
+        "profile": {
+          "$ref": "#/$defs/profile"
+        },
+        "runtimeContract": {
+          "$ref": "#/$defs/runtimeContract"
+        },
+        "executionPolicy": {
+          "$ref": "#/$defs/executionPolicy"
         }
       }
     },
@@ -154,6 +159,399 @@
         },
         "durableObject": {
           "const": "DELIVERY_COORDINATOR"
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selection"
+      ],
+      "properties": {
+        "selection": {
+          "type": "string",
+          "enum": [
+            "runtime",
+            "pinned"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ratings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "score",
+        "source"
+      ],
+      "properties": {
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "user_supplied",
+            "measured",
+            "estimated"
+          ]
+        },
+        "evaluatedAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
+      }
+    },
+    "taxonomy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agent_type",
+        "domain",
+        "top_skills"
+      ],
+      "properties": {
+        "agent_type": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "top_skills": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "complexity_tier",
+        "semantic_description",
+        "supported_intents"
+      ],
+      "properties": {
+        "complexity_tier": {
+          "type": "string",
+          "enum": [
+            "Low",
+            "Medium",
+            "High"
+          ]
+        },
+        "semantic_description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supported_intents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        },
+        "task_ratings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ratings"
+          }
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "displayName",
+        "kind",
+        "model"
+      ],
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "cli_agent",
+            "review_agent",
+            "service_agent",
+            "test_agent"
+          ]
+        },
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "taxonomy": {
+          "$ref": "#/$defs/taxonomy"
+        },
+        "routing": {
+          "$ref": "#/$defs/routing"
+        }
+      }
+    },
+    "executable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binaryEnv",
+        "argv"
+      ],
+      "properties": {
+        "binaryEnv": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "commandTemplate": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "runtimeContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transport",
+        "executionHost"
+      ],
+      "properties": {
+        "transport": {
+          "type": "string",
+          "enum": [
+            "headless_cli",
+            "remote_cli",
+            "api",
+            "review_inbox",
+            "mock"
+          ]
+        },
+        "executionHost": {
+          "type": "string",
+          "enum": [
+            "bridge_service",
+            "local_mac_bridge",
+            "remote_mac",
+            "configurable"
+          ]
+        },
+        "executable": {
+          "$ref": "#/$defs/executable"
+        },
+        "workspaceRootEnv": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "sessionContinuityFlag": {
+          "type": "string"
+        },
+        "linearBridge": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workerHost",
+            "tunnelHost",
+            "supportedEvents",
+            "completionMode"
+          ],
+          "properties": {
+            "workerHost": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tunnelHost": {
+              "type": "string",
+              "minLength": 1
+            },
+            "supportedEvents": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "session_created",
+                  "session_prompted",
+                  "session_completed",
+                  "session_cancelled",
+                  "webhook",
+                  "github_event"
+                ]
+              }
+            },
+            "completionMode": {
+              "type": "string",
+              "enum": [
+                "worker_callback",
+                "bridge",
+                "review_handoff",
+                "none"
+              ]
+            }
+          }
+        },
+        "quotaPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "resumable",
+            "defaultRetryDelayMs",
+            "maxRetryAttempts"
+          ],
+          "properties": {
+            "resumable": {
+              "type": "boolean"
+            },
+            "defaultRetryDelayMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxRetryAttempts": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "exhaustionPattern": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceWrite",
+        "directoryMoves",
+        "gitCommit",
+        "gitPush",
+        "autoMerge",
+        "deployment"
+      ],
+      "properties": {
+        "sourceWrite": {
+          "type": "boolean"
+        },
+        "directoryMoves": {
+          "type": "boolean"
+        },
+        "gitCommit": {
+          "type": "boolean"
+        },
+        "gitPush": {
+          "type": "boolean"
+        },
+        "autoMerge": {
+          "type": "boolean"
+        },
+        "deployment": {
+          "type": "boolean"
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blast_radius",
+        "credential_model",
+        "envStripPatterns",
+        "mcpToolAllowlist",
+        "handoff_targets"
+      ],
+      "properties": {
+        "blast_radius": {
+          "type": "string",
+          "enum": [
+            "Low",
+            "Medium",
+            "High"
+          ]
+        },
+        "credential_model": {
+          "type": "string",
+          "enum": [
+            "ephemeral_session",
+            "service_identity",
+            "none"
+          ]
+        },
+        "envStripPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          }
+        },
+        "mcpToolAllowlist": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "handoff_targets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "executionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "autonomy_level",
+        "memory_scope",
+        "permissions",
+        "security"
+      ],
+      "properties": {
+        "autonomy_level": {
+          "type": "string",
+          "enum": [
+            "Observer",
+            "Advisor",
+            "Executor"
+          ]
+        },
+        "memory_scope": {
+          "type": "string",
+          "enum": [
+            "session_isolated",
+            "task",
+            "persistent"
+          ]
+        },
+        "permissions": {
+          "$ref": "#/$defs/permissions"
+        },
+        "security": {
+          "$ref": "#/$defs/security"
         }
       }
     }
