@@ -8,7 +8,7 @@
     "linear-chatgpt-cli-worker",
     "linear-gemini-worker",
     "linear-trae-worker",
-    "linear-mock-worker"
+    "agents/coding/mock/worker"
   ],
   "scripts": {
     "types": "node scripts/workspace-command.mjs types",
