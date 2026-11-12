@@ -27,7 +27,7 @@
   "vars": {
     "SERVICE_NAME": "linear-${ANTIGRAVITY_PREFIX}-agent", 
     "LINEAR_REDIRECT_URI": "https://linear-${ANTIGRAVITY_PREFIX}.${DOMAIN}/oauth/callback",
-    "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
+    "LINEAR_SCOPES": "read,write,initiative:read,app:assignable,app:mentionable",
     "BRIDGE_URL": "https://${ANTIGRAVITY_PREFIX}-agent.${DOMAIN}/jobs"
   }
 }
