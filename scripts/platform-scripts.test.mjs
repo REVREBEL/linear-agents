@@ -74,13 +74,15 @@ test("Linux restart uses the exact passwordless sudoers unit argument", () => {
   if (process.platform !== "linux") return;
   const temp = mkdtempSync(path.join(os.tmpdir(), "bridge-restart-test-"));
   try {
-    const sudo = path.join(temp, "sudo");
-    writeFileSync(sudo, "#!/bin/sh\\nprintf '%s\\n' \"$*\"\\n", { mode: 0o755 });
+    for (const name of ["sudo", "systemctl"]) {
+      writeFileSync(path.join(temp, name), "#!/bin/sh\nprintf '%s\\n' \"$*\"\n", { mode: 0o755 });
+    }
     const result = spawnSync("bash", [path.join(root, "scripts/bridge.sh"), "restart"], {
       encoding: "utf8", env: { ...process.env, PATH: `${temp}:${process.env.PATH}` },
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout.trim(), "-n systemctl restart agent-bridge");
+    assert.equal(result.stdout.trim(),
+      process.getuid?.() === 0 ? "restart agent-bridge" : "-n systemctl restart agent-bridge");
   } finally { rmSync(temp, { recursive: true, force: true }); }
 });
 
