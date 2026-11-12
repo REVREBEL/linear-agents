@@ -2,7 +2,7 @@
 set -euo pipefail
 [[ "$(uname -s)" == Linux ]] || { echo "Ubuntu/Linux required" >&2; exit 2; }
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-SERVICE=agent-bridge.service
+SERVICE=agent-bridge
 load_env() {
   local file="${LINEAR_AGENTS_ENV_FILE:-${ROOT}/.env}"
   [[ -r "${file}" ]] || { echo "Missing readable ${file}" >&2; return 1; }
