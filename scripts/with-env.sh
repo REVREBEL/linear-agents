@@ -77,20 +77,10 @@ case "${1:-}" in
   worker)
     shift
     agent="${1:-}"; action="${2:-}"; shift 2 || usage
-    case "${agent}" in
-      antigravity) worker_dir="${REPO_ROOT}/linear-antigravity-worker"; prefix="ANTIGRAVITY" ;;
-      trae) worker_dir="${REPO_ROOT}/linear-trae-worker"; prefix="TRAE" ;;
-      chatgpt) worker_dir="${REPO_ROOT}/linear-chatgpt-worker"; prefix="CHATGPT" ;;
-      chatgpt-cli) worker_dir="${REPO_ROOT}/linear-chatgpt-cli-worker"; prefix="CHATGPT_CLI" ;;
-      gemini) worker_dir="${REPO_ROOT}/linear-gemini-worker"; prefix="GEMINI" ;;
-      gemma) worker_dir="${REPO_ROOT}/agents/coding/gemma/worker"; prefix="GEMMA" ;;
-      mock) worker_dir="${REPO_ROOT}/linear-mock-worker"; prefix="MOCK" ;;
-      *) usage ;;
-    esac
-    # ChatGPT review and ChatGPT CLI share one Linear app registration.
-    # They keep separate Worker endpoints and KV namespaces.
-    credential_prefix="${prefix}"
-    if [[ "${agent}" == "chatgpt-cli" ]]; then credential_prefix="CHATGPT"; fi
+    # Resolve current location and credential identity from Agent Registry v2.
+    worker_info="$(node "${REPO_ROOT}/scripts/registry-worker-info.mjs" "${agent}")" || exit 2
+    IFS=$'\t' read -r worker_dir prefix credential_prefix <<< "${worker_info}"
+    [[ -n "${worker_dir}" && -n "${prefix}" && -n "${credential_prefix}" ]] || usage
     if [[ "${action}" == kv ]]; then
       require CLOUDFLARE_ACCOUNT_ID
       require CLOUDFLARE_API_TOKEN
