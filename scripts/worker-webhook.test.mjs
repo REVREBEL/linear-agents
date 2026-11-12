@@ -5,6 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { stripTypeScriptTypes } from "node:module";
+import { requireWorker } from "./agent-worker-registry.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const helperSource = await fs.readFile(path.join(root, "shared/oauth-errors.ts"), "utf8");
@@ -25,14 +26,20 @@ const cloudflareStubUrl = "data:text/javascript;base64," + Buffer.from(
 ).toString("base64");
 
 async function loadWorker(agent) {
-  const file = path.join(root, `linear-${agent}-worker/src/index.ts`);
+  const file = path.join(requireWorker(agent).workerDir, "src/index.ts");
   let js = transpile(await fs.readFile(file, "utf8"));
   js = js.replaceAll('"../../shared/oauth-errors"', JSON.stringify(helperUrl));
+  js = js.replaceAll('"../../../../../shared/oauth-errors"', JSON.stringify(helperUrl));
   js = js.replaceAll('"../../shared/delivery-coordinator"', JSON.stringify(deliveryUrl));
+  js = js.replaceAll('"../../../../../shared/delivery-coordinator"', JSON.stringify(deliveryUrl));
   js = js.replaceAll('"../../shared/oauth-installation"', JSON.stringify(installationUrl));
+  js = js.replaceAll('"../../../../../shared/oauth-installation"', JSON.stringify(installationUrl));
   js = js.replaceAll('"../../shared/bridge-access-token"', JSON.stringify(bridgeTokenUrl));
+  js = js.replaceAll('"../../../../../shared/bridge-access-token"', JSON.stringify(bridgeTokenUrl));
   js = js.replaceAll('"../../shared/github-app-homepage"', JSON.stringify(githubHomeUrl));
+  js = js.replaceAll('"../../../../../shared/github-app-homepage"', JSON.stringify(githubHomeUrl));
   js = js.replaceAll('"../../shared/agent-location"', JSON.stringify(agentLocationUrl));
+  js = js.replaceAll('"../../../../../shared/agent-location"', JSON.stringify(agentLocationUrl));
   js = js.replaceAll('"cloudflare:workers"', JSON.stringify(cloudflareStubUrl));
   return await import("data:text/javascript;base64," + Buffer.from(js).toString("base64"));
 }

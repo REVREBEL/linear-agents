@@ -17,6 +17,7 @@ test("all seven existing Worker paths resolve through the registry without reloc
     assert.ok(readFileSync(path.join(entry.workerDir,entry.worker.config),"utf8").includes("LINEAR_DATA"));
   }
   assert.equal(requireWorker("chatgpt-cli").linear.credentialPrefix,"CHATGPT");
+  assert.equal(requireWorker("mock").worker.directory,"agents/coding/mock/worker");
   assert.notEqual(requireWorker("chatgpt").worker.kvEnv,requireWorker("chatgpt-cli").worker.kvEnv);
 });
 

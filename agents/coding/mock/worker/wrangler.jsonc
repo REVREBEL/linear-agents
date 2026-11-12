@@ -1,5 +1,5 @@
 {
-  "$schema": "../node_modules/wrangler/config-schema.json",
+  "$schema": "../../../../node_modules/wrangler/config-schema.json",
   "name": "linear-mock-agent",
   "main": "src/index.ts",
   "routes": [{ "pattern": "linear-${MOCK_PREFIX}.${DOMAIN}", "custom_domain": true }],
