@@ -611,10 +611,12 @@ async function handleLinearWebhook(
     if (agentSessionId) {
       const message = describePrelaunchFailure(error);
       try {
+        const failureId = await stableActivityId(`handoff-failed:${installation.organizationId}:${webhookId}:${agentSessionId}`);
         await activityOnce(`handoff-failed:${webhookId}:${agentSessionId}`, () => createAgentActivity(
           installation.accessToken,
           agentSessionId,
           { type: "error", body: message },
+          failureId,
         ));
       } catch (activityError) {
         // Keep the webhook retryable even if Linear activity publication fails.
@@ -864,6 +866,18 @@ function describePrelaunchFailure(error: unknown): string {
   return "Antigravity handoff is not confirmed: the bridge request timed out or failed before acknowledgment. The job may have been accepted; inspect the ledger before replaying.";
 }
 
+// Linear accepts a caller-assigned UUIDv4 for agentActivityCreate. A stable
+// ID prevents duplicate visible failures if a callback succeeds but the Worker
+// loses its acknowledgment before persisting its local delivery marker.
+async function stableActivityId(key: string): Promise<string> {
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)));
+  const bytes = hash.slice(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+}
+
 type AgentActivityContent =
   | { type: "thought"; body: string }
   | { type: "response"; body: string }
@@ -874,6 +888,7 @@ async function createAgentActivity(
   accessToken: string,
   agentSessionId: string,
   content: AgentActivityContent,
+  activityId?: string,
 ): Promise<void> {
   const result = await linearGraphql<{
     agentActivityCreate: {
@@ -890,6 +905,7 @@ async function createAgentActivity(
       input: {
         agentSessionId,
         content,
+        ...(activityId ? { id: activityId } : {}),
       },
     },
   );
