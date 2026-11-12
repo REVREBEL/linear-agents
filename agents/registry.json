@@ -12,7 +12,8 @@
         "serviceTemplate": "linear-antigravity-agent",
         "prefixEnv": "ANTIGRAVITY_PREFIX",
         "kvEnv": "ANTIGRAVITY_KV_NAMESPACE_ID",
-        "durableObject": "DELIVERY_COORDINATOR"
+        "durableObject": "DELIVERY_COORDINATOR",
+        "deployedName": "linear-antigravity-agent"
       },
       "execution": {
         "runtime": "agy",
@@ -135,7 +136,8 @@
         "serviceTemplate": "linear-chatgpt-agent",
         "prefixEnv": "CHATGPT_PREFIX",
         "kvEnv": "CHATGPT_KV_NAMESPACE_ID",
-        "durableObject": "DELIVERY_COORDINATOR"
+        "durableObject": "DELIVERY_COORDINATOR",
+        "deployedName": "linear-chatgpt-agent"
       },
       "execution": {
         "runtime": "review-inbox",
@@ -187,7 +189,8 @@
         "serviceTemplate": "linear-chatgpt-agent",
         "prefixEnv": "CHATGPT_CLI_PREFIX",
         "kvEnv": "CHATGPT_CLI_KV_NAMESPACE_ID",
-        "durableObject": "DELIVERY_COORDINATOR"
+        "durableObject": "DELIVERY_COORDINATOR",
+        "deployedName": "linear-chatgpt-cli-agent"
       },
       "execution": {
         "runtime": "opencode",
@@ -243,7 +246,8 @@
         "serviceTemplate": "linear-gemini-agent",
         "prefixEnv": "GEMINI_PREFIX",
         "kvEnv": "GEMINI_KV_NAMESPACE_ID",
-        "durableObject": "DELIVERY_COORDINATOR"
+        "durableObject": "DELIVERY_COORDINATOR",
+        "deployedName": "linear-gemini-agent"
       },
       "execution": {
         "runtime": "gemini",
@@ -299,7 +303,8 @@
         "serviceTemplate": "linear-gemma-agent",
         "prefixEnv": "GEMMA_PREFIX",
         "kvEnv": "GEMMA_KV_NAMESPACE_ID",
-        "durableObject": "DELIVERY_COORDINATOR"
+        "durableObject": "DELIVERY_COORDINATOR",
+        "deployedName": "linear-gemma-agent"
       },
       "execution": {
         "runtime": "gemma",
@@ -351,7 +356,8 @@
         "serviceTemplate": "linear-trae-agent",
         "prefixEnv": "TRAE_PREFIX",
         "kvEnv": "TRAE_KV_NAMESPACE_ID",
-        "durableObject": "DELIVERY_COORDINATOR"
+        "durableObject": "DELIVERY_COORDINATOR",
+        "deployedName": "linear-trae-agent"
       },
       "execution": {
         "runtime": "trae",
@@ -407,7 +413,8 @@
         "serviceTemplate": "linear-mock-agent",
         "prefixEnv": "MOCK_PREFIX",
         "kvEnv": "MOCK_KV_NAMESPACE_ID",
-        "durableObject": "DELIVERY_COORDINATOR"
+        "durableObject": "DELIVERY_COORDINATOR",
+        "deployedName": "linear-mock-agent"
       },
       "execution": {
         "runtime": "mock",
