@@ -778,9 +778,14 @@ async function forwardToMacBridge(
 }
 
 class BridgeDeliveryError extends Error {
-  constructor(readonly status: number, readonly bridgeError: string) {
+  readonly status: number;
+  readonly bridgeError: string;
+
+  constructor(status: number, bridgeError: string) {
     super(`Bridge rejected delivery (HTTP ${status})`);
     this.name = "BridgeDeliveryError";
+    this.status = status;
+    this.bridgeError = bridgeError;
   }
 }
 
