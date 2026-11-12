@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 // The bridge never receives the key or the other 1Password credentials.
 const PROVIDER_VARIABLES = Object.freeze({
   openrouter: "OPENROUTER_API_KEY",
+  litellm: "GEMMA_LITELLM_API_KEY",
 });
 const runFile = promisify(nodeExecFile);
 
