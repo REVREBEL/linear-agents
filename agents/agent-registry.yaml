@@ -1,0 +1,986 @@
+# REVREBEL Linear Agent Bridge - Master Agent Registry Catalog
+# Schema reference: agent-registry-schema.json
+version: "1.0.0"
+lastUpdated: "2026-11-12T13:10:00-08:00"
+totalAgents: 14
+catalogDescription: "Consolidated model profiles, execution bindings, routing parameters, and security policies for all candidate and local bridge agents."
+
+agents:
+  - id: beam
+    displayName: Reflection AI Beam 1.0
+    description: 501B sparse MoE coding model (23B active parameters per token) with an
+      effective 1M token context window under Apache 2.0. Built by Reflection AI and available
+      via NVFP4/FP8 checkpoints or hosted cloud inference. Serves as a frontier autonomous
+      coding agent for deep multi-file refactoring, long-horizon feature implementation,
+      and CI repair in headless Ubuntu OpenCode.
+    kind: cli_agent
+    provider: Reflection AI
+    model: reflection/Beam-1.0-501B-A23B-NVFP4
+    runtime:
+      transport: headless_cli
+      executionHost: ubuntu_agent_server
+      binaryPath: /usr/local/bin/opencode
+      commandTemplate: opencode run --model reflection/Beam-1.0-501B-A23B-NVFP4 --format
+        json --prompt {{PROMPT}}
+      workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+    linearBridge:
+      workerHost: linear-beam.revrebel.io
+      tunnelHost: beam-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      - session_prompted
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Goal-based
+      domain: Frontier software engineering, complex multi-file refactoring, and automated
+        testing
+      top_skills:
+      - Long-horizon repository refactoring
+      - Complex TypeScript & Python implementation
+      - Automated test generation & CI failure repair
+    routing:
+      complexity_tier: High
+      semantic_description: Frontier open-weight autonomous software development, multi-file
+        code editing, and complex bug remediation within approved Git worktrees.
+      supported_intents:
+      - implement_feature
+      - complex_refactor
+      - fix_ci_failure
+      - generate_tests
+      task_ratings:
+        feature_implementation: 4.9
+        multi_file_refactor: 4.9
+        test_generation: 4.8
+    execution:
+      autonomy_level: Executor
+      memory_scope: session_isolated
+      sessionContinuityFlag: --session-id {{SESSION_ID}}
+      quotaPolicy:
+        resumable: true
+        defaultRetryDelayMs: 3600000
+        maxRetryAttempts: 3
+        exhaustionPattern: 429|quota_exceeded|rate_limited
+    permissions:
+      sourceWrite: true
+      directoryMoves: true
+      gitCommit: true
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Medium
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist:
+      - github/list_commits
+      - github/get_diff
+      handoff_targets:
+      - gemma-4-31b
+      - human_supervisor
+
+  - id: codegeex4
+    displayName: Zhipu AI CodeGeeX4 9B (Ollama)
+    description: THUDM / Zhipu AI 9B dense code model based on GLM-4-9B, featuring a 128K
+      context window hosted locally on-premises via Ollama. Highly efficient (~5.5 GB
+      VRAM footprint) and specialized for multi-file repo Q&A, localized bug fixing, and
+      multilingual code translation with zero cloud data transmission.
+    kind: cli_agent
+    provider: THUDM / Zhipu AI / Ollama
+    model: ollama/codegeex4:9b
+    runtime:
+      transport: headless_cli
+      executionHost: ubuntu_agent_server
+      binaryPath: /usr/local/bin/opencode
+      commandTemplate: opencode run --model ollama/codegeex4:9b --format json --prompt
+        {{PROMPT}}
+      workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+    linearBridge:
+      workerHost: linear-codegeex4.revrebel.io
+      tunnelHost: codegeex4-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      - session_prompted
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Goal-based
+      domain: Air-gapped repository question answering, localized code repair, and multi-language
+        translation
+      top_skills:
+      - 128K local repository context navigation
+      - Python, TypeScript & Go code repair
+      - Air-gapped security & data isolation
+    routing:
+      complexity_tier: Medium
+      semantic_description: High-context local offline code agent with 128K context for
+        safe multi-file analysis, repo comprehension, and localized code repairs.
+      supported_intents:
+      - repo_qa
+      - localized_bug_fix
+      - code_translation
+      - offline_investigation
+      task_ratings:
+        repo_comprehension: 4.6
+        offline_privacy: 5.0
+        bug_fixing: 4.3
+    execution:
+      autonomy_level: Supervised
+      memory_scope: session_isolated
+      sessionContinuityFlag: --session-id {{SESSION_ID}}
+      quotaPolicy:
+        resumable: false
+        defaultRetryDelayMs: 10000
+        maxRetryAttempts: 2
+        exhaustionPattern: connection_refused|out_of_memory
+    permissions:
+      sourceWrite: true
+      directoryMoves: false
+      gitCommit: true
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Low
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist:
+      - github/list_commits
+      handoff_targets:
+      - north-mini-code
+      - human_supervisor
+
+  - id: codellama
+    displayName: Meta Code Llama (Ollama)
+    description: Meta open-weights code generation model hosted on-premises via local
+      Ollama. Operates as an air-gapped, privacy-sensitive local fallback on the Ubuntu
+      runner for syntax generation, unit test authoring, and script repairs without outbound
+      internet or cloud API transmission.
+    kind: cli_agent
+    provider: Meta / Ollama
+    model: ollama/codellama:latest
+    runtime:
+      transport: headless_cli
+      executionHost: ubuntu_agent_server
+      binaryPath: /usr/local/bin/opencode
+      commandTemplate: opencode run --model ollama/codellama:latest --format json --prompt
+        {{PROMPT}}
+      workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+    linearBridge:
+      workerHost: linear-codellama.revrebel.io
+      tunnelHost: codellama-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      - session_prompted
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Goal-based
+      domain: On-premise air-gapped code generation, unit test writing, and localized
+        scripting
+      top_skills:
+      - Air-gapped offline code generation
+      - Python & TypeScript unit test creation
+      - Docstring & documentation generation
+    routing:
+      complexity_tier: Medium
+      semantic_description: Local air-gapped coding agent for sensitive repositories,
+        private data pipelines, and offline backup when cloud inference is unavailable.
+      supported_intents:
+      - generate_unit_tests
+      - offline_code_edit
+      - document_code
+      - fix_local_syntax
+      task_ratings:
+        unit_test_generation: 4.2
+        offline_privacy: 5.0
+        multi_file_refactor: 3.0
+    execution:
+      autonomy_level: Supervised
+      memory_scope: session_isolated
+      sessionContinuityFlag: --session-id {{SESSION_ID}}
+      quotaPolicy:
+        resumable: false
+        defaultRetryDelayMs: 10000
+        maxRetryAttempts: 2
+        exhaustionPattern: connection_refused|out_of_memory
+    permissions:
+      sourceWrite: true
+      directoryMoves: false
+      gitCommit: true
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Low
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist:
+      - github/list_commits
+      handoff_targets:
+      - codegeex4
+      - human_supervisor
+
+  - id: codestral-fim
+    displayName: Mistral Codestral Latest (FIM)
+    description: Mistral AI 22B specialized code model featuring a 128K context window
+      and support for 80+ programming languages. Accessed via direct API endpoint for
+      Fill-in-the-Middle (prefix + suffix) surgical code insertion, method body synthesis,
+      and automated inline patch generation.
+    kind: llm
+    provider: Mistral AI
+    model: text-completion-codestral/codestral-latest
+    runtime:
+      transport: direct_api
+      executionHost: cloudflare_worker_or_ubuntu
+      workspaceRoot: /var/agent-bridge/fim
+    linearBridge:
+      workerHost: linear-codestral.revrebel.io
+      tunnelHost: codestral-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Reflex
+      domain: Fill-in-the-Middle (FIM) surgical code completion, inline infill, and patch
+        application
+      top_skills:
+      - FIM prefix/suffix code insertion
+      - Single-function & method body generation
+      - Automated linting patch synthesis
+    routing:
+      complexity_tier: Low
+      semantic_description: Non-conversational infill completion engine for surgical code
+        insertions between prefix and suffix snippets.
+      supported_intents:
+      - fim_code_completion
+      - generate_method_body
+      - synthesize_patch
+      task_ratings:
+        fim_completion: 4.9
+        single_function_generation: 4.8
+        multi_file_orchestration: 1.2
+    execution:
+      autonomy_level: Recommender
+      memory_scope: stateless
+      quotaPolicy:
+        resumable: false
+        defaultRetryDelayMs: 30000
+        maxRetryAttempts: 2
+        exhaustionPattern: 429|rate_limited
+    permissions:
+      sourceWrite: false
+      directoryMoves: false
+      gitCommit: false
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Low
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist: []
+      handoff_targets:
+      - north-mini-code
+      - flint
+
+  - id: crouton-alpha
+    displayName: Stealth Crouton Alpha
+    description: Experimental preview model featuring a 1,048,576 token context window
+      (943K max output) and multimodal inputs. Evaluated exclusively for large sanitized
+      document synthesis, comprehensive technical specification indexing, and bounded
+      research experiments under strict data isolation.
+    kind: llm
+    provider: Stealth
+    model: stealth/crouton-alpha
+    runtime:
+      transport: direct_api
+      executionHost: ubuntu_research_sandbox
+      workspaceRoot: /var/agent-bridge/research-sandbox
+    linearBridge:
+      workerHost: linear-research.revrebel.io
+      tunnelHost: research-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Learning
+      domain: Large-context document analysis, public spec synthesis, and technical research
+      top_skills:
+      - 1M token context processing
+      - Multi-document technical specification synthesis
+      - Complex architectural document summarization
+    routing:
+      complexity_tier: High
+      semantic_description: Experimental high-context document analysis for public or
+        sanitized documents only. Strictly prohibited from receiving private user data
+        or credentials.
+      supported_intents:
+      - synthesize_large_spec
+      - analyze_multi_document_pack
+      - summarize_architecture_corpus
+      task_ratings:
+        large_context_synthesis: 4.8
+        autonomous_coding: 3.2
+    execution:
+      autonomy_level: Recommender
+      memory_scope: stateless
+      quotaPolicy:
+        resumable: false
+        defaultRetryDelayMs: 300000
+        maxRetryAttempts: 2
+        exhaustionPattern: 429|rate_limited|unavailable
+    permissions:
+      sourceWrite: false
+      directoryMoves: false
+      gitCommit: false
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: High
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      - DATABASE_URL
+      mcpToolAllowlist: []
+      handoff_targets:
+      - human_supervisor
+
+  - id: ernie-5-5-flash
+    displayName: Baidu ERNIE 5.5 Flash Preview
+    description: 280B sparse MoE model (14B active parameters per token) featuring a 1,024,000
+      token context window. Built by Baidu and accessible on OpenRouter and Qianfan. Designed
+      for high-speed agentic execution, rapid repo scanning, iterative multi-file edits,
+      and long-horizon planning in headless Ubuntu OpenCode.
+    kind: cli_agent
+    provider: Baidu
+    model: baidu/ernie-5.5-flash-preview:free
+    runtime:
+      transport: headless_cli
+      executionHost: ubuntu_agent_server
+      binaryPath: /usr/local/bin/opencode
+      commandTemplate: opencode run --model baidu/ernie-5.5-flash-preview:free --format
+        json --prompt {{PROMPT}}
+      workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+    linearBridge:
+      workerHost: linear-ernie.revrebel.io
+      tunnelHost: ernie-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      - session_prompted
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Goal-based
+      domain: High-throughput autonomous coding, massive repository context ingestion,
+        and script generation
+      top_skills:
+      - 1M-token codebase indexing & cross-file search
+      - Fast iterative script & test authoring
+      - Full-stack web application development
+    routing:
+      complexity_tier: High
+      semantic_description: High-speed autonomous coding with 1M token context for whole-repo
+        analysis, multi-file code modifications, and pipeline debugging.
+      supported_intents:
+      - scan_codebase
+      - implement_feature
+      - fix_bug
+      - generate_scripts
+      task_ratings:
+        codebase_search: 4.9
+        feature_implementation: 4.6
+        scripting: 4.7
+    execution:
+      autonomy_level: Executor
+      memory_scope: session_isolated
+      sessionContinuityFlag: --session-id {{SESSION_ID}}
+      quotaPolicy:
+        resumable: true
+        defaultRetryDelayMs: 3600000
+        maxRetryAttempts: 3
+        exhaustionPattern: 429|quota_exceeded|daily_limit_reached
+    permissions:
+      sourceWrite: true
+      directoryMoves: true
+      gitCommit: true
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Medium
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist:
+      - github/list_commits
+      - github/get_diff
+      handoff_targets:
+      - north-mini-code
+      - human_supervisor
+
+  - id: flint
+    displayName: Recursive Flint 1.0
+    description: Open-weight 39.8B MoE coding model (2.5B active parameters per token)
+      with a 262K context window, built by Recursive's Eureka Machine. Scores 89.7% on
+      SWE-bench Pro v2 and 54.9% on Terminal-Bench 2.1, optimized for multi-turn terminal
+      commands, complex codebase investigations, and multi-file refactoring.
+    kind: cli_agent
+    provider: Recursive
+    model: recursive/flint-v1.0:free
+    runtime:
+      transport: headless_cli
+      executionHost: ubuntu_agent_server
+      binaryPath: /usr/local/bin/opencode
+      commandTemplate: opencode run --model recursive/flint-v1.0:free --format json --prompt
+        {{PROMPT}}
+      workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+    linearBridge:
+      workerHost: linear-flint.revrebel.io
+      tunnelHost: flint-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      - session_prompted
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Goal-based
+      domain: Autonomous codebase navigation, deep debugging, and multi-turn refactoring
+      top_skills:
+      - Terminal-Bench command execution
+      - SWE-bench multi-file codebase navigation
+      - Concurrency and backend refactoring
+    routing:
+      complexity_tier: High
+      semantic_description: Multi-turn codebase search, architectural bug diagnosis, and
+        complex feature implementation.
+      supported_intents:
+      - diagnose_bug
+      - complex_refactor
+      - multi_file_edit
+      - investigate_codebase
+      task_ratings:
+        bug_investigation: 4.9
+        multi_file_refactor: 4.8
+        test_repair: 4.4
+    execution:
+      autonomy_level: Executor
+      memory_scope: session_isolated
+      sessionContinuityFlag: --session-id {{SESSION_ID}}
+      quotaPolicy:
+        resumable: true
+        defaultRetryDelayMs: 3600000
+        maxRetryAttempts: 3
+        exhaustionPattern: 429|resource_exhausted
+    permissions:
+      sourceWrite: true
+      directoryMoves: true
+      gitCommit: true
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Medium
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist:
+      - github/list_commits
+      - github/get_diff
+      handoff_targets:
+      - gemma-4-31b
+      - human_supervisor
+
+  - id: gemma-4-31b
+    displayName: Google Gemma 4 31B Instruct
+    description: Dense 30.7B multimodal instruction-tuned model by Google DeepMind with
+      a 262K context window under Apache 2.0. Supports text, image, and video inputs with
+      native tool calling and structured outputs, suited for architectural reviews, UI
+      screenshot verification, and cross-repo engineering.
+    kind: cli_agent
+    provider: Google
+    model: google/gemma-4-31b-it:free
+    runtime:
+      transport: headless_cli
+      executionHost: ubuntu_agent_server
+      binaryPath: /usr/local/bin/opencode
+      commandTemplate: opencode run --model google/gemma-4-31b-it:free --format json --prompt
+        {{PROMPT}}
+      workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+    linearBridge:
+      workerHost: linear-gemma.revrebel.io
+      tunnelHost: gemma-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      - session_prompted
+      - code_review_verdict
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Goal-based
+      domain: Multimodal systems architecture, UI/frontend review, and comprehensive code
+        verification
+      top_skills:
+      - UI screenshot and visual regression analysis
+      - Cross-cutting architectural reviews
+      - Structured tool calling and specification authoring
+    routing:
+      complexity_tier: High
+      semantic_description: Multimodal engineering analysis, Storybook and UI visual review,
+        system architecture verification, and documentation.
+      supported_intents:
+      - review_pull_request
+      - analyze_ui_screenshot
+      - review_architecture
+      - generate_specifications
+      task_ratings:
+        code_review: 4.8
+        multimodal_ui_review: 4.9
+        architecture_design: 4.7
+    execution:
+      autonomy_level: Executor
+      memory_scope: session_isolated
+      sessionContinuityFlag: --session-id {{SESSION_ID}}
+      quotaPolicy:
+        resumable: true
+        defaultRetryDelayMs: 3600000
+        maxRetryAttempts: 3
+        exhaustionPattern: 429|quota_exceeded
+    permissions:
+      sourceWrite: true
+      directoryMoves: false
+      gitCommit: true
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Low
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist:
+      - github/list_commits
+      - github/get_diff
+      handoff_targets:
+      - human_supervisor
+
+  - id: inkling-2-small
+    displayName: Thinking Machines Inkling 2 Small
+    description: 594B sparse MoE multimodal model (17B active parameters per token) by
+      Thinking Machines Lab (Mira Murati) featuring a 1M context window (256K on serverless).
+      Reaches 86.3% on SWE-Bench Pro v2 (Hard) and 71.8% on EnterpriseBench-CoreCraft.
+      Operates as an elite reasoning and multimodal coding agent for deep architectural
+      reviews, complex issue decomposition, and high-complexity Linear tickets.
+    kind: cli_agent
+    provider: Thinking Machines Lab
+    model: thinkingmachines/inkling-2-small:free
+    runtime:
+      transport: headless_cli
+      executionHost: ubuntu_agent_server
+      binaryPath: /usr/local/bin/opencode
+      commandTemplate: opencode run --model thinkingmachines/inkling-2-small:free --format
+        json --prompt {{PROMPT}}
+      workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+    linearBridge:
+      workerHost: linear-inkling.revrebel.io
+      tunnelHost: inkling-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      - session_prompted
+      - code_review_verdict
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Goal-based
+      domain: Complex systems reasoning, multimodal UI analysis, and enterprise-grade
+        software engineering
+      top_skills:
+      - Deep reasoning & root-cause decomposition
+      - Hard SWE-bench bug resolution
+      - Multimodal UI & architectural review
+    routing:
+      complexity_tier: High
+      semantic_description: Elite multimodal reasoning and autonomous engineering for
+        complex bug diagnosis, architectural validation, and multi-system refactoring.
+      supported_intents:
+      - solve_hard_bug
+      - architectural_review
+      - implement_complex_feature
+      - analyze_visual_regressions
+      task_ratings:
+        hard_bug_resolution: 4.9
+        architectural_review: 4.9
+        multimodal_analysis: 4.8
+    execution:
+      autonomy_level: Executor
+      memory_scope: session_isolated
+      sessionContinuityFlag: --session-id {{SESSION_ID}}
+      quotaPolicy:
+        resumable: true
+        defaultRetryDelayMs: 7200000
+        maxRetryAttempts: 3
+        exhaustionPattern: 429|quota_exceeded|timeout
+    permissions:
+      sourceWrite: true
+      directoryMoves: true
+      gitCommit: true
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Medium
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist:
+      - github/list_commits
+      - github/get_diff
+      handoff_targets:
+      - gemma-4-31b
+      - human_supervisor
+
+  - id: liquid-lfm3
+    displayName: LiquidAI LFM3 1.7B
+    description: Compact 1.7B text model featuring a 256K context window and ultra-fast
+      throughput (190 tokens/sec), post-trained for reasoning-before-answering and structured
+      tool output. Acts as a control-plane advisor for webhook classification, triage,
+      checkpoint extraction, and recovery packaging.
+    kind: llm
+    provider: LiquidAI
+    model: liquid/lfm-3-1.7b:free
+    runtime:
+      transport: direct_api
+      executionHost: cloudflare_worker_or_ubuntu
+      workspaceRoot: /var/agent-bridge/control-plane
+    linearBridge:
+      workerHost: linear-control.revrebel.io
+      tunnelHost: control-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      - session_prompted
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Utility-based
+      domain: Edge control-plane triage, event extraction, and workflow routing
+      top_skills:
+      - Normalized webhook payload classification
+      - Structured checkpoint summary extraction
+      - Error taxonomy categorization
+    routing:
+      complexity_tier: Low
+      semantic_description: Advisory routing, structured event triage, and recovery packet
+        preparation. Not authorized for standalone multi-file code editing.
+      supported_intents:
+      - classify_webhook
+      - summarize_checkpoint
+      - extract_linear_metadata
+      - suggest_agent_routing
+      task_ratings:
+        event_classification: 4.8
+        metadata_extraction: 4.7
+        code_generation: 2.1
+    execution:
+      autonomy_level: Recommender
+      memory_scope: stateless
+      quotaPolicy:
+        resumable: false
+        defaultRetryDelayMs: 60000
+        maxRetryAttempts: 2
+        exhaustionPattern: 429|rate_limited
+    permissions:
+      sourceWrite: false
+      directoryMoves: false
+      gitCommit: false
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Low
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      mcpToolAllowlist: []
+      handoff_targets:
+      - north-mini-code
+      - flint
+      - gemma-4-31b
+
+  - id: mistral-moderation
+    displayName: Mistral Moderation 2603
+    description: Mistral AI dedicated safety and content policy classifier featuring a
+      128K context window. Deployed as a zero-shot guardrail filter within Cloudflare
+      Workers and the bridge gateway to inspect inbound Linear issue descriptions, PR
+      review comments, and external webhook payloads for policy compliance and sensitive
+      credential leakage.
+    kind: llm
+    provider: Mistral AI
+    model: mistral/mistral-moderation-2603
+    runtime:
+      transport: direct_api
+      executionHost: cloudflare_worker_adapter
+      workspaceRoot: /var/agent-bridge/guardrails
+    linearBridge:
+      workerHost: linear-moderation.revrebel.io
+      tunnelHost: moderation-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Reflex
+      domain: Safety guardrails, webhook content filtering, and policy compliance verification
+      top_skills:
+      - Inbound webhook payload moderation
+      - Content policy compliance verification
+      - Sensitive credential and token leakage detection
+    routing:
+      complexity_tier: Low
+      semantic_description: Safety and content policy classifier evaluating inbound Linear
+        issue descriptions and webhook events before agent dispatch.
+      supported_intents:
+      - moderate_linear_issue
+      - check_content_policy
+      - filter_webhook_payload
+      task_ratings:
+        content_moderation: 4.9
+        policy_verification: 4.8
+        code_authoring: 1.0
+    execution:
+      autonomy_level: Read-only
+      memory_scope: stateless
+      quotaPolicy:
+        resumable: false
+        defaultRetryDelayMs: 30000
+        maxRetryAttempts: 2
+        exhaustionPattern: 429|rate_limited
+    permissions:
+      sourceWrite: false
+      directoryMoves: false
+      gitCommit: false
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Low
+      credential_model: system_standing
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist: []
+      handoff_targets:
+      - human_supervisor
+
+  - id: nemotron-rerank-vl
+    displayName: NVIDIA Llama Nemotron Rerank VL 1B V2
+    description: 1.7B multimodal cross-encoder reranking model by NVIDIA for vision RAG
+      pipelines. Evaluates relevance of document pages (text, tables, charts, PDF page
+      images) against text queries, outputting logit scores to refine candidate sets retrieved
+      from PostgreSQL 17 + pgvector/memU without generating text.
+    kind: llm
+    provider: NVIDIA
+    model: nvidia/llama-nemotron-rerank-vl-1b-v2:free
+    runtime:
+      transport: direct_api
+      executionHost: ubuntu_memory_pipeline
+      workspaceRoot: /var/agent-bridge/memory
+    linearBridge:
+      workerHost: linear-memory.revrebel.io
+      tunnelHost: memory-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Reflex
+      domain: Multimodal document and long-term memory retrieval reranking
+      top_skills:
+      - Cross-encoder query-document relevance scoring
+      - Multimodal table and chart ranking
+      - PDF page relevance evaluation
+    routing:
+      complexity_tier: Low
+      semantic_description: Reranks retrieved candidate chunks and visual documents from
+        pgvector/memU before prompt assembly.
+      supported_intents:
+      - rerank_memory_candidates
+      - score_document_relevance
+      - rank_visual_artifacts
+      task_ratings:
+        document_reranking: 4.9
+        visual_table_relevance: 4.8
+    execution:
+      autonomy_level: Read-only
+      memory_scope: stateless
+      quotaPolicy:
+        resumable: false
+        defaultRetryDelayMs: 60000
+        maxRetryAttempts: 2
+        exhaustionPattern: 429|rate_limited
+    permissions:
+      sourceWrite: false
+      directoryMoves: false
+      gitCommit: false
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Low
+      credential_model: system_standing
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - DATABASE_URL
+      mcpToolAllowlist: []
+      handoff_targets: []
+
+  - id: north-mini-code
+    displayName: Cohere North Mini Code
+    description: Cohere 30B MoE model (3B active parameters) with a 256K context window
+      under Apache 2.0. Tailored for agentic coding, Git worktree inspection, bug repairs,
+      unit test generation, and automated CI fixes in headless Ubuntu OpenCode.
+    kind: cli_agent
+    provider: Cohere
+    model: cohere/north-mini-code:free
+    runtime:
+      transport: headless_cli
+      executionHost: ubuntu_agent_server
+      binaryPath: /usr/local/bin/opencode
+      commandTemplate: opencode run --model cohere/north-mini-code:free --format json
+        --prompt {{PROMPT}}
+      workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+    linearBridge:
+      workerHost: linear-north.revrebel.io
+      tunnelHost: north-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      - session_prompted
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Goal-based
+      domain: Software engineering, CI repair, and automated testing
+      top_skills:
+      - Git commit investigation & diff inspection
+      - TypeScript & Python unit test repair
+      - CI/CD workflow failure resolution
+    routing:
+      complexity_tier: High
+      semantic_description: Autonomous software development, test generation, and bounded
+        file editing within approved Git worktrees.
+      supported_intents:
+      - implement_feature
+      - fix_ci_failure
+      - write_tests
+      - refactor_module
+      task_ratings:
+        ci_repair: 4.8
+        test_generation: 4.7
+        feature_implementation: 4.3
+    execution:
+      autonomy_level: Executor
+      memory_scope: session_isolated
+      sessionContinuityFlag: --session-id {{SESSION_ID}}
+      quotaPolicy:
+        resumable: true
+        defaultRetryDelayMs: 3600000
+        maxRetryAttempts: 3
+        exhaustionPattern: 429|quota_exceeded|rate_limited
+    permissions:
+      sourceWrite: true
+      directoryMoves: true
+      gitCommit: true
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Medium
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist:
+      - github/list_commits
+      - github/get_diff
+      handoff_targets:
+      - gemma-4-31b
+      - human_supervisor
+
+  - id: parallel-decisions-fast
+    displayName: Parallel Decisions Fast
+    description: Web-grounded typed decision service (non-generative text) operating via
+      specialized endpoint POST /api/v1/decisions. Evaluates state (text or JSON) across
+      up to 100 typed questions (noul probabilities, choice distributions, rubric scores)
+      using live web evidence and citations to detect upstream API and webhook breaking
+      changes.
+    kind: llm
+    provider: Parallel
+    model: parallel/decisions-fast:free
+    runtime:
+      transport: direct_api
+      executionHost: cloudflare_worker_adapter
+      workspaceRoot: /var/agent-bridge/decisions
+    linearBridge:
+      workerHost: linear-decisions.revrebel.io
+      tunnelHost: decisions-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Reflex
+      domain: Upstream API verification, webhook contract monitoring, and policy guardrails
+      top_skills:
+      - Upstream changelog and breaking change detection
+      - Live web-grounded fact checking and entity verification
+      - Guardrail rubric scoring with source citations
+    routing:
+      complexity_tier: Medium
+      semantic_description: External evidence-backed decision scoring for API changes,
+        library deprecations, and upstream Linear/Cloudflare updates.
+      supported_intents:
+      - verify_upstream_api_change
+      - audit_guardrail_safety
+      - check_policy_compliance
+      task_ratings:
+        breaking_change_detection: 4.9
+        web_evidence_verification: 4.8
+        code_authoring: 1.0
+    execution:
+      autonomy_level: Read-only
+      memory_scope: stateless
+      quotaPolicy:
+        resumable: false
+        defaultRetryDelayMs: 120000
+        maxRetryAttempts: 2
+        exhaustionPattern: 429|rate_limited
+    permissions:
+      sourceWrite: false
+      directoryMoves: false
+      gitCommit: false
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Low
+      credential_model: system_standing
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      mcpToolAllowlist: []
+      handoff_targets:
+      - human_supervisor

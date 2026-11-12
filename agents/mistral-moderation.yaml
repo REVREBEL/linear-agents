@@ -1,0 +1,64 @@
+id: mistral-moderation
+displayName: Mistral Moderation 2603
+description: Mistral AI dedicated safety and content policy classifier featuring a
+  128K context window. Deployed as a zero-shot guardrail filter within Cloudflare
+  Workers and the bridge gateway to inspect inbound Linear issue descriptions, PR
+  review comments, and external webhook payloads for policy compliance and sensitive
+  credential leakage.
+kind: llm
+provider: Mistral AI
+model: mistral/mistral-moderation-2603
+runtime:
+  transport: direct_api
+  executionHost: cloudflare_worker_adapter
+  workspaceRoot: /var/agent-bridge/guardrails
+linearBridge:
+  workerHost: linear-moderation.revrebel.io
+  tunnelHost: moderation-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Reflex
+  domain: Safety guardrails, webhook content filtering, and policy compliance verification
+  top_skills:
+  - Inbound webhook payload moderation
+  - Content policy compliance verification
+  - Sensitive credential and token leakage detection
+routing:
+  complexity_tier: Low
+  semantic_description: Safety and content policy classifier evaluating inbound Linear
+    issue descriptions and webhook events before agent dispatch.
+  supported_intents:
+  - moderate_linear_issue
+  - check_content_policy
+  - filter_webhook_payload
+  task_ratings:
+    content_moderation: 4.9
+    policy_verification: 4.8
+    code_authoring: 1.0
+execution:
+  autonomy_level: Read-only
+  memory_scope: stateless
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 30000
+    maxRetryAttempts: 2
+    exhaustionPattern: 429|rate_limited
+permissions:
+  sourceWrite: false
+  directoryMoves: false
+  gitCommit: false
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: system_standing
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist: []
+  handoff_targets:
+  - human_supervisor

@@ -1,0 +1,74 @@
+id: beam
+displayName: Reflection AI Beam 1.0
+description: 501B sparse MoE coding model (23B active parameters per token) with an
+  effective 1M token context window under Apache 2.0. Built by Reflection AI and available
+  via NVFP4/FP8 checkpoints or hosted cloud inference. Serves as a frontier autonomous
+  coding agent for deep multi-file refactoring, long-horizon feature implementation,
+  and CI repair in headless Ubuntu OpenCode.
+kind: cli_agent
+provider: Reflection AI
+model: reflection/Beam-1.0-501B-A23B-NVFP4
+runtime:
+  transport: headless_cli
+  executionHost: ubuntu_agent_server
+  binaryPath: /usr/local/bin/opencode
+  commandTemplate: opencode run --model reflection/Beam-1.0-501B-A23B-NVFP4 --format
+    json --prompt {{PROMPT}}
+  workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+linearBridge:
+  workerHost: linear-beam.revrebel.io
+  tunnelHost: beam-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  - session_prompted
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Goal-based
+  domain: Frontier software engineering, complex multi-file refactoring, and automated
+    testing
+  top_skills:
+  - Long-horizon repository refactoring
+  - Complex TypeScript & Python implementation
+  - Automated test generation & CI failure repair
+routing:
+  complexity_tier: High
+  semantic_description: Frontier open-weight autonomous software development, multi-file
+    code editing, and complex bug remediation within approved Git worktrees.
+  supported_intents:
+  - implement_feature
+  - complex_refactor
+  - fix_ci_failure
+  - generate_tests
+  task_ratings:
+    feature_implementation: 4.9
+    multi_file_refactor: 4.9
+    test_generation: 4.8
+execution:
+  autonomy_level: Executor
+  memory_scope: session_isolated
+  sessionContinuityFlag: --session-id {{SESSION_ID}}
+  quotaPolicy:
+    resumable: true
+    defaultRetryDelayMs: 3600000
+    maxRetryAttempts: 3
+    exhaustionPattern: 429|quota_exceeded|rate_limited
+permissions:
+  sourceWrite: true
+  directoryMoves: true
+  gitCommit: true
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Medium
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist:
+  - github/list_commits
+  - github/get_diff
+  handoff_targets:
+  - gemma-4-31b
+  - human_supervisor
