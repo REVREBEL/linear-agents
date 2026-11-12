@@ -805,6 +805,7 @@ async function forwardToMacBridge(
       "x-linear-webhook-id": webhookId,
     },
     body: JSON.stringify(bridgeJob),
+    signal: AbortSignal.timeout(12000),
   });
 
   const responseBody = await response.text();
@@ -846,18 +847,21 @@ class BridgeDeliveryError extends Error {
 // Only publish recognized, redacted failure details. Arbitrary upstream errors
 // can contain paths, credentials or tool output and must never go to Linear.
 function describePrelaunchFailure(error: unknown): string {
-  const prefix = "Antigravity did not start. ";
   if (error instanceof BridgeDeliveryError) {
+    const prefix = "Antigravity launch was rejected by the bridge. ";
     const unmapped = /^Unmapped Linear project: ([0-9a-f-]{36})$/i.exec(error.bridgeError.trim());
     if (unmapped) {
-      return prefix + `The bridge has no routing entry for Linear project ${unmapped[1]}. Delivery was rejected (HTTP ${error.status}); the task will be retried.`;
+      return prefix + `The bridge has no routing entry for Linear project ${unmapped[1]}. The job is unrouted and requires operator reconciliation before work can start.`;
     }
     if (error.bridgeError.startsWith("Cannot load routing config ")) {
-      return prefix + `The bridge could not load its routing configuration (HTTP ${error.status}). Delivery will be retried.`;
+      return prefix + `The bridge could not load its routing configuration (HTTP ${error.status}). Check configuration and reconcile the pending job.`;
     }
-    return prefix + `The bridge rejected delivery (HTTP ${error.status}). The task remains pending for retry; check bridge logs for the exact cause.`;
+    if (/^Expected one mapped initiative for project [0-9a-f-]{36}, found 0;/.test(error.bridgeError)) {
+      return prefix + "The Worker could not supply a verified initiative membership. Check the association lookup and reconcile the unrouted job.";
+    }
+    return prefix + `Delivery rejected (HTTP ${error.status}). Check the local job ledger; failed/unrouted records may require manual reconciliation.`;
   }
-  return prefix + "The bridge was unreachable or the delivery request failed. The task remains pending for retry; check Worker and bridge logs.";
+  return "Antigravity handoff is not confirmed: the bridge request timed out or failed before acknowledgment. The job may have been accepted; inspect the ledger before replaying.";
 }
 
 type AgentActivityContent =
@@ -994,6 +998,7 @@ async function linearGraphql<T>(
       "authorization": `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(8000),
   });
 
   const body = (await response.json()) as {
