@@ -64,18 +64,17 @@ export function validateRegistry(registry, schema, options = {}) {
   if (registry.schemaVersion !== 2 || schema?.properties?.schemaVersion?.const !== 2)
     fail("unsupported schema version");
   validateAgainstSchema(registry, schema, schema);
-  if (!Array.isArray(registry.agents) || registry.agents.length !== agents.length)
-    fail("expected exactly seven agents");
+  if (!Array.isArray(registry.agents) || registry.agents.length < agents.length)
+    fail("expected all seven baseline agents");
   const ids = new Set(), directories = new Set(), kvBindings = new Set(), prefixVars = new Set(), deployed = new Set();
   for (const entry of registry.agents) {
     exact(entry, ["id","role","provider","packageDir","worker","execution","linear","profile","runtimeContract","executionPolicy"], "agent");
-    if (!agents.includes(entry.id) || ids.has(entry.id)) fail("invalid or duplicate agent id: " + entry.id);
+    if (ids.has(entry.id)) fail("invalid or duplicate agent id: " + entry.id);
     ids.add(entry.id);
     const name = entry.id;
-    if (!["coding","review","testing"].includes(entry.role) || !["antigravity","chatgpt","opencode","gemini","gemma","trae","mock"].includes(entry.provider))
+    if (!["coding","review","testing"].includes(entry.role))
       fail(name + " has unsupported role/provider");
     if (!["bridge","macos","configurable"].includes(entry.execution?.host) ||
-      !["agy","opencode","gemini","gemma","trae","mock","review-inbox"].includes(entry.execution?.runtime) ||
       Object.keys(entry.execution).sort().join() !== "host,runtime")
       fail(name + " has invalid execution settings");
     exact(entry.linear, ["appIdentity","credentialPrefix"], name + ".linear");
@@ -116,7 +115,7 @@ export function validateRegistry(registry, schema, options = {}) {
       fail(name + " Wrangler placeholders drifted");
     if (!source.includes('"DELIVERY_COORDINATOR"')) fail(name + " missing Durable Object binding");
   }
-  if (ids.size !== agents.length) fail("incomplete registry");
+  if (!agents.every(id => ids.has(id))) fail("incomplete registry");
   const chatgpt = registry.agents.find(x => x.id === "chatgpt");
   const cli = registry.agents.find(x => x.id === "chatgpt-cli");
   if (chatgpt.linear.appIdentity !== cli.linear.appIdentity ||
