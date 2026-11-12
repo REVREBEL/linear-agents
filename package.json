@@ -6,7 +6,7 @@
     "linear-antigravity-worker",
     "linear-chatgpt-worker",
     "linear-chatgpt-cli-worker",
-    "linear-gemini-worker",
+    "agents/coding/gemini/worker",
     "linear-trae-worker",
     "agents/coding/mock/worker"
   ],

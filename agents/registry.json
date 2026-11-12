@@ -242,9 +242,9 @@
       "id": "gemini",
       "role": "coding",
       "provider": "gemini",
-      "packageDir": "linear-gemini-worker",
+      "packageDir": "agents/coding/gemini",
       "worker": {
-        "directory": "linear-gemini-worker",
+        "directory": "agents/coding/gemini/worker",
         "config": "wrangler.jsonc",
         "serviceTemplate": "linear-gemini-agent",
         "prefixEnv": "GEMINI_PREFIX",

@@ -1,7 +1,7 @@
 /** @format */
 
 {
-  "$schema": "../node_modules/wrangler/config-schema.json",
+  "$schema": "../../../../node_modules/wrangler/config-schema.json",
   "name": "linear-gemini-agent",
   "main": "src/index.ts",
   "routes": [{ "pattern": "linear-${GEMINI_PREFIX}.${DOMAIN}", "custom_domain": true }],
