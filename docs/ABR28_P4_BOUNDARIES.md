@@ -6,8 +6,11 @@ This change begins the bridge decomposition without relocating or changing mutab
 
 - `routing/host-routing.mjs` owns execution-host label interpretation, trusted macOS project scope mapping, and SSH configuration validation.
 - `jobs/ordered-progress.mjs` owns per-process asynchronous progress ordering.
+- `jobs/job-store.mjs` is the canonical filesystem-backed job ledger implementation, preserving the exact public API, record formats, atomic claims and transition semantics from the legacy module.
 
 The former module entrypoints `linear-agent-bridge/host-routing.mjs` and `linear-agent-bridge/ordered-progress.mjs` remain as pure re-export compatibility shims. No duplicated state or independent implementation exists behind the legacy imports. The main server imports the canonical modules directly, and `ssh-dispatch.mjs` imports canonical host routing directly.
+
+The legacy `linear-agent-bridge/job-store.mjs` is likewise a pure `createJobStore` re-export. Its module path continues working with the canonical function identity; only implementation source is relocated.
 
 ## Runtime invariants
 
