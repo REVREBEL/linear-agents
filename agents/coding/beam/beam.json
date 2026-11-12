@@ -1,0 +1,16 @@
+{
+  "id": "beam",
+  "displayName": "Beam",
+  "kind": "coding-evaluation",
+  "provider": "openrouter",
+  "model": "opencode_go/beam-free",
+  "runtime": "openrouter-agent-sdk",
+  "permissions": {
+    "workspace": "write",
+    "githubWrite": true,
+    "linearWrite": true,
+    "deployment": true
+  },
+  "linearAgentApp": null,
+  "status": "isolated-evaluation"
+}

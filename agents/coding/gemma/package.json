@@ -1,0 +1,15 @@
+{
+  "name": "@revrebel/gemma-evaluation",
+  "private": true,
+  "type": "module",
+  "description": "Gemma OpenRouter Agent SDK coding runner for disposable development checkouts",
+  "scripts": {
+    "test": "node --test ./inventory.test.mjs ./dev-tools.test.mjs",
+    "evaluate": "node ./evaluate.mjs"
+  },
+  "dependencies": {
+    "@openrouter/agent": "0.11.0",
+    "zod": "4.6.7",
+    "openai": "7.52.0"
+  }
+}
