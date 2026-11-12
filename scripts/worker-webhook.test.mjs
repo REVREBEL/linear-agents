@@ -158,6 +158,73 @@ test("antigravity: resolves initiative membership from association records when 
   } finally { globalThis.fetch = oldFetch; }
 });
 
+test("antigravity: unauthorized initiative association defers verified project routing to bridge", { concurrency: false }, async () => {
+  const worker = await loadWorker("antigravity");
+  const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(worker, config);
+  const request = await signedEvent("initiative-association-authorization");
+  const oldFetch = globalThis.fetch;
+  let dispatched;
+  try {
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes("api.linear.app/graphql")) {
+        const body = JSON.parse(String(options.body));
+        if (body.query.includes("AgentActivityCreate"))
+          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        if (body.query.includes("BridgeIssueRouting"))
+          return Response.json({ data: { issue: { project: {
+            id: "eaf694c0-6845-473c-a102-bb1a1729f4bc", name: "Agent Bridge | Core",
+            initiatives: { nodes: [] },
+          }, labels: { nodes: [] } } } });
+        if (body.query.includes("BridgeProjectInitiatives"))
+          return Response.json({ errors: [{ message: "Forbidden" }] });
+        throw Error("Unexpected GraphQL operation");
+      }
+      if (String(url).includes("bridge.test")) {
+        dispatched = JSON.parse(String(options.body));
+        return Response.json({ ok: true, accepted: true }, { status: 202 });
+      }
+      throw Error("Unexpected URL");
+    };
+    const response = await worker.default.fetch(request(), config, {});
+    assert.equal(response.status, 200);
+    assert.equal(dispatched.routing.projectId, "eaf694c0-6845-473c-a102-bb1a1729f4bc");
+    assert.deepEqual(dispatched.routing.initiativeIds, []);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("antigravity: non-authorization initiative lookup errors remain retryable", { concurrency: false }, async () => {
+  const worker = await loadWorker("antigravity");
+  const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(worker, config);
+  const request = await signedEvent("initiative-association-timeout");
+  const oldFetch = globalThis.fetch;
+  let bridgeCalls = 0;
+  try {
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes("api.linear.app/graphql")) {
+        const body = JSON.parse(String(options.body));
+        if (body.query.includes("AgentActivityCreate"))
+          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        if (body.query.includes("BridgeIssueRouting"))
+          return Response.json({ data: { issue: { project: {
+            id: "eaf694c0-6845-473c-a102-bb1a1729f4bc", name: "Agent Bridge | Core",
+            initiatives: { nodes: [] },
+          }, labels: { nodes: [] } } } });
+        if (body.query.includes("BridgeProjectInitiatives"))
+          return Response.json({ errors: [{ message: "Service unavailable" }] });
+      }
+      if (String(url).includes("bridge.test")) bridgeCalls++;
+      throw Error("Unexpected URL");
+    };
+    const response = await worker.default.fetch(request(), config, {});
+    assert.equal(response.status, 503);
+    assert.equal(bridgeCalls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
 test("antigravity: nested session issue ID is used for routing", { concurrency: false }, async () => {
   const workerModule = await loadWorker("antigravity");
   const store = kv({ "installation:org": installed(Date.now() + 3600000) });

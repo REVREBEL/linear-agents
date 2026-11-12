@@ -1560,13 +1560,22 @@ async function resolveJobRoute(job) {
   }
   const project = config.projects?.[projectId];
   if (!project) return { ok: false, error: `Unmapped Linear project: ${projectId}` };
-  const matches = initiativeIds.filter(id => config.initiatives?.[id] && (!project.initiativeId || project.initiativeId === id));
+  // An app-actor OAuth token may be allowed to read Issue.project but denied
+  // the initiativeToProjects connection. Use only a previously configured
+  // project-to-initiative mapping, never a guessed initiative or repository.
+  // Do not override any nonempty Linear membership list: conflicting data
+  // must continue to fail closed.
+  const effectiveInitiativeIds = initiativeIds.length === 0 &&
+    typeof project.initiativeId === "string" &&
+    config.initiatives?.[project.initiativeId]
+    ? [project.initiativeId] : initiativeIds;
+  const matches = effectiveInitiativeIds.filter(id => config.initiatives?.[id] && (!project.initiativeId || project.initiativeId === id));
   let initiativeId = null;
   let repoName;
   if (project.repository) {
     // Standalone projects must explicitly declare their repository. If an
     // initiative is also configured, refuse a conflicting repository mapping.
-    if (project.initiativeId && !initiativeIds.includes(project.initiativeId)) {
+    if (project.initiativeId && !effectiveInitiativeIds.includes(project.initiativeId)) {
       return { ok: false, error: `Required initiative missing for project ${projectId}` };
     }
     if (matches.length > 1) {

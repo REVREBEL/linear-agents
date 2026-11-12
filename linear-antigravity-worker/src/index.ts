@@ -570,11 +570,26 @@ async function handleLinearWebhook(
           }`, { issueId });
         if (result.issue?.project?.id) {
           enrichmentStage = "initiative_associations";
-          const initiativeIds = await resolveProjectInitiativeIds(
-            installation.accessToken,
-            result.issue.project.id,
-            result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
-          );
+          const directInitiativeIds = result.issue.project.initiatives?.nodes?.map(item => item.id) || [];
+          let initiativeIds: string[];
+          try {
+            initiativeIds = await resolveProjectInitiativeIds(
+              installation.accessToken,
+              result.issue.project.id,
+              directInitiativeIds,
+            );
+          } catch (associationError) {
+            // Some app-actor tokens can read the issue/project but cannot enumerate
+            // initiativeToProjects. The Ubuntu bridge owns the exact project-to-
+            // initiative mapping; let it reconcile an empty list, never invent IDs.
+            // All other errors remain retryable rather than disguising outages.
+            const message = associationError instanceof Error ? associationError.message : "";
+            if (!/401|403|unauthorized|unauthenticated|forbidden/i.test(message)) throw associationError;
+            initiativeIds = [];
+            console.warn("Linear initiative association lookup unauthorized; deferring to explicit bridge project mapping", {
+              issueId, projectId: result.issue.project.id,
+            });
+          }
           // An empty, verified initiative list is valid for standalone projects.
           // Ubuntu's explicit routing registry decides whether it requires an
           // initiative or has a project.repository mapping.
