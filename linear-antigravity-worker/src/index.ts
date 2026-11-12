@@ -570,16 +570,15 @@ async function handleLinearWebhook(
             result.issue.project.id,
             result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
           );
-          if (initiativeIds.length === 0) {
-            routeFailure = "missing_initiative";
-          } else {
-            routing = {
-              projectId: result.issue.project.id,
-              projectName: result.issue.project.name,
-              initiativeIds,
-              agentLocation: issueAgentLocation(result.issue.labels?.nodes),
-            };
-          }
+          // An empty, verified initiative list is valid for standalone projects.
+          // Ubuntu's explicit routing registry decides whether it requires an
+          // initiative or has a project.repository mapping.
+          routing = {
+            projectId: result.issue.project.id,
+            projectName: result.issue.project.name,
+            initiativeIds,
+            agentLocation: issueAgentLocation(result.issue.labels?.nodes),
+          };
         } else {
           routeFailure = "missing_project";
         }
