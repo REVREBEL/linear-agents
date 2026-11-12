@@ -30,15 +30,15 @@ test("unlisted provider cannot invoke shell or read secrets", async () => {
   assert.equal(called, false);
 });
 
-test("LiteLLM gets only its dedicated proxy credential", async () => {
+test("LiteLLM loads only a distinct scoped client key", async () => {
   const key = await loadGemmaProviderKey("litellm", {
     execFile: async (_bin, args) => {
-      assert.match(args[1], /LITELLM_API_KEY/);
-      assert.doesNotMatch(args[1], /OPENROUTER_API_KEY/);
-      return { stdout: "litellm-proxy-token" };
+      assert.match(args[1], /GEMMA_LITELLM_API_KEY/);
+      assert.doesNotMatch(args[1], /OPENROUTER_API_KEY|LITELLM_MASTER_KEY/);
+      return { stdout: "scoped-proxy-client-key" };
     },
   });
-  assert.equal(key, "litellm-proxy-token");
+  assert.equal(key, "scoped-proxy-client-key");
 });
 
 test("loader failure, empty value and oversized output fail closed", async () => {

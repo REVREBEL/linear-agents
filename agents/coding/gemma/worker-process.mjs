@@ -22,6 +22,8 @@ async function main() {
     // Reject remote endpoints before ever loading the proxy credential.
     validateLiteLLMConfig({ baseUrl: job.baseUrl, model: job.model, apiKey: "validation-only" });
   }
+  // LiteLLM requires a distinct, scoped client credential. Never use the
+  // upstream OpenRouter key or the proxy's privileged master key here.
   const apiKey = await loadGemmaProviderKey(provider);
   const result = await runGemmaDevelopment({
     workspace: job.workspace, prompt: job.prompt, provider, model: job.model,
