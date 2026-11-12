@@ -3,8 +3,9 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { getWorkerRegistry } from "./agent-worker-registry.mjs";
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
-const agents = ["antigravity", "chatgpt", "chatgpt-cli", "gemini", "gemma", "trae", "mock"];
+const agents = [...getWorkerRegistry(root).keys()];
 const [command, requestedArg, ...extra] = process.argv.slice(2);
 const requested = requestedArg || (command === "types" ? "all" : undefined);
 if (!["dev", "deploy", "install", "types", "kv"].includes(command) || !requested || (requested !== "all" && !agents.includes(requested))) {

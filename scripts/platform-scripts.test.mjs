@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scripts = [
   "scripts/bridge.sh",
+  "scripts/with-env.sh",
   "scripts/platform-setup.sh",
   "scripts/macos/bridge.sh",
   "scripts/macos/install-launchagent.sh",
@@ -32,7 +33,9 @@ test("npm bridge commands use platform launcher", () => {
 });
 test("ChatGPT CLI deployment shares the registered ChatGPT Linear app credentials", () => {
   const script = readFileSync(path.join(root, "scripts/with-env.sh"), "utf8");
-  assert.ok(script.includes('if [[ "${agent}" == "chatgpt-cli" ]]; then credential_prefix="CHATGPT"; fi'));
+  assert.ok(script.includes('registry-worker-info.mjs'), "Worker selection must use the registry adapter");
+  const registry = JSON.parse(readFileSync(path.join(root, "agents/registry.json"), "utf8"));
+  assert.equal(registry.agents.find(a => a.id === "chatgpt-cli").linear.credentialPrefix, "CHATGPT");
   for (const key of ["LINEAR_CLIENT_ID", "LINEAR_CLIENT_SECRET", "LINEAR_WEBHOOK_SECRET"]) {
     assert.ok(script.includes('sourced_key="${credential_prefix}_${key}"'));
     assert.ok(script.includes('require "${credential_prefix}_' + key + '"'));

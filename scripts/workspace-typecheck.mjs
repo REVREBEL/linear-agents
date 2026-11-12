@@ -3,13 +3,14 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { getWorkerRegistry } from "./agent-worker-registry.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const tsc = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "tsc.cmd" : "tsc");
-const agents = ["antigravity", "chatgpt", "chatgpt-cli", "gemini", "gemma", "trae", "mock"];
+const agents = getWorkerRegistry(root);
 
-for (const agent of agents) {
-  const project = path.join(root, agent === "gemma" ? "agents/coding/gemma/worker" : `linear-${agent}-worker`, "tsconfig.json");
+for (const [agent, entry] of agents) {
+  const project = path.join(entry.workerDir, "tsconfig.json");
   console.log(`Checking ${agent}...`);
   const result = spawnSync(tsc, ["--project", project, "--noEmit"], {
     cwd: root,
@@ -21,4 +22,4 @@ for (const agent of agents) {
   }
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
-console.log("All seven Worker TypeScript checks passed.");
+console.log(`All ${agents.size} Worker TypeScript checks passed.`);

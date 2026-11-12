@@ -2,19 +2,22 @@
 // Generate an untracked, deployment-specific Wrangler config from .env exports.
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { getWorkerRegistry, REPO_ROOT } from "./agent-worker-registry.mjs";
 const [agent, output] = process.argv.slice(2);
-if (!/^(antigravity|chatgpt|chatgpt-cli|gemini|gemma|trae|mock)$/.test(agent) || !output) throw Error("Usage: node render-wrangler.mjs <agent> <output>");
-const key=agent.toUpperCase().replaceAll('-', '_'), domain=process.env.DOMAIN;
+const registry = getWorkerRegistry(process.env.REPO_ROOT || REPO_ROOT);
+if (!registry.has(agent) || !output) throw Error("Usage: node render-wrangler.mjs <registered-agent> <output>");
+const entry = registry.get(agent);
+const key=entry.worker.prefixEnv.replace(/_PREFIX$/, ""), domain=process.env.DOMAIN;
 const prefix=process.env[`${key}_PREFIX`] || agent;
 if (!/^[a-z][a-z0-9-]*$/.test(prefix)) throw Error(`Invalid ${key}_PREFIX`);
 const serviceName=`linear-${prefix}-agent`;
 const host=`${prefix}-agent.${domain}`;
 const webhookUrl=`https://linear-${prefix}.${domain}/webhook`;
-const id=process.env[`${key}_KV_NAMESPACE_ID`];
+const id=process.env[entry.worker.kvEnv];
 if (!domain || !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(domain)) throw Error("DOMAIN must be a valid configured domain");
 if (!id || !/^[a-f0-9]{32}$/i.test(id)) throw Error(`Missing or invalid ${key}_KV_NAMESPACE_ID in .env`);
-const folder=path.join(process.env.REPO_ROOT || process.cwd(), agent === "gemma" ? "agents/coding/gemma/worker" : `linear-${agent}-worker`);
-let config=readFileSync(path.join(folder,"wrangler.jsonc"),"utf8");
+const folder=entry.workerDir;
+let config=readFileSync(path.join(folder,entry.worker.config),"utf8");
 const replacements=[
   [/"id"\s*:\s*"[^"]+"/, `"id": "${id}"`],
   [/"name"\s*:\s*"[^"]+"/, `"name": "${serviceName}"`],
