@@ -750,7 +750,12 @@ async function resolveProjectInitiativeIds(
   let after: string | null = null;
   const matches = new Set<string>();
   for (let page = 0; page < 20; page++) {
-    const result = await linearGraphql<{
+    const result: {
+      initiativeToProjects: {
+        nodes: Array<{ project: { id: string } | null; initiative: { id: string } | null }>;
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      };
+    } = await linearGraphql<{
       initiativeToProjects: {
         nodes: Array<{ project: { id: string } | null; initiative: { id: string } | null }>;
         pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -762,7 +767,7 @@ async function resolveProjectInitiativeIds(
           pageInfo { hasNextPage endCursor }
         }
       }`, { after });
-    const connection = result.initiativeToProjects;
+    const connection: typeof result.initiativeToProjects = result.initiativeToProjects;
     if (!connection || !Array.isArray(connection.nodes) || !connection.pageInfo) {
       throw new Error("Linear initiative association response malformed");
     }
@@ -773,7 +778,7 @@ async function resolveProjectInitiativeIds(
       }
     }
     if (!connection.pageInfo.hasNextPage) return [...matches];
-    const next = connection.pageInfo.endCursor;
+    const next: string | null = connection.pageInfo.endCursor;
     if (!next || next === after) throw new Error("Linear initiative association cursor invalid");
     after = next;
   }
