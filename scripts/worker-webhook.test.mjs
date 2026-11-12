@@ -293,6 +293,47 @@ test("antigravity: no session ID still enriches routing from a verified issue", 
   } finally { globalThis.fetch = oldFetch; }
 });
 
+test("antigravity: identifies failing Linear initiative association stage without logging raw errors", { concurrency: false }, async () => {
+  const worker = await loadWorker("antigravity");
+  const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(worker, config);
+  const request = await signedEvent("schema-diagnostic");
+  const oldFetch = globalThis.fetch;
+  const oldError = console.error;
+  const logs = [];
+  let bridgeCalls = 0;
+  try {
+    console.error = (...args) => logs.push(args);
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes("api.linear.app/graphql")) {
+        const body = JSON.parse(String(options.body));
+        if (body.query.includes("AgentActivityCreate"))
+          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        if (body.query.includes("BridgeIssueRouting"))
+          return Response.json({ data: { issue: {
+            project: { id: "eaf694c0-6845-473c-a102-bb1a1729f4bc", name: "Agent Bridge",
+              initiatives: { nodes: [] } }, labels: { nodes: [] } } } });
+        return Response.json({ errors: [{ message: "Cannot query field 'initiativeToProjects' on type 'Query'. secret=should-not-log" }] });
+      }
+      if (String(url).includes("bridge.test")) {
+        bridgeCalls++;
+        return Response.json({ ok: true, accepted: true }, { status: 202 });
+      }
+      throw Error("Unexpected URL");
+    };
+    const response = await worker.default.fetch(request(), config, {});
+    assert.equal(response.status, 503);
+    assert.equal(bridgeCalls, 0);
+    const entry = logs.find(args => args[0] === "Unable to enrich routing metadata");
+    assert.ok(entry);
+    assert.equal(entry[1].stage, "initiative_associations");
+    assert.equal(entry[1].category, "schema_validation");
+    assert.equal(entry[1].field, "initiativeToProjects");
+    assert.ok(!JSON.stringify(logs).includes("should-not-log"));
+  } finally { globalThis.fetch = oldFetch; console.error = oldError; }
+});
+
 test("antigravity: completion callback preserves explicit activity type", { concurrency: false }, async () => {
   const workerModule = await loadWorker("antigravity");
   const store = kv({
