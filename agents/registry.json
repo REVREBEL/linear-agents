@@ -130,9 +130,9 @@
       "id": "chatgpt",
       "role": "review",
       "provider": "chatgpt",
-      "packageDir": "linear-chatgpt-worker",
+      "packageDir": "agents/bridge/reviewer",
       "worker": {
-        "directory": "linear-chatgpt-worker",
+        "directory": "agents/bridge/reviewer/worker",
         "config": "wrangler.jsonc",
         "serviceTemplate": "linear-chatgpt-agent",
         "prefixEnv": "CHATGPT_PREFIX",
