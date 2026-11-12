@@ -7,6 +7,7 @@ The canonical machine-readable profile and execution contract lives in `agents/r
 - `profile` is discovery metadata: human name, kind, selectable model, taxonomy, supported intents, and ratings with provenance. User-supplied ratings are *not* measured benchmarks.
 - `runtimeContract` describes transport and target host, executable environment-variable reference, *argv tokens* (not a shell command), workspace environment variable, conversation continuation, optional quota metadata, and optional Linear/Cloudflare callbacks.
 - `executionPolicy` describes intended autonomy, scoped memory, permissions, credential stripping, approved tool identifiers, and post-execution handoff destinations.
+- `packageDir` is the existing physical package path, checked against the repository filesystem. `targetPackageDir` is the intended P3 destination and does not need to exist until that stage. This explicitly prevents the v2 layout plan from masquerading as a deployable location.
 - The existing `worker`, `linear`, and `execution` fields remain for P1 backward compatibility. `worker.serviceTemplate` records the tracked template's static name; `worker.deployedName` records the intended live Worker deployment name. For ChatGPT CLI these differ today; do **not** rename deployments to make the template match.
 - The same Linear OAuth application can be shared by different workers without conflating Cloudflare Worker name, KV namespace, or conversation role.
 
@@ -20,7 +21,7 @@ The canonical machine-readable profile and execution contract lives in `agents/r
 
 ## Validation
 
-Run `npm run registry:validate` for the schema subset and the checked-in Wrangler identity contract. The dependency-free validator walks every v2 nested field (types, enums, required keys, disallowed extras, numeric bounds, patterns, and references), checks for duplicate IDs/Worker paths/bindings/deployed names and rejects unexpected deployed names. `npm run bridge:test` and `npm run test:reliability` include registry regression tests.
+Run `npm run registry:validate` for the schema subset and the checked-in Wrangler identity contract. The dependency-free validator walks every v2 nested field (types, enums, required keys, disallowed extras, numeric bounds, patterns, and references), checks current package directory existence, Wrangler JSONC structure and KV/DO bindings, and duplicate IDs/Worker paths/bindings/deployed names and rejects unexpected deployed names. `npm run bridge:test` and `npm run test:reliability` include registry regression tests.
 
 The schema is Draft 2020-12, but the local validator intentionally supports only keywords actually used here; adding schema keywords requires extending the validator or introducing a full standards-compliant JSON Schema validator. CI should also explicitly invoke `npm run registry:validate` in P1. The registry file does not alter the existing worker path lookups until P1 integrates it into scripts and lockfile/workspaces.
 
