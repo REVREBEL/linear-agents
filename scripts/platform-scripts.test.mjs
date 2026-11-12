@@ -70,6 +70,22 @@ test("Linux status uses configured loopback host and port", () => {
     assert.match(result.stdout, /http:\/\/localhost:9091\/health/);
   } finally { rmSync(temp, { recursive: true, force: true }); }
 });
+test("Linux restart uses the exact passwordless sudoers unit argument", () => {
+  if (process.platform !== "linux") return;
+  const temp = mkdtempSync(path.join(os.tmpdir(), "bridge-restart-test-"));
+  try {
+    for (const name of ["sudo", "systemctl"]) {
+      writeFileSync(path.join(temp, name), "#!/bin/sh\nprintf '%s\\n' \"$*\"\n", { mode: 0o755 });
+    }
+    const result = spawnSync("bash", [path.join(root, "scripts/bridge.sh"), "restart"], {
+      encoding: "utf8", env: { ...process.env, PATH: `${temp}:${process.env.PATH}` },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(),
+      process.getuid?.() === 0 ? "restart agent-bridge" : "-n systemctl restart agent-bridge");
+  } finally { rmSync(temp, { recursive: true, force: true }); }
+});
+
 test("Linux handoff source does not claim an unsupported automatic GitHub review", () => {
   const src = readFileSync(path.join(root, "linear-agent-bridge/agent-bridge.mjs"), "utf8");
   const guard = src.indexOf('process.env.CHATGPT_REVIEW_MODE !== "inbox" &&');
@@ -96,7 +112,7 @@ test("Linux bridge status uses systemctl and local health without modifying serv
       env: { ...process.env, LINEAR_AGENTS_ENV_FILE: envFile, PATH: `${temp}:${process.env.PATH}` },
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /systemctl status agent-bridge.service --no-pager/);
+    assert.match(result.stdout, /systemctl status agent-bridge --no-pager/);
     assert.match(result.stdout, /curl --fail --silent --show-error --max-time 5 http:\/\/127.0.0.1:8788\/health/);
   } finally {
     rmSync(temp, { recursive: true, force: true });
