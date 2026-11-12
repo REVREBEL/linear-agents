@@ -20,7 +20,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
-import { createJobStore } from "./job-store.mjs";
+import { createJobStore } from "../jobs/job-store.mjs";
 import { createSessionQueue } from "./agy-session-queue.mjs";
 import { recordResumedConversation } from "./agy-conversation-state.mjs";
 

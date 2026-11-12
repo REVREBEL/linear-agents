@@ -4,6 +4,10 @@ import { chooseExecutionHost, configuredProjectRoots, makeRemoteRoute, validateS
 import * as legacyRouting from "../linear-agent-bridge/host-routing.mjs";
 import { createOrderedProgressQueue } from "../jobs/ordered-progress.mjs";
 import { createOrderedProgressQueue as legacyOrderedProgressQueue } from "../linear-agent-bridge/ordered-progress.mjs";
+import { createJobStore } from "../jobs/job-store.mjs";
+import { createJobStore as legacyCreateJobStore } from "../linear-agent-bridge/job-store.mjs";
+import os from "node:os";
+import path from "node:path";
 
 test("P4 routing module is same function identity through legacy bridge entrypoint", () => {
   for (const [name,fn] of Object.entries({ chooseExecutionHost, configuredProjectRoots, makeRemoteRoute, validateSshSettings })) {
@@ -28,6 +32,31 @@ test("P4 uses canonical modules without relocating live job storage", async () =
   const src = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.match(src,/from "\.\.\/routing\/host-routing\.mjs"/);
   assert.match(src,/from "\.\.\/jobs\/ordered-progress\.mjs"/);
+  assert.match(src,/from "\.\.\/jobs\/job-store\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/createJobStore\(JOBS_DIR\)/);
+});
+
+test("P4 canonical ledger preserves legacy function identity and persisted records", async () => {
+  const fs = await import("node:fs/promises");
+  assert.equal(legacyCreateJobStore, createJobStore);
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-ledger-"));
+  try {
+    const current = createJobStore(root);
+    const claimed = await current.claim("delivery-123",{ issueId: "ABR-28" });
+    assert.equal(claimed.created,true);
+    const viaLegacy = legacyCreateJobStore(root);
+    const duplicate = await viaLegacy.claim("delivery-123",{ issueId:"different" });
+    assert.equal(duplicate.created,false);
+    assert.equal(duplicate.record.issueId,"ABR-28");
+    await viaLegacy.transition("delivery-123","completed",{ verification:"preserved" });
+    const replay = await current.findByIssueId("ABR-28");
+    assert.equal(replay.length,1);
+    assert.equal(replay[0].state,"completed");
+    assert.equal(replay[0].verification,"preserved");
+    const entries = await fs.readdir(path.join(root,"job-state"));
+    assert.equal(entries.length,1);
+  } finally {
+    await fs.rm(root,{ recursive:true,force:true });
+  }
 });
