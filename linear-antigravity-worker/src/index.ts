@@ -484,7 +484,7 @@ async function handleLinearWebhook(
         agentSessionId,
         {
           type: "thought",
-          body: "I’ve received the task and started working on it.",
+          body: "I’ve received the task. Validating the bridge handoff before execution starts.",
         },
       ));
 
@@ -603,7 +603,24 @@ async function handleLinearWebhook(
   try {
     await forwardToMacBridge(bridgeJob, webhookId, linearEvent, env);
   } catch (error) {
-    console.error("Failed to forward job to Mac bridge", { webhookId, error: String(error) });
+    console.error("Failed to forward job to bridge", { webhookId, error: String(error) });
+    if (agentSessionId) {
+      const message = describePrelaunchFailure(error);
+      try {
+        await activityOnce(`handoff-failed:${webhookId}:${agentSessionId}`, () => createAgentActivity(
+          installation.accessToken,
+          agentSessionId,
+          { type: "error", body: message },
+        ));
+      } catch (activityError) {
+        // Keep the webhook retryable even if Linear activity publication fails.
+        console.error("Unable to publish bridge handoff failure to Linear", {
+          webhookId,
+          agentSessionId,
+          error: activityError instanceof Error ? activityError.message : String(activityError),
+        });
+      }
+    }
     return jsonResponse({ ok: false, accepted: false, error: "Local bridge delivery failed; retry required" }, 503);
   }
   await env.LINEAR_DATA.put(dedupeKey, "accepted", { expirationTtl: 86400 });
@@ -746,10 +763,42 @@ async function forwardToMacBridge(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Mac bridge returned ${response.status}: ${responseBody.slice(0, 500)}`,
-    );
+    let bridgeError = "";
+    try {
+      const parsed: unknown = JSON.parse(responseBody);
+      if (parsed && typeof parsed === "object" && "error" in parsed) {
+        const value = (parsed as { error?: unknown }).error;
+        if (typeof value === "string") bridgeError = value;
+      }
+    } catch {
+      // Bridge responses may be non-JSON. Never forward raw bodies to Linear.
+    }
+    throw new BridgeDeliveryError(response.status, bridgeError);
   }
+}
+
+class BridgeDeliveryError extends Error {
+  constructor(readonly status: number, readonly bridgeError: string) {
+    super(`Bridge rejected delivery (HTTP ${status})`);
+    this.name = "BridgeDeliveryError";
+  }
+}
+
+// Only publish recognized, redacted failure details. Arbitrary upstream errors
+// can contain paths, credentials or tool output and must never go to Linear.
+function describePrelaunchFailure(error: unknown): string {
+  const prefix = "Antigravity did not start. ";
+  if (error instanceof BridgeDeliveryError) {
+    const unmapped = /^Unmapped Linear project: ([0-9a-f-]{36})$/i.exec(error.bridgeError.trim());
+    if (unmapped) {
+      return prefix + `The bridge has no routing entry for Linear project ${unmapped[1]}. Delivery was rejected (HTTP ${error.status}); the task will be retried.`;
+    }
+    if (error.bridgeError.startsWith("Cannot load routing config ")) {
+      return prefix + `The bridge could not load its routing configuration (HTTP ${error.status}). Delivery will be retried.`;
+    }
+    return prefix + `The bridge rejected delivery (HTTP ${error.status}). The task remains pending for retry; check bridge logs for the exact cause.`;
+  }
+  return prefix + "The bridge was unreachable or the delivery request failed. The task remains pending for retry; check Worker and bridge logs.";
 }
 
 type AgentActivityContent =
