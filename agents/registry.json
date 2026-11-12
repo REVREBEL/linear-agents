@@ -5,9 +5,9 @@
       "id": "antigravity",
       "role": "coding",
       "provider": "antigravity",
-      "packageDir": "linear-antigravity-worker",
+      "packageDir": "agents/coding/antigravity",
       "worker": {
-        "directory": "linear-antigravity-worker",
+        "directory": "agents/coding/antigravity/worker",
         "config": "wrangler.jsonc",
         "serviceTemplate": "linear-antigravity-agent",
         "prefixEnv": "ANTIGRAVITY_PREFIX",
