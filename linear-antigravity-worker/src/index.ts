@@ -551,9 +551,11 @@ async function handleLinearWebhook(
     stringValue(getNested(payload, "data", "agentSession", "issueId")) ||
     stringValue(getNested(payload, "data", "agentSession", "issue", "id"));
   let routeFailure: "missing_issue" | "missing_project" | "missing_initiative" | "query_failed" | null = null;
-  if (agentSessionId) {
-    if (!issueId) routeFailure = "missing_issue";
-    if (issueId) {
+  // Issue routing is required for every dispatched job, including webhook
+  // variants that omit the agent session ID. Session ID controls only whether
+  // an Agent Activity can be published, never whether routing is mandatory.
+  if (!issueId) routeFailure = "missing_issue";
+  if (issueId) {
       try {
         const result = await linearGraphql<{
           issue: { labels?: { nodes: LinearIssueLabel[] }; project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
@@ -591,29 +593,34 @@ async function handleLinearWebhook(
           category: "query_failed",
         });
       }
-    }
   }
 
   // Never send a malformed job to the bridge and create a permanent
   // .unrouted.json claim. Report the pre-launch failure inside Linear instead.
-  if (agentSessionId && (!routing || routeFailure)) {
+  if (!routing?.projectId || routeFailure) {
     const category = routeFailure || "missing_project";
+    console.error("Refusing job without verified Linear routing", {
+      webhookId, issueId: issueId || null, agentSessionId: agentSessionId || null,
+      linearEvent, action, category,
+    });
     const messages: Record<string, string> = {
       missing_issue: "Antigravity could not identify the Linear issue for this session.",
       missing_project: "Antigravity could not verify the Linear project associated with this issue.",
       missing_initiative: "Antigravity could not verify initiative membership for the Linear project.",
       query_failed: "Antigravity could not retrieve complete routing metadata from Linear.",
     };
-    try {
-      const failureId = await stableActivityId(`routing-enrichment:${installation.organizationId}:${webhookId}:${agentSessionId}`);
-      await activityOnce(`routing-enrichment:${webhookId}:${agentSessionId}`, () => createAgentActivity(
-        installation.accessToken,
-        agentSessionId,
-        { type: "error", body: `${messages[category]} No job was dispatched. The delivery remains retryable.` },
-        failureId,
-      ));
-    } catch {
-      console.error("Unable to publish Linear routing failure", { webhookId, agentSessionId, category });
+    if (agentSessionId) {
+      try {
+        const failureId = await stableActivityId(`routing-enrichment:${installation.organizationId}:${webhookId}:${agentSessionId}`);
+        await activityOnce(`routing-enrichment:${webhookId}:${agentSessionId}`, () => createAgentActivity(
+          installation.accessToken,
+          agentSessionId,
+          { type: "error", body: `${messages[category]} No job was dispatched. The delivery remains retryable.` },
+          failureId,
+        ));
+      } catch {
+        console.error("Unable to publish Linear routing failure", { webhookId, agentSessionId, category });
+      }
     }
     return jsonResponse({ ok: false, accepted: false, error: "Routing metadata incomplete; retry required", category }, 503);
   }
