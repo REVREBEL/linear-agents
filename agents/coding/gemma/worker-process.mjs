@@ -1,22 +1,10 @@
 #!/usr/bin/env node
 // Unprivileged development agent process. Never inherit bridge secrets.
 // Provider choice is supplied by the authenticated bridge; keys live outside Git.
-import fs from "node:fs/promises";
+import { loadGemmaProviderKey } from "./provider-key.mjs";
 import { runGemmaDevelopment } from "./dev-runner.mjs";
 import { validateLiteLLMConfig } from "../../../integrations/litellm/agent-runtime.mjs";
 
-async function readKey(provider) {
-  const keyFile = provider === "litellm"
-    ? "/home/rebel/.config/linearbridge/litellm.key"
-    : "/home/rebel/.config/linearbridge/openrouter.key";
-  const stat = await fs.lstat(keyFile);
-  if (!stat.isFile() || (stat.mode & 0o077) !== 0 || stat.uid !== process.getuid()) {
-    throw Error("Provider key file must be owned by rebel and readable only by its owner");
-  }
-  const key = (await fs.readFile(keyFile, "utf8")).trim();
-  if (!key) throw Error("Provider key file is empty");
-  return key;
-}
 async function main() {
   if (process.getuid?.() === 0 || process.env.USER !== "rebel" || process.env.HOME !== "/home/rebel") {
     throw Error("Gemma runner requires restricted rebel account");
@@ -34,7 +22,7 @@ async function main() {
     // Reject remote endpoints before ever loading the proxy credential.
     validateLiteLLMConfig({ baseUrl: job.baseUrl, model: job.model, apiKey: "validation-only" });
   }
-  const apiKey = await readKey(provider);
+  const apiKey = await loadGemmaProviderKey(provider);
   const result = await runGemmaDevelopment({
     workspace: job.workspace, prompt: job.prompt, provider, model: job.model,
     liteLLMBaseUrl: job.baseUrl, apiKey,
