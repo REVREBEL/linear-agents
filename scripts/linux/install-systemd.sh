@@ -19,7 +19,7 @@ ROOT_Q="$(quote_unit "${ROOT}")"
 HOME_Q="$(quote_unit "HOME=${BRIDGE_HOME}")"
 VOLTA_Q="$(quote_unit "VOLTA_HOME=${BRIDGE_HOME}/.volta")"
 UNIT=/etc/systemd/system/agent-bridge.service
-PATH_Q="$(quote_unit "PATH=${BRIDGE_HOME}/.volta/bin:${BRIDGE_HOME}/.bun/bin:${BRIDGE_HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")"
+PATH_Q="$(quote_unit "PATH=${BRIDGE_HOME}/.volta/bin:${BRIDGE_HOME}/.bun/bin:${BRIDGE_HOME}/.opencode/bin:${BRIDGE_HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")"
 SCRIPT_Q="$(quote_unit "${ROOT}/scripts/with-env.sh")"
 UNIT_TEXT="[Unit]
 Description=Agent Bridge
