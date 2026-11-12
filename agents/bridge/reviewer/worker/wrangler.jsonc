@@ -1,6 +1,6 @@
 /** @format */
 {
-  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "$schema": "../../../../node_modules/wrangler/config-schema.json",
   "name": "linear-chatgpt-agent",
   "main": "src/index.ts",
   "routes": [
