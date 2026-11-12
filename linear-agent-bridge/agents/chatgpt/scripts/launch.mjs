@@ -15,6 +15,9 @@ export async function checkOpenCodeReady({
     throw Error("Set CHATGPT_OPENCODE_MODEL to an authenticated openai/<model> (not local Ollama)");
   }
   if (runAsUser && !/^[a-z_][a-z0-9_-]{0,31}$/.test(runAsUser)) throw Error("Invalid CHATGPT_OPENCODE_USER");
+  if (process.platform === "linux" && runAsUser) {
+    throw Error("CHATGPT_OPENCODE_USER is unsupported on Linux; run OpenCode directly as the bridge service user");
+  }
   await fsApi.access(runAsUser ? "/usr/bin/sudo" : binary, fs.constants.X_OK);
   return true;
 }
@@ -43,6 +46,9 @@ export function buildOpenCodeLaunch({
   for (const key of ["BRIDGE_SHARED_SECRET", "LINEAR_API_KEY", "LINEAR_ACCESS_TOKEN",
     "CHATGPT_LINEAR_API_KEY", "CLOUDFLARE_API_TOKEN"]) delete childEnv[key];
   if (runAsUser && !/^[a-z_][a-z0-9_-]{0,31}$/.test(runAsUser)) throw Error("Invalid CHATGPT_OPENCODE_USER");
+  if (process.platform === "linux" && runAsUser) {
+    throw Error("CHATGPT_OPENCODE_USER is unsupported on Linux; configure OpenCode under the bridge account");
+  }
   if (runAsUser && !binary.startsWith("/")) throw Error("OPENCODE_BIN must be absolute when using CHATGPT_OPENCODE_USER");
   return { command: runAsUser ? "/usr/bin/sudo" : binary,
     args: runAsUser ? ["-n", "-H", "-u", runAsUser, "--", binary, ...args] : args,
