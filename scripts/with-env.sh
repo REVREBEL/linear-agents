@@ -87,6 +87,10 @@ case "${1:-}" in
       mock) worker_dir="${REPO_ROOT}/linear-mock-worker"; prefix="MOCK" ;;
       *) usage ;;
     esac
+    # ChatGPT review and ChatGPT CLI share one Linear app registration.
+    # They keep separate Worker endpoints and KV namespaces.
+    credential_prefix="${prefix}"
+    if [[ "${agent}" == "chatgpt-cli" ]]; then credential_prefix="CHATGPT"; fi
     if [[ "${action}" == kv ]]; then
       require CLOUDFLARE_ACCOUNT_ID
       require CLOUDFLARE_API_TOKEN
@@ -110,11 +114,11 @@ case "${1:-}" in
       require BRIDGE_SHARED_SECRET
       local key sourced_key
       for key in LINEAR_CLIENT_ID LINEAR_CLIENT_SECRET LINEAR_WEBHOOK_SECRET; do
-        sourced_key="${prefix}_${key}"
+        sourced_key="${credential_prefix}_${key}"
         require "${sourced_key}"
       done
       for key in LINEAR_CLIENT_ID LINEAR_CLIENT_SECRET LINEAR_WEBHOOK_SECRET; do
-        sourced_key="${prefix}_${key}"
+        sourced_key="${credential_prefix}_${key}"
         printf '%s' "${!sourced_key}" | "${wrangler_bin}" secret put "${key}" --config "${temp_config}"
       done
       printf '%s' "${BRIDGE_SHARED_SECRET}" | "${wrangler_bin}" secret put BRIDGE_SHARED_SECRET --config "${temp_config}"
@@ -135,9 +139,9 @@ case "${1:-}" in
       deploy)
         # Fail before deployment if secret values are missing, to avoid a partial setup.
         require BRIDGE_SHARED_SECRET
-        require "${prefix}_LINEAR_CLIENT_ID"
-        require "${prefix}_LINEAR_CLIENT_SECRET"
-        require "${prefix}_LINEAR_WEBHOOK_SECRET"
+        require "${credential_prefix}_LINEAR_CLIENT_ID"
+        require "${credential_prefix}_LINEAR_CLIENT_SECRET"
+        require "${credential_prefix}_LINEAR_WEBHOOK_SECRET"
         "${wrangler_bin}" deploy --config "${temp_config}" "$@"
         sync_worker_secrets
         ;;
@@ -152,7 +156,7 @@ case "${1:-}" in
         cleanup() { rm -f -- .dev.vars; cleanup_config; }
         trap cleanup EXIT INT TERM
         for key in LINEAR_CLIENT_ID LINEAR_CLIENT_SECRET LINEAR_WEBHOOK_SECRET; do
-          sourced_key="${prefix}_${key}"
+          sourced_key="${credential_prefix}_${key}"
           require "${sourced_key}"
           KEY="${key}" VALUE="${!sourced_key}" python3 -c 'import json,os; print(os.environ["KEY"]+"="+json.dumps(os.environ["VALUE"]))' >> .dev.vars
         done
