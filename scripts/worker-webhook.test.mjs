@@ -247,7 +247,8 @@ for (const agent of agents) {
       const retried = await worker.fetch(request(), config, {});
       assert.equal(retried.status, 200);
       assert.equal(attempts, 2);
-      assert.equal(startActivities, 1, "started activity must be posted once across retries");
+      assert.equal(startActivities, agent === "antigravity" ? 2 : 1,
+        "one receipt acknowledgment plus one failure activity for Antigravity; no duplicates on retry");
     } finally { globalThis.fetch = oldFetch; }
   });
 }
