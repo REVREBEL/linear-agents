@@ -59,12 +59,48 @@ export function validateAgainstSchema(value, node, schema, location = "$") {
 }
 
 export function parseWranglerJsonc(source) {
-  // Parse JSONC without treating URL strings as comments.
-  const tokens = source.match(/"(?:\\\\.|[^"\\\\])*"|\\/\\*[\\s\\S]*?\\*\\/|\\/\\/[^\\n]*|[^"\\/]+|\\/(?![\\/*])/g) || [];
-  const withoutComments = tokens.filter(token => !(token.startsWith("/*") || token.startsWith("//"))).join("");
-  const cleaned = withoutComments.replace(/,\\s*([}\\]])/g,"$1");
-  try { return JSON.parse(cleaned); }
-  catch(error) { fail("invalid Wrangler JSONC: " + error.message); }
+  // Preserve quoted JSON strings while removing line/block comments.
+  let text = "", inString = false, escaping = false;
+  for (let i = 0; i < source.length; i++) {
+    const current = source[i], next = source[i + 1];
+    if (inString) {
+      text += current;
+      if (escaping) escaping = false;
+      else if (current === "\\") escaping = true;
+      else if (current === '"') inString = false;
+    } else if (current === '"') {
+      inString = true; text += current;
+    } else if (current === "/" && next === "/") {
+      i += 2;
+      while (i < source.length && source[i] !== "\n") i++;
+      text += "\n";
+    } else if (current === "/" && next === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      if (i >= source.length) fail("unterminated Wrangler JSONC comment");
+      i++;
+      text += " ";
+    } else text += current;
+  }
+  // Remove trailing commas outside JSON strings.
+  let json = "", quoted = false, escape = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      json += ch;
+      if (escape) escape = false;
+      else if (ch === "\\") escape = true;
+      else if (ch === '"') quoted = false;
+    } else if (ch === '"') {
+      quoted = true; json += ch;
+    } else if (ch === ",") {
+      let j = i + 1;
+      while (j < text.length && /\s/.test(text[j])) j++;
+      if (text[j] !== "}" && text[j] !== "]") json += ch;
+    } else json += ch;
+  }
+  try { return JSON.parse(json); }
+  catch (error) { fail("invalid Wrangler JSONC: " + error.message); }
 }
 
 export function validateRegistry(registry, schema, options = {}) {
