@@ -32,11 +32,11 @@ test("npm bridge commands use platform launcher", () => {
 });
 test("ChatGPT CLI deployment shares the registered ChatGPT Linear app credentials", () => {
   const script = readFileSync(path.join(root, "scripts/with-env.sh"), "utf8");
-  assert.match(script, /if \\[\\[ "\\$\\{agent\\}" == "chatgpt-cli" \\]\\]; then credential_prefix="CHATGPT"; fi/);
-  assert.match(script, /sourced_key="\\$\\{credential_prefix\\}_\\$\\{key\\}"/);
-  assert.match(script, /require "\\$\\{credential_prefix\\}_LINEAR_CLIENT_ID"/);
-  assert.match(script, /require "\\$\\{credential_prefix\\}_LINEAR_CLIENT_SECRET"/);
-  assert.match(script, /require "\\$\\{credential_prefix\\}_LINEAR_WEBHOOK_SECRET"/);
+  assert.ok(script.includes('if [[ "${agent}" == "chatgpt-cli" ]]; then credential_prefix="CHATGPT"; fi'));
+  for (const key of ["LINEAR_CLIENT_ID", "LINEAR_CLIENT_SECRET", "LINEAR_WEBHOOK_SECRET"]) {
+    assert.ok(script.includes('sourced_key="${credential_prefix}_${key}"'));
+    assert.ok(script.includes('require "${credential_prefix}_' + key + '"'));
+  }
 });
 test("Linux installers default to print-only and identify the existing unit", () => {
   if (process.platform !== "linux") return;
