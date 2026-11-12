@@ -24,6 +24,19 @@ import { createJobStore } from "./job-store.mjs";
 import { createSessionQueue } from "./agy-session-queue.mjs";
 import { recordResumedConversation } from "./agy-conversation-state.mjs";
 
+// Linux agent processes inherit this systemd service identity. Fail before
+// accepting jobs if the bridge was accidentally launched as root or a
+// personal CLI account. Mac development remains unaffected.
+if (process.platform === "linux" && process.env.NODE_ENV === "production") {
+  const identity = os.userInfo();
+  if (identity.username !== "bridge" || process.getuid?.() === 0) {
+    throw Error("Linux Agent Bridge must run as the bridge service user (systemd User=bridge)");
+  }
+  if (process.env.CHATGPT_OPENCODE_USER) {
+    throw Error("Unset CHATGPT_OPENCODE_USER: OpenCode must execute as the bridge service user");
+  }
+}
+
 const PORT = Number(process.env.BRIDGE_PORT || 8788);
 const HOST = process.env.BRIDGE_HOST || "127.0.0.1";
 const GITHUB_CHATGPT_SELF = {

@@ -21,14 +21,20 @@ test("OpenCode uses existing ChatGPT OAuth identity with no browser or bridge se
   assert.equal(launch.options.env.CHATGPT_LINEAR_API_KEY, undefined);
   assert.equal(launch.options.env.PATH, "/usr/bin");
 });
-test("OpenCode can run under the previously authenticated Ubuntu service account", () => {
-  const launch = buildOpenCodeLaunch({
+test("Linux OpenCode must inherit the bridge service account instead of sudo switching", () => {
+  const launch = process.platform === "linux" ? null : buildOpenCodeLaunch({
     binary: "/home/opencode/.opencode/bin/opencode", runAsUser: "opencode",
     workspace: "/home/bridge/rebel/linear-agents", prompt: "Check tests",
   });
-  assert.equal(launch.command, "/usr/bin/sudo");
-  assert.deepEqual(launch.args.slice(0, 6), ["-n", "-H", "-u", "opencode", "--", "/home/opencode/.opencode/bin/opencode"]);
-  assert.throws(() => buildOpenCodeLaunch({ binary: "opencode", runAsUser: "root", workspace: "/tmp", prompt: "x" }), /absolute/);
+  if (process.platform === "linux") {
+    assert.throws(() => buildOpenCodeLaunch({
+      binary: "/home/opencode/.opencode/bin/opencode", runAsUser: "opencode",
+      workspace: "/home/bridge/rebel/linear-agents", prompt: "Check tests",
+    }), /bridge service user|bridge account/);
+  } else {
+    assert.equal(launch.command, "/usr/bin/sudo");
+  }
+  assert.throws(() => buildOpenCodeLaunch({ binary: "opencode", runAsUser: "root", workspace: "/tmp", prompt: "x" }), /absolute|bridge/);
 });
 test("JSON stream extracts a durable OpenCode session and final assistant text", async () => {
   const child = new EventEmitter();
@@ -79,10 +85,17 @@ test("preflight rejects local Ollama defaults and missing OpenCode config", asyn
   await assert.rejects(() => checkOpenCodeReady({
     binary: "", model: "openai/gpt-6", fsApi: exists,
   }), /OPENCODE_BIN/);
-  assert.equal(await checkOpenCodeReady({
-    binary: "/home/opencode/.opencode/bin/opencode", model: "openai/gpt-6",
-    runAsUser: "opencode", fsApi: exists,
-  }), true);
+  if (process.platform === "linux") {
+    await assert.rejects(() => checkOpenCodeReady({
+      binary: "/home/opencode/.opencode/bin/opencode", model: "openai/gpt-6",
+      runAsUser: "opencode", fsApi: exists,
+    }), /bridge service user/);
+  } else {
+    assert.equal(await checkOpenCodeReady({
+      binary: "/home/opencode/.opencode/bin/opencode", model: "openai/gpt-6",
+      runAsUser: "opencode", fsApi: exists,
+    }), true);
+  }
 });
 
 test("CLI progress is filtered and delivered in order without tool inputs", async () => {
