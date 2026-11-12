@@ -418,6 +418,7 @@ async function handleLinearWebhook(
     const issueId = stringValue(getNested(payload, "data", "id")) ||
       stringValue(getNested(payload, "issue", "id"));
     if (issueId) {
+      let enrichmentStage: "issue_lookup" | "initiative_associations" = "issue_lookup";
       try {
         const result = await linearGraphql<{issue:null | {id:string;state:null | {type:string}}}>(
           installation.accessToken,
@@ -567,6 +568,7 @@ async function handleLinearWebhook(
             }
           }`, { issueId });
         if (result.issue?.project?.id) {
+          enrichmentStage = "initiative_associations";
           const initiativeIds = await resolveProjectInitiativeIds(
             installation.accessToken,
             result.issue.project.id,
@@ -586,11 +588,27 @@ async function handleLinearWebhook(
         }
       } catch (error) {
         routeFailure = "query_failed";
+        // Only log a narrow, non-sensitive failure classification. Never emit
+        // OAuth tokens, HTTP response bodies, or entire GraphQL errors.
+        const message = error instanceof Error ? error.message : "";
+        const graphQlValidation = /Cannot query field|Unknown argument|Unknown type|Field .* must not have a selection|Variable .* is never used/i.test(message);
+        const category = graphQlValidation ? "schema_validation"
+          : /401|unauthorized|unauthenticated|403|forbidden/i.test(message) ? "authorization"
+          : /429|rate limit/i.test(message) ? "rate_limit"
+          : /timeout|timed out|abort/i.test(message) ? "timeout"
+          : /GraphQL request failed/i.test(message) ? "graphql_error"
+          : "request_error";
         console.error("Unable to enrich routing metadata", {
           agentSessionId,
           issueId,
-          // Do not log raw GraphQL error bodies or upstream details.
-          category: "query_failed",
+          stage: enrichmentStage,
+          category,
+          // A schema-validation failure identifies the field, but the complete
+          // upstream error may contain private data. Keep field names on a whitelist.
+          field: graphQlValidation
+            ? (["initiativeToProjects", "initiatives", "project", "labels", "issue"].find(field =>
+                new RegExp(`\\b${field}\\b`, "i").test(message)) || "unknown")
+            : undefined,
         });
       }
   }
