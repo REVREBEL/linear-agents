@@ -1,0 +1,72 @@
+id: codegeex4
+displayName: Zhipu AI CodeGeeX4 9B (Ollama)
+description: THUDM / Zhipu AI 9B dense code model based on GLM-4-9B, featuring a 128K
+  context window hosted locally on-premises via Ollama. Highly efficient (~5.5 GB
+  VRAM footprint) and specialized for multi-file repo Q&A, localized bug fixing, and
+  multilingual code translation with zero cloud data transmission.
+kind: cli_agent
+provider: THUDM / Zhipu AI / Ollama
+model: ollama/codegeex4:9b
+runtime:
+  transport: headless_cli
+  executionHost: ubuntu_agent_server
+  binaryPath: /usr/local/bin/opencode
+  commandTemplate: opencode run --model ollama/codegeex4:9b --format json --prompt
+    {{PROMPT}}
+  workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+linearBridge:
+  workerHost: linear-codegeex4.revrebel.io
+  tunnelHost: codegeex4-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  - session_prompted
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Goal-based
+  domain: Air-gapped repository question answering, localized code repair, and multi-language
+    translation
+  top_skills:
+  - 128K local repository context navigation
+  - Python, TypeScript & Go code repair
+  - Air-gapped security & data isolation
+routing:
+  complexity_tier: Medium
+  semantic_description: High-context local offline code agent with 128K context for
+    safe multi-file analysis, repo comprehension, and localized code repairs.
+  supported_intents:
+  - repo_qa
+  - localized_bug_fix
+  - code_translation
+  - offline_investigation
+  task_ratings:
+    repo_comprehension: 4.6
+    offline_privacy: 5.0
+    bug_fixing: 4.3
+execution:
+  autonomy_level: Supervised
+  memory_scope: session_isolated
+  sessionContinuityFlag: --session-id {{SESSION_ID}}
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 10000
+    maxRetryAttempts: 2
+    exhaustionPattern: connection_refused|out_of_memory
+permissions:
+  sourceWrite: true
+  directoryMoves: false
+  gitCommit: true
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist:
+  - github/list_commits
+  handoff_targets:
+  - north-mini-code
+  - human_supervisor

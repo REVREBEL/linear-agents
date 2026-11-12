@@ -1,0 +1,64 @@
+id: crouton-alpha
+displayName: Stealth Crouton Alpha
+description: Experimental preview model featuring a 1,048,576 token context window
+  (943K max output) and multimodal inputs. Evaluated exclusively for large sanitized
+  document synthesis, comprehensive technical specification indexing, and bounded
+  research experiments under strict data isolation.
+kind: llm
+provider: Stealth
+model: stealth/crouton-alpha
+runtime:
+  transport: direct_api
+  executionHost: ubuntu_research_sandbox
+  workspaceRoot: /var/agent-bridge/research-sandbox
+linearBridge:
+  workerHost: linear-research.revrebel.io
+  tunnelHost: research-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Learning
+  domain: Large-context document analysis, public spec synthesis, and technical research
+  top_skills:
+  - 1M token context processing
+  - Multi-document technical specification synthesis
+  - Complex architectural document summarization
+routing:
+  complexity_tier: High
+  semantic_description: Experimental high-context document analysis for public or
+    sanitized documents only. Strictly prohibited from receiving private user data
+    or credentials.
+  supported_intents:
+  - synthesize_large_spec
+  - analyze_multi_document_pack
+  - summarize_architecture_corpus
+  task_ratings:
+    large_context_synthesis: 4.8
+    autonomous_coding: 3.2
+execution:
+  autonomy_level: Recommender
+  memory_scope: stateless
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 300000
+    maxRetryAttempts: 2
+    exhaustionPattern: 429|rate_limited|unavailable
+permissions:
+  sourceWrite: false
+  directoryMoves: false
+  gitCommit: false
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: High
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  - DATABASE_URL
+  mcpToolAllowlist: []
+  handoff_targets:
+  - human_supervisor
