@@ -172,7 +172,7 @@ LinearBridge v2 establishes an **agent-centric monorepo structure** where each c
 ### Configuration Engine (`scripts/render-wrangler.mjs`)
 - **Inputs:** Accepts CLI arguments `[agent, outPath]`, reads environment variables from root `.env` (`DOMAIN`, `${AGENT}_PREFIX`, `${AGENT}_KV_NAMESPACE_ID`), and parses the static template `wrangler.jsonc` in the target worker directory.
 - **Output:** Generates an ephemeral, untracked `wrangler.local.$.$RANDOM.jsonc` file with restrictive file permissions (`mode: 0o600`), replacing environment placeholders with concrete deployment IDs without mutating tracked repository templates.
-- **Phase P1 Evolution:** Directory lookup will be migrated from hardcoded ternary/switch paths to dynamic manifest resolution via `agents/registry/agent-manifest.mjs`.
+- **Phase P1 Evolution:** Directory lookup will be migrated from hardcoded ternary/switch paths to dynamic manifest resolution backed by the versioned Agent Registry (`agents/registry.json` conforming to `agents/registry.schema.json`, tracked in PR #109).
 
 ---
 
@@ -320,7 +320,7 @@ The migration proceeds across six strictly sequenced, non-destructive phases:
 - **Rollback:** Single-commit revert of documentation files.
 
 ### Phase P1: Build & Compatibility Engine (Second PR)
-- **Objective:** Implement provider-neutral agent manifest registry (`agents/registry/agent-manifest.mjs`), update script lookups (`render-wrangler.mjs`, `workspace-command.mjs`, `with-env.sh`, `setup-kv.mjs`, `workspace-typecheck.mjs`), update CI glob filters, and implement recursive test discovery.
+- **Objective:** Integrate the versioned Agent Registry (`agents/registry.json` conforming to `agents/registry.schema.json` and validated by `scripts/validate-agent-registry.mjs` per PR #109), update script lookups (`render-wrangler.mjs`, `workspace-command.mjs`, `with-env.sh`, `setup-kv.mjs`, `workspace-typecheck.mjs`), update CI glob filters, and implement recursive test discovery.
 - **Verification:** All scripts resolve both legacy and new worker paths; 150 tests pass.
 - **Rollback:** Revert PR #2; scripts fall back to static list.
 
