@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { validateRegistry } from "./validate-agent-registry.mjs";
@@ -71,4 +72,43 @@ test("v2 keeps code-review and coding identities separate, with no secret values
   assert.deepEqual(agy.runtimeContract.executable.argv.slice(0,2),["-p","{{PROMPT}}"]);
   assert.equal(agy.executionPolicy.permissions.deployment,false);
   assert.equal(agy.profile.routing.task_ratings.refactoring.source,"user_supplied");
+});
+
+test("current package path is validated while target path may not exist until P3", () => {
+  const absent = copy();
+  absent.agents[0].packageDir = "agents/coding/not-yet-moved";
+  assert.throws(() => validateRegistry(absent,schema), /packageDir missing/);
+  const target = copy();
+  target.agents[0].targetPackageDir = "agents/coding/next-location";
+  assert.equal(validateRegistry(target,schema),true);
+});
+
+test("Wrangler template KV and Durable Object bindings must match their registry entry", () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(),"agent-registry-"));
+  try {
+    for (const agent of registry.agents) {
+      for (const relative of [agent.packageDir,agent.worker.directory]) {
+        mkdirSync(path.join(temp,relative),{recursive:true});
+      }
+      const configPath=path.join(agent.worker.directory,agent.worker.config);
+      copyFileSync(path.join(root,configPath),path.join(temp,configPath));
+    }
+    const cli = registry.agents.find(a=>a.id==="chatgpt-cli");
+    const configPath=path.join(temp,cli.worker.directory,cli.worker.config);
+    const original=readFileSync(configPath,"utf8");
+    writeFileSync(configPath,original.replace('"binding": "LINEAR_DATA"','"binding": "OTHER_BINDING"'));
+    assert.throws(() => validateRegistry(registry,schema,{root:temp}),/KV namespace binding drift/);
+    writeFileSync(configPath,original.replace('"name": "DELIVERY_COORDINATOR"','"name": "OTHER_OBJECT"'));
+    assert.throws(() => validateRegistry(registry,schema,{root:temp}),/Durable Object binding drift/);
+    writeFileSync(configPath,original);
+    assert.equal(validateRegistry(registry,schema,{root:temp}),true);
+  } finally {
+    rmSync(temp,{recursive:true,force:true});
+  }
+});
+
+test("schema service-name pattern rejects invalid value even when matching template", () => {
+  const invalid = copy();
+  invalid.agents[2].worker.serviceTemplate = "linear-chatgpt-worker";
+  assert.throws(() => validateRegistry(invalid,schema),/invalid pattern/);
 });
