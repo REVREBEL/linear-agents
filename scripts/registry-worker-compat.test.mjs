@@ -26,6 +26,9 @@ test("all seven existing Worker paths resolve through the registry without reloc
   assert.equal(requireWorker("gemini").worker.directory,"agents/coding/gemini/worker");
   assert.equal(requireWorker("trae").worker.directory,"agents/coding/trae/worker");
   assert.notEqual(requireWorker("chatgpt").worker.kvEnv,requireWorker("chatgpt-cli").worker.kvEnv);
+  assert.equal(requireWorker("chatgpt").worker.directory,"agents/bridge/reviewer/worker");
+  assert.equal(requireWorker("chatgpt").worker.deployedName,"linear-chatgpt-agent");
+  assert.notEqual(requireWorker("chatgpt").worker.deployedName,requireWorker("chatgpt-cli").worker.deployedName);
 });
 
 test("registry shell bridge uses safe fields and rejects unknown agents", () => {
