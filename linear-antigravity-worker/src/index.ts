@@ -557,6 +557,7 @@ async function handleLinearWebhook(
   // an Agent Activity can be published, never whether routing is mandatory.
   if (!issueId) routeFailure = "missing_issue";
   if (issueId) {
+      let enrichmentStage: "issue_lookup" | "initiative_associations" = "issue_lookup";
       try {
         const result = await linearGraphql<{
           issue: { labels?: { nodes: LinearIssueLabel[] }; project: null | { id: string; name: string; initiatives: { nodes: Array<{ id: string; name: string }> } } };
