@@ -146,7 +146,9 @@ dist
 !.dev.vars.example
 .venv/
 
+.linear-agent/
 linear-jobs/
+linear-jobs-interrupted/
 .wrangler/
 .linear-agent-bridge/.env
 .linear-agent-bridge/linear-jobs/
