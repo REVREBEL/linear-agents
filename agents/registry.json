@@ -412,9 +412,9 @@
       "id": "mock",
       "role": "testing",
       "provider": "mock",
-      "packageDir": "linear-mock-worker",
+      "packageDir": "agents/coding/mock",
       "worker": {
-        "directory": "linear-mock-worker",
+        "directory": "agents/coding/mock/worker",
         "config": "wrangler.jsonc",
         "serviceTemplate": "linear-mock-agent",
         "prefixEnv": "MOCK_PREFIX",
