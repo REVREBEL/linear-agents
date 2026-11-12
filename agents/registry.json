@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "agents": [
+    {
+      "id": "antigravity",
+      "role": "coding",
+      "provider": "antigravity",
+      "packageDir": "agents/coding/antigravity",
+      "worker": {
+        "directory": "linear-antigravity-worker",
+        "config": "wrangler.jsonc",
+        "serviceTemplate": "linear-antigravity-agent",
+        "prefixEnv": "ANTIGRAVITY_PREFIX",
+        "kvEnv": "ANTIGRAVITY_KV_NAMESPACE_ID",
+        "durableObject": "DELIVERY_COORDINATOR"
+      },
+      "execution": {
+        "runtime": "agy",
+        "host": "configurable"
+      },
+      "linear": {
+        "appIdentity": "antigravity",
+        "credentialPrefix": "ANTIGRAVITY"
+      }
+    },
+    {
+      "id": "chatgpt",
+      "role": "review",
+      "provider": "chatgpt",
+      "packageDir": "agents/bridge/reviewer",
+      "worker": {
+        "directory": "linear-chatgpt-worker",
+        "config": "wrangler.jsonc",
+        "serviceTemplate": "linear-chatgpt-agent",
+        "prefixEnv": "CHATGPT_PREFIX",
+        "kvEnv": "CHATGPT_KV_NAMESPACE_ID",
+        "durableObject": "DELIVERY_COORDINATOR"
+      },
+      "execution": {
+        "runtime": "review-inbox",
+        "host": "bridge"
+      },
+      "linear": {
+        "appIdentity": "chatgpt",
+        "credentialPrefix": "CHATGPT"
+      }
+    },
+    {
+      "id": "chatgpt-cli",
+      "role": "coding",
+      "provider": "opencode",
+      "packageDir": "agents/coding/chatgpt-cli",
+      "worker": {
+        "directory": "linear-chatgpt-cli-worker",
+        "config": "wrangler.jsonc",
+        "serviceTemplate": "linear-chatgpt-cli-agent",
+        "prefixEnv": "CHATGPT_CLI_PREFIX",
+        "kvEnv": "CHATGPT_CLI_KV_NAMESPACE_ID",
+        "durableObject": "DELIVERY_COORDINATOR"
+      },
+      "execution": {
+        "runtime": "opencode",
+        "host": "bridge"
+      },
+      "linear": {
+        "appIdentity": "chatgpt",
+        "credentialPrefix": "CHATGPT"
+      }
+    },
+    {
+      "id": "gemini",
+      "role": "coding",
+      "provider": "gemini",
+      "packageDir": "agents/coding/gemini",
+      "worker": {
+        "directory": "linear-gemini-worker",
+        "config": "wrangler.jsonc",
+        "serviceTemplate": "linear-gemini-agent",
+        "prefixEnv": "GEMINI_PREFIX",
+        "kvEnv": "GEMINI_KV_NAMESPACE_ID",
+        "durableObject": "DELIVERY_COORDINATOR"
+      },
+      "execution": {
+        "runtime": "gemini",
+        "host": "bridge"
+      },
+      "linear": {
+        "appIdentity": "gemini",
+        "credentialPrefix": "GEMINI"
+      }
+    },
+    {
+      "id": "gemma",
+      "role": "coding",
+      "provider": "gemma",
+      "packageDir": "agents/coding/gemma",
+      "worker": {
+        "directory": "agents/coding/gemma/worker",
+        "config": "wrangler.jsonc",
+        "serviceTemplate": "linear-gemma-agent",
+        "prefixEnv": "GEMMA_PREFIX",
+        "kvEnv": "GEMMA_KV_NAMESPACE_ID",
+        "durableObject": "DELIVERY_COORDINATOR"
+      },
+      "execution": {
+        "runtime": "gemma",
+        "host": "bridge"
+      },
+      "linear": {
+        "appIdentity": "gemma",
+        "credentialPrefix": "GEMMA"
+      }
+    },
+    {
+      "id": "trae",
+      "role": "coding",
+      "provider": "trae",
+      "packageDir": "agents/coding/trae",
+      "worker": {
+        "directory": "linear-trae-worker",
+        "config": "wrangler.jsonc",
+        "serviceTemplate": "linear-trae-agent",
+        "prefixEnv": "TRAE_PREFIX",
+        "kvEnv": "TRAE_KV_NAMESPACE_ID",
+        "durableObject": "DELIVERY_COORDINATOR"
+      },
+      "execution": {
+        "runtime": "trae",
+        "host": "configurable"
+      },
+      "linear": {
+        "appIdentity": "trae",
+        "credentialPrefix": "TRAE"
+      }
+    },
+    {
+      "id": "mock",
+      "role": "testing",
+      "provider": "mock",
+      "packageDir": "agents/coding/mock",
+      "worker": {
+        "directory": "linear-mock-worker",
+        "config": "wrangler.jsonc",
+        "serviceTemplate": "linear-mock-agent",
+        "prefixEnv": "MOCK_PREFIX",
+        "kvEnv": "MOCK_KV_NAMESPACE_ID",
+        "durableObject": "DELIVERY_COORDINATOR"
+      },
+      "execution": {
+        "runtime": "mock",
+        "host": "bridge"
+      },
+      "linear": {
+        "appIdentity": "mock",
+        "credentialPrefix": "MOCK"
+      }
+    }
+  ]
+}
