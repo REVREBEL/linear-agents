@@ -27,7 +27,7 @@ export function validateAgainstSchema(value, node, schema, location = "$") {
     if (!definition) fail(location + " unresolved schema reference");
     return validateAgainstSchema(value, definition, schema, location);
   }
-  const supported = new Set(["type","properties","required","additionalProperties","items","enum","const","pattern","minLength","minItems","minimum","maximum","description","title"]);
+  const supported = new Set(["$schema","$id","$defs","type","properties","required","additionalProperties","items","enum","const","pattern","minLength","minItems","minimum","maximum","description","title"]);
   for (const key of Object.keys(node)) if (!supported.has(key)) fail(location + " unsupported schema keyword " + key);
   if (node.type) {
     const valid = node.type === "object" ? object(value) :
