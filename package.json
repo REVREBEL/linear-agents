@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "workspaces": [
-    "linear-antigravity-worker",
+    "agents/coding/antigravity/worker",
     "linear-chatgpt-worker",
     "agents/coding/chatgpt-cli/worker",
     "agents/coding/gemini/worker",

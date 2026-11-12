@@ -18,6 +18,8 @@ test("all seven existing Worker paths resolve through the registry without reloc
   }
   assert.equal(requireWorker("chatgpt-cli").linear.credentialPrefix,"CHATGPT");
   assert.equal(requireWorker("mock").worker.directory,"agents/coding/mock/worker");
+  assert.equal(requireWorker("antigravity").worker.directory,"agents/coding/antigravity/worker");
+  assert.equal(requireWorker("antigravity").worker.deployedName,"linear-antigravity-agent");
   assert.equal(requireWorker("chatgpt-cli").worker.directory,"agents/coding/chatgpt-cli/worker");
   assert.equal(requireWorker("chatgpt-cli").worker.deployedName,"linear-chatgpt-cli-agent");
   assert.equal(requireWorker("chatgpt-cli").linear.credentialPrefix,requireWorker("chatgpt").linear.credentialPrefix);
