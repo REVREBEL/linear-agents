@@ -37,7 +37,9 @@ Gemma now has a **development coding** profile in `dev-runner.mjs`, separate fro
 
 The authenticated bridge must **not** execute model tools directly. The bridge invokes `isolated-launch.mjs`, which uses `sudo -n -H -u rebel -- <GEMMA_NODE_BIN> <worker-process.mjs>` with a scrubbed environment and JSON task on stdin. A narrowly scoped, root-owned sudoers rule must authorize only the resolved Node executable + Gemma worker process; do not permit a wildcard Node command or arbitrary scripts. The service account must not otherwise have unrestricted sudo access. The target Node executable and script paths must be verified on Ubuntu.
 
-The Gemma OS account reads its own OpenRouter key from `/home/rebel/.config/linearbridge/openrouter.key` (owned by `rebel`, mode `0600`) outside the Git checkout. The `bridge` service must not inherit or receive the key. Do not place the key in a shell argument or Linear issue.
+The Gemma worker now invokes `/usr/bin/zsh -c` as the restricted `rebel` user. Zsh sources `/home/rebel/.zshenv`, where `load_op_env` retrieves the secret values from 1Password. The loader's output is suppressed; only the selected `OPENROUTER_API_KEY` is returned over an in-process pipe to the `rebel` Node worker. `AGENT_BRIDGE_PRIVATE_KEY`, `MISTRAL_API_KEY` and `BEAM_API_KEY` are **not passed to Node or the bridge**. The temporary Zsh loader itself will hold all variables that `load_op_env` supplies, so restrict access to `.zshenv` and the 1Password identity accordingly. No static credential files are required. Do not place keys in arguments or Linear issues.
+
+The bridge retains its existing `sudo -n -H -u rebel -- <GEMMA_NODE_BIN> <worker-process.mjs>` launch. Check `GEMMA_NODE_BIN` against the absolute executable under `rebel` and keep its sudoers allowance exact (never wildcard). The `load_op_env` call runs only *inside* the restricted worker, never in the privileged bridge.
 
 Keep `GEMMA_ENABLED=false` until:
 1. Dedicated Gemma Linear OAuth app/Worker in PR #69 is deployed and installed, and the `gemma-agent.revrebel.io` Tunnel routes to the current authenticated bridge.
@@ -74,7 +76,7 @@ GEMMA_LITELLM_BASE_URL=http://127.0.0.1:4000/v1
 GEMMA_LITELLM_MODEL=gemma-coding
 ```
 
-The unprivileged `rebel` execution process reads its *LiteLLM proxy* key from `/home/rebel/.config/linearbridge/litellm.key` (owner `rebel`, mode 0600). The upstream OpenRouter key remains isolated in the LiteLLM proxy's service configuration, rather than being shared with Gemma. No API credentials cross the bridge's JSON job pipe.
+For optional LiteLLM mode, the same scoped loader expects `LITELLM_API_KEY` in the `load_op_env` environment. This is **not** one of the four credentials currently verified, so LiteLLM remains disabled until it is provisioned in 1Password and the proxy is healthy. The upstream OpenRouter key remains in the LiteLLM service configuration. No API credentials cross the bridge's JSON job pipe.
 
 Smoke-check the loopback gateway's model catalog via an authenticated `GET /v1/models` request, then run a disposable Gemma issue and confirm a tool-call round trip. LiteLLM must be configured to forward function/tool calls for the chosen model. The Node bridge now uses the official **OpenAI Node SDK** (`openai@7.52.0`, pinned in the Gemma package) to call the LiteLLM OpenAI-compatible proxy. Only the selected model alias and a restricted LiteLLM proxy key are passed to this client. The OpenRouter SDK remains an option through `GEMMA_PROVIDER=openrouter` and is not removed.
 
@@ -85,3 +87,20 @@ Smoke-check the loopback gateway's model catalog via an authenticated `GET /v1/m
 **Important:** The existing `/home/bridge/agent-bridge` checkout is owned by `bridge` and contains an ignored `.env` and `.venv`. Do not reset or clean this live checkout. Gemma's source write permissions apply only to its disposable development repository under `/home/rebel/`.
 
 Deployment remains opt-in. `GEMMA_ENABLED=false` until the app identity, gateway, unprivileged runner, and Linear completion loop have been verified.
+
+## Verify 1Password integration on Ubuntu
+
+Run as `rebel`, without printing secret values:
+
+```bash
+cd /home/rebel/linear-agents
+npm install --prefix agents/coding/gemma
+npm run test --prefix agents/coding/gemma
+
+env -i HOME=/home/rebel USER=rebel LOGNAME=rebel PATH="$PATH" /usr/bin/zsh -c '
+  load_op_env >/dev/null 2>&1 || exit 1
+  [[ -n "$OPENROUTER_API_KEY" ]] && print "PASS: provider secret available"
+'
+```
+
+The worker requires a noninteractive 1Password session with permission to read the secret. Do not set `GEMMA_ENABLED=true` until the exact sudoers permission, isolated-user launch, approved test repository, and Linear callback have been verified. This change does not deploy the Cloudflare Worker or enable dispatch automatically.
