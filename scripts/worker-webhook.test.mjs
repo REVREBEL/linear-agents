@@ -180,7 +180,7 @@ test("antigravity: nested session issue ID is used for routing", { concurrency: 
           return Response.json({ data: { agentActivityCreate: { success: true } } });
         assert.equal(body.variables.issueId, "issue-nested");
         return Response.json({ data: { issue: { project: { id: "project-id", name: "Project",
-          initiatives: { nodes: [{ id: "initiative-id" }] } }, labels: { nodes: [] } } } });
+          initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } }, labels: { nodes: [] } } } });
       }
       if (String(url).includes("bridge.test")) {
         forwarded = JSON.parse(String(options.body));
@@ -315,7 +315,7 @@ for (const agent of agents) {
       globalThis.fetch = async url => {
         if (String(url).includes("api.linear.app/graphql")) {
           return Response.json({ data: { agentActivityCreate: { success: true },
-            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } } }
           } });
         }
         if (String(url).includes("bridge.test")) {
@@ -354,7 +354,7 @@ for (const agent of agents) {
             activityInputs.push(JSON.parse(String(options.body)).variables.input);
           }
           return Response.json({ data: { agentActivityCreate: { success: true },
-            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } } }
           } });
         }
         if (String(url).includes("bridge.test")) {
@@ -396,7 +396,7 @@ for (const agent of agents) {
       globalThis.fetch = async url => {
         if (String(url).includes("api.linear.app/graphql")) {
           return Response.json({ data: { agentActivityCreate: { success: true },
-            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } } }
           } });
         }
         if (String(url).includes("bridge.test")) {
@@ -428,7 +428,7 @@ for (const agent of agents) {
       globalThis.fetch = async url => {
         if (String(url).includes("api.linear.app/graphql")) {
           return Response.json({ data: { agentActivityCreate: { success: true },
-            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } } }
           } });
         }
         if (String(url).includes("bridge.test")) {
@@ -507,7 +507,7 @@ test("replayed signed body cannot bypass dedupe by changing unsigned delivery he
     globalThis.fetch = async url => {
       if (String(url).includes("api.linear.app/graphql")) {
         return Response.json({ data: { agentActivityCreate: { success: true },
-          issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } } } });
+          issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } } } } });
       }
       if (String(url).includes("bridge.test")) {
         forwarded++;
@@ -540,7 +540,7 @@ test("trae: Agent Location label is forwarded to the Ubuntu bridge", { concurren
         const input = JSON.parse(options.body);
         if (String(input.query).includes("BridgeIssueRouting")) {
           return Response.json({ data: {
-            issue: { project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } },
+            issue: { project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } },
               labels: { nodes: [{ name: "macos", parent: { name: "agent-location" } }] } }
           } });
         }
