@@ -28,6 +28,11 @@ test("Ubuntu accepts actionable PR into separate ChatGPT user inbox with authent
       !name.includes(path.sep + "linear-jobs" + path.sep) &&
       !name.endsWith(path.sep + ".env") && !name.includes(path.sep + ".venv" + path.sep)
     });
+    // The bridge now imports stateless domain modules from repository-root folders.
+    // Mirror those modules into this isolated fixture without copying live state.
+    for (const folder of ["routing", "jobs"]) {
+      await cp(path.join(sourceDir, "..", folder), path.join(tmp, folder), { recursive: true });
+    }
     const routingFile = path.join(tmp, "routing.json");
     await writeFile(routingFile, JSON.stringify({ projects: {
       project: { repository: "REVREBEL/linear-agents", codeReview: {

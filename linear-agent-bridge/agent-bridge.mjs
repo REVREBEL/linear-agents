@@ -1,5 +1,5 @@
 import { syncLinearCredential } from "./linear-credentials.mjs";
-import { chooseExecutionHost, makeRemoteRoute } from "./host-routing.mjs";
+import { chooseExecutionHost, makeRemoteRoute } from "../routing/host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
 import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";
 import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
@@ -13,7 +13,7 @@ import { notifyLinearReview } from "./review-linear-notifier.mjs";
 import { verifyPublishedGithubReview } from "./review-delivery.mjs";
 import { createActiveTaskMemory } from "./active-task-memory.mjs";
 import { retrieveMemuMemory } from "./memu-memory.mjs";
-import { createOrderedProgressQueue } from "./ordered-progress.mjs";
+import { createOrderedProgressQueue } from "../jobs/ordered-progress.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";

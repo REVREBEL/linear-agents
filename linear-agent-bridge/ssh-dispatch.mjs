@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { validateSshSettings } from "./host-routing.mjs";
+import { validateSshSettings } from "../routing/host-routing.mjs";
 
 const shellQuote = value => "'" + String(value).replaceAll("'", "'\\''") + "'";
 
