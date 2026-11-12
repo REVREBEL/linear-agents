@@ -58,6 +58,15 @@ export function validateAgainstSchema(value, node, schema, location = "$") {
     for(let i=0;i<value.length;i++) validateAgainstSchema(value[i],node.items,schema,location+"["+i+"]");
 }
 
+export function parseWranglerJsonc(source) {
+  // Parse JSONC without treating URL strings as comments.
+  const tokens = source.match(/"(?:\\\\.|[^"\\\\])*"|\\/\\*[\\s\\S]*?\\*\\/|\\/\\/[^\\n]*|[^"\\/]+|\\/(?![\\/*])/g) || [];
+  const withoutComments = tokens.filter(token => !(token.startsWith("/*") || token.startsWith("//"))).join("");
+  const cleaned = withoutComments.replace(/,\\s*([}\\]])/g,"$1");
+  try { return JSON.parse(cleaned); }
+  catch(error) { fail("invalid Wrangler JSONC: " + error.message); }
+}
+
 export function validateRegistry(registry, schema, options = {}) {
   const base = options.root || root;
   exact(registry, ["schemaVersion","agents"], "root");
@@ -68,7 +77,7 @@ export function validateRegistry(registry, schema, options = {}) {
     fail("expected all seven baseline agents");
   const ids = new Set(), directories = new Set(), kvBindings = new Set(), prefixVars = new Set(), deployed = new Set();
   for (const entry of registry.agents) {
-    exact(entry, ["id","role","provider","packageDir","worker","execution","linear","profile","runtimeContract","executionPolicy"], "agent");
+    exact(entry, ["id","role","provider","packageDir","targetPackageDir","worker","execution","linear","profile","runtimeContract","executionPolicy"], "agent");
     if (ids.has(entry.id)) fail("invalid or duplicate agent id: " + entry.id);
     ids.add(entry.id);
     const name = entry.id;
@@ -82,11 +91,16 @@ export function validateRegistry(registry, schema, options = {}) {
       !/^[A-Z][A-Z0-9_]+$/.test(entry.linear.credentialPrefix))
       fail(name + " has invalid Linear app identity/prefix");
     exact(entry.worker, ["directory","config","serviceTemplate","deployedName","prefixEnv","kvEnv","durableObject"], name + ".worker");
-    for (const value of [entry.packageDir,entry.worker.directory]) {
+    for (const value of [entry.packageDir,entry.targetPackageDir,entry.worker.directory]) {
       if (typeof value !== "string" || !/^[a-zA-Z0-9._/-]+$/.test(value) ||
         value.startsWith("/") || value.split("/").includes(".."))
         fail(name + " has unsafe path");
     }
+    const repoRoot = realpathSync(base);
+    const packageAbs = path.resolve(base,entry.packageDir);
+    if (!packageAbs.startsWith(repoRoot + path.sep) || !existsSync(packageAbs) ||
+        !realpathSync(packageAbs).startsWith(repoRoot + path.sep))
+      fail(name + " packageDir missing or outside repository: " + entry.packageDir);
     const dir = entry.worker.directory;
     if (deployed.has(entry.worker.deployedName)) fail("duplicate deployed Worker identity");
     deployed.add(entry.worker.deployedName);
@@ -105,15 +119,27 @@ export function validateRegistry(registry, schema, options = {}) {
       fail("duplicate KV namespace/prefix binding");
     kvBindings.add(entry.worker.kvEnv); prefixVars.add(entry.worker.prefixEnv);
     const template = path.resolve(base,dir,entry.worker.config);
-    if (!template.startsWith(realpathSync(base) + path.sep) || !existsSync(template))
+    if (!template.startsWith(repoRoot + path.sep) || !existsSync(template) ||
+        !realpathSync(template).startsWith(repoRoot + path.sep))
       fail(name + " missing Worker config: " + template);
     const source = readFileSync(template,"utf8");
-    const service = /"name"\s*:\s*"([^"]+)"/.exec(source)?.[1];
-    if (service !== entry.worker.serviceTemplate) fail(name + " Worker service name drift: " + service);
-    if (!source.includes("${" + entry.worker.prefixEnv + "}") ||
-      !source.includes("${" + entry.worker.kvEnv + "}"))
-      fail(name + " Wrangler placeholders drifted");
-    if (!source.includes('"DELIVERY_COORDINATOR"')) fail(name + " missing Durable Object binding");
+    const wrangler = parseWranglerJsonc(source);
+    if (wrangler.name !== entry.worker.serviceTemplate)
+      fail(name + " Worker service name drift: " + wrangler.name);
+    const expectedKvId = "${" + entry.worker.kvEnv + "}";
+    if (!Array.isArray(wrangler.kv_namespaces) || wrangler.kv_namespaces.length !== 1 ||
+        wrangler.kv_namespaces[0].binding !== "LINEAR_DATA" ||
+        wrangler.kv_namespaces[0].id !== expectedKvId)
+      fail(name + " KV namespace binding drift");
+    if (!Array.isArray(wrangler.durable_objects?.bindings) ||
+        !wrangler.durable_objects.bindings.some(b =>
+          b.name === entry.worker.durableObject && b.class_name === "DeliveryCoordinator"))
+      fail(name + " Durable Object binding drift");
+    if (!wrangler.routes?.some(r => r.custom_domain === true &&
+      r.pattern === "linear-${" + entry.worker.prefixEnv + "}.${DOMAIN}"))
+      fail(name + " Linear route drift");
+    if (wrangler.vars?.SERVICE_NAME !== "linear-${" + entry.worker.prefixEnv + "}-agent")
+      fail(name + " SERVICE_NAME drift");
   }
   if (!agents.every(id => ids.has(id))) fail("incomplete registry");
   const chatgpt = registry.agents.find(x => x.id === "chatgpt");
