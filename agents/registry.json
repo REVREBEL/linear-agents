@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "agents": [
     {
       "id": "antigravity",
@@ -21,6 +21,107 @@
       "linear": {
         "appIdentity": "antigravity",
         "credentialPrefix": "ANTIGRAVITY"
+      },
+      "profile": {
+        "displayName": "Antigravity Headless Runner",
+        "kind": "cli_agent",
+        "model": {
+          "selection": "runtime",
+          "id": "gemini-2.5-pro",
+          "provider": "Google"
+        },
+        "taxonomy": {
+          "agent_type": "Goal-based",
+          "domain": "Full-stack software engineering and refactoring",
+          "top_skills": [
+            "Typescript / Node.js",
+            "Automated test generation",
+            "Cloudflare Workers & Durable Objects",
+            "Python backend refactoring"
+          ]
+        },
+        "routing": {
+          "complexity_tier": "High",
+          "semantic_description": "Autonomous code implementation, multi-file edits, bug fixes, and test authoring directly in project workspace.",
+          "supported_intents": [
+            "implement_feature",
+            "fix_bug",
+            "generate_tests",
+            "code_refactor"
+          ],
+          "task_ratings": {
+            "feature_implementation": {
+              "score": 4.8,
+              "source": "user_supplied"
+            },
+            "refactoring": {
+              "score": 4.7,
+              "source": "user_supplied"
+            },
+            "code_review": {
+              "score": 3.5,
+              "source": "user_supplied"
+            }
+          }
+        }
+      },
+      "runtimeContract": {
+        "transport": "headless_cli",
+        "executionHost": "local_mac_bridge",
+        "executable": {
+          "binaryEnv": "AGY_BIN",
+          "argv": [
+            "-p",
+            "{{PROMPT}}",
+            "--conversation",
+            "{{CONVERSATION_ID}}"
+          ]
+        },
+        "workspaceRootEnv": "WORKSPACE_ROOT",
+        "sessionContinuityFlag": "--conversation <conversation_id>",
+        "linearBridge": {
+          "workerHost": "linear-antigravity.revrebel.io",
+          "tunnelHost": "antigravity-agent.revrebel.io",
+          "supportedEvents": [
+            "session_created",
+            "session_prompted"
+          ],
+          "completionMode": "worker_callback"
+        },
+        "quotaPolicy": {
+          "resumable": true,
+          "defaultRetryDelayMs": 7200000,
+          "maxRetryAttempts": 3,
+          "exhaustionPattern": "RESOURCE_EXHAUSTED|Individual quota reached"
+        }
+      },
+      "executionPolicy": {
+        "autonomy_level": "Executor",
+        "memory_scope": "session_isolated",
+        "permissions": {
+          "sourceWrite": true,
+          "directoryMoves": true,
+          "gitCommit": true,
+          "gitPush": false,
+          "autoMerge": false,
+          "deployment": false
+        },
+        "security": {
+          "blast_radius": "Medium",
+          "credential_model": "ephemeral_session",
+          "envStripPatterns": [
+            "BRIDGE_SHARED_SECRET",
+            "LINEAR_API_KEY",
+            "LINEAR_ACCESS_TOKEN"
+          ],
+          "mcpToolAllowlist": [
+            "github/list_commits"
+          ],
+          "handoff_targets": [
+            "chatgpt-playwright",
+            "human_supervisor"
+          ]
+        }
       }
     },
     {
@@ -43,6 +144,36 @@
       "linear": {
         "appIdentity": "chatgpt",
         "credentialPrefix": "CHATGPT"
+      },
+      "profile": {
+        "displayName": "ChatGPT Review Harness",
+        "kind": "review_agent",
+        "model": {
+          "selection": "runtime"
+        }
+      },
+      "runtimeContract": {
+        "transport": "review_inbox",
+        "executionHost": "bridge_service"
+      },
+      "executionPolicy": {
+        "autonomy_level": "Advisor",
+        "memory_scope": "session_isolated",
+        "permissions": {
+          "sourceWrite": false,
+          "directoryMoves": false,
+          "gitCommit": false,
+          "gitPush": false,
+          "autoMerge": false,
+          "deployment": false
+        },
+        "security": {
+          "blast_radius": "Low",
+          "credential_model": "none",
+          "envStripPatterns": [],
+          "mcpToolAllowlist": [],
+          "handoff_targets": []
+        }
       }
     },
     {
@@ -65,6 +196,40 @@
       "linear": {
         "appIdentity": "chatgpt",
         "credentialPrefix": "CHATGPT"
+      },
+      "profile": {
+        "displayName": "ChatGPT CLI via OpenCode",
+        "kind": "cli_agent",
+        "model": {
+          "selection": "runtime"
+        }
+      },
+      "runtimeContract": {
+        "transport": "headless_cli",
+        "executionHost": "bridge_service",
+        "executable": {
+          "binaryEnv": "OPENCODE_BIN",
+          "argv": []
+        }
+      },
+      "executionPolicy": {
+        "autonomy_level": "Advisor",
+        "memory_scope": "session_isolated",
+        "permissions": {
+          "sourceWrite": false,
+          "directoryMoves": false,
+          "gitCommit": false,
+          "gitPush": false,
+          "autoMerge": false,
+          "deployment": false
+        },
+        "security": {
+          "blast_radius": "Low",
+          "credential_model": "none",
+          "envStripPatterns": [],
+          "mcpToolAllowlist": [],
+          "handoff_targets": []
+        }
       }
     },
     {
@@ -87,6 +252,40 @@
       "linear": {
         "appIdentity": "gemini",
         "credentialPrefix": "GEMINI"
+      },
+      "profile": {
+        "displayName": "Gemini CLI",
+        "kind": "cli_agent",
+        "model": {
+          "selection": "runtime"
+        }
+      },
+      "runtimeContract": {
+        "transport": "headless_cli",
+        "executionHost": "bridge_service",
+        "executable": {
+          "binaryEnv": "GEMINI_BIN",
+          "argv": []
+        }
+      },
+      "executionPolicy": {
+        "autonomy_level": "Advisor",
+        "memory_scope": "session_isolated",
+        "permissions": {
+          "sourceWrite": false,
+          "directoryMoves": false,
+          "gitCommit": false,
+          "gitPush": false,
+          "autoMerge": false,
+          "deployment": false
+        },
+        "security": {
+          "blast_radius": "Low",
+          "credential_model": "none",
+          "envStripPatterns": [],
+          "mcpToolAllowlist": [],
+          "handoff_targets": []
+        }
       }
     },
     {
@@ -109,6 +308,36 @@
       "linear": {
         "appIdentity": "gemma",
         "credentialPrefix": "GEMMA"
+      },
+      "profile": {
+        "displayName": "Gemma Evaluation Agent",
+        "kind": "cli_agent",
+        "model": {
+          "selection": "runtime"
+        }
+      },
+      "runtimeContract": {
+        "transport": "api",
+        "executionHost": "bridge_service"
+      },
+      "executionPolicy": {
+        "autonomy_level": "Advisor",
+        "memory_scope": "session_isolated",
+        "permissions": {
+          "sourceWrite": false,
+          "directoryMoves": false,
+          "gitCommit": false,
+          "gitPush": false,
+          "autoMerge": false,
+          "deployment": false
+        },
+        "security": {
+          "blast_radius": "Low",
+          "credential_model": "none",
+          "envStripPatterns": [],
+          "mcpToolAllowlist": [],
+          "handoff_targets": []
+        }
       }
     },
     {
@@ -131,6 +360,40 @@
       "linear": {
         "appIdentity": "trae",
         "credentialPrefix": "TRAE"
+      },
+      "profile": {
+        "displayName": "Trae Agent",
+        "kind": "cli_agent",
+        "model": {
+          "selection": "runtime"
+        }
+      },
+      "runtimeContract": {
+        "transport": "remote_cli",
+        "executionHost": "remote_mac",
+        "executable": {
+          "binaryEnv": "TRAE_BIN",
+          "argv": []
+        }
+      },
+      "executionPolicy": {
+        "autonomy_level": "Advisor",
+        "memory_scope": "session_isolated",
+        "permissions": {
+          "sourceWrite": false,
+          "directoryMoves": false,
+          "gitCommit": false,
+          "gitPush": false,
+          "autoMerge": false,
+          "deployment": false
+        },
+        "security": {
+          "blast_radius": "Low",
+          "credential_model": "none",
+          "envStripPatterns": [],
+          "mcpToolAllowlist": [],
+          "handoff_targets": []
+        }
       }
     },
     {
@@ -153,6 +416,36 @@
       "linear": {
         "appIdentity": "mock",
         "credentialPrefix": "MOCK"
+      },
+      "profile": {
+        "displayName": "Mock Agent",
+        "kind": "test_agent",
+        "model": {
+          "selection": "runtime"
+        }
+      },
+      "runtimeContract": {
+        "transport": "mock",
+        "executionHost": "bridge_service"
+      },
+      "executionPolicy": {
+        "autonomy_level": "Advisor",
+        "memory_scope": "session_isolated",
+        "permissions": {
+          "sourceWrite": false,
+          "directoryMoves": false,
+          "gitCommit": false,
+          "gitPush": false,
+          "autoMerge": false,
+          "deployment": false
+        },
+        "security": {
+          "blast_radius": "Low",
+          "credential_model": "none",
+          "envStripPatterns": [],
+          "mcpToolAllowlist": [],
+          "handoff_targets": []
+        }
       }
     }
   ]
