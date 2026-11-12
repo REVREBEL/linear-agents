@@ -272,10 +272,14 @@ for (const agent of agents) {
     const oldFetch = globalThis.fetch;
     let attempts = 0;
     let startActivities = 0;
+    const activityInputs = [];
     try {
       globalThis.fetch = async (url, options) => {
         if (String(url).includes("api.linear.app/graphql")) {
-          if (String(options?.body || "").includes("AgentActivityCreate")) startActivities++;
+          if (String(options?.body || "").includes("AgentActivityCreate")) {
+            startActivities++;
+            activityInputs.push(JSON.parse(String(options.body)).variables.input);
+          }
           return Response.json({ data: { agentActivityCreate: { success: true },
             issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
           } });
@@ -295,6 +299,12 @@ for (const agent of agents) {
       assert.equal(attempts, 2);
       assert.equal(startActivities, agent === "antigravity" ? 2 : 1,
         "one receipt acknowledgment plus one failure activity for Antigravity; no duplicates on retry");
+      if (agent === "antigravity") {
+        const failure = activityInputs.find(input => input.content.type === "error");
+        assert.ok(failure, "bridge rejection must publish an error");
+        assert.match(failure.id, /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+        assert.match(failure.content.body, /rejected delivery/);
+      }
     } finally { globalThis.fetch = oldFetch; }
   });
 }
