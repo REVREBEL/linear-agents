@@ -136,7 +136,8 @@
         "serviceTemplate",
         "prefixEnv",
         "kvEnv",
-        "durableObject"
+        "durableObject",
+        "deployedName"
       ],
       "properties": {
         "directory": {
@@ -159,6 +160,10 @@
         },
         "durableObject": {
           "const": "DELIVERY_COORDINATOR"
+        },
+        "deployedName": {
+          "type": "string",
+          "pattern": "^linear-[a-z0-9-]+-agent$"
         }
       }
     },
