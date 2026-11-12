@@ -484,7 +484,7 @@ async function handleLinearWebhook(
         agentSessionId,
         {
           type: "thought",
-          body: "I’ve received the task. Validating the bridge handoff before execution starts.",
+          body: "I’ve received the task and started working on it.",
         },
       ));
 
@@ -564,11 +564,7 @@ async function handleLinearWebhook(
           routing = {
             projectId: result.issue.project.id,
             projectName: result.issue.project.name,
-            initiativeIds: await resolveProjectInitiativeIds(
-              installation.accessToken,
-              result.issue.project.id,
-              result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
-            ),
+            initiativeIds: result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
             agentLocation: issueAgentLocation(result.issue.labels?.nodes),
           };
         }
@@ -607,26 +603,7 @@ async function handleLinearWebhook(
   try {
     await forwardToMacBridge(bridgeJob, webhookId, linearEvent, env);
   } catch (error) {
-    console.error("Failed to forward job to bridge", { webhookId, error: String(error) });
-    if (agentSessionId) {
-      const message = describePrelaunchFailure(error);
-      try {
-        const failureId = await stableActivityId(`handoff-failed:${installation.organizationId}:${webhookId}:${agentSessionId}`);
-        await activityOnce(`handoff-failed:${webhookId}:${agentSessionId}`, () => createAgentActivity(
-          installation.accessToken,
-          agentSessionId,
-          { type: "error", body: message },
-          failureId,
-        ));
-      } catch (activityError) {
-        // Keep the webhook retryable even if Linear activity publication fails.
-        console.error("Unable to publish bridge handoff failure to Linear", {
-          webhookId,
-          agentSessionId,
-          error: activityError instanceof Error ? activityError.message : String(activityError),
-        });
-      }
-    }
+    console.error("Failed to forward job to Mac bridge", { webhookId, error: String(error) });
     return jsonResponse({ ok: false, accepted: false, error: "Local bridge delivery failed; retry required" }, 503);
   }
   await env.LINEAR_DATA.put(dedupeKey, "accepted", { expirationTtl: 86400 });
@@ -737,56 +714,6 @@ async function handleAgentComplete(
   });
 }
 
-// Some Linear OAuth installations return an empty Project.initiatives
-// connection even when the initiative/project association exists. Recover
-// membership from the explicit association records; never infer IDs from
-// route names, issue text, or local configuration.
-async function resolveProjectInitiativeIds(
-  accessToken: string,
-  projectId: string,
-  directIds: string[],
-): Promise<string[]> {
-  const ids = [...new Set(directIds.filter(id => /^[0-9a-f-]{36}$/i.test(id)))];
-  if (ids.length) return ids;
-
-  let after: string | null = null;
-  const matches = new Set<string>();
-  for (let page = 0; page < 20; page++) {
-    const result: {
-      initiativeToProjects: {
-        nodes: Array<{ project: { id: string } | null; initiative: { id: string } | null }>;
-        pageInfo: { hasNextPage: boolean; endCursor: string | null };
-      };
-    } = await linearGraphql<{
-      initiativeToProjects: {
-        nodes: Array<{ project: { id: string } | null; initiative: { id: string } | null }>;
-        pageInfo: { hasNextPage: boolean; endCursor: string | null };
-      };
-    }>(accessToken,
-      `query BridgeProjectInitiatives($after: String) {
-        initiativeToProjects(first: 100, after: $after) {
-          nodes { project { id } initiative { id } }
-          pageInfo { hasNextPage endCursor }
-        }
-      }`, { after });
-    const connection: typeof result.initiativeToProjects = result.initiativeToProjects;
-    if (!connection || !Array.isArray(connection.nodes) || !connection.pageInfo) {
-      throw new Error("Linear initiative association response malformed");
-    }
-    for (const record of connection.nodes) {
-      if (record?.project?.id === projectId &&
-          typeof record.initiative?.id === "string") {
-        matches.add(record.initiative.id);
-      }
-    }
-    if (!connection.pageInfo.hasNextPage) return [...matches];
-    const next: string | null = connection.pageInfo.endCursor;
-    if (!next || next === after) throw new Error("Linear initiative association cursor invalid");
-    after = next;
-  }
-  throw new Error("Linear initiative associations exceeded 20 pages; refusing incomplete routing");
-}
-
 async function forwardToMacBridge(
   bridgeJob: Record<string, unknown>,
   webhookId: string,
@@ -807,7 +734,6 @@ async function forwardToMacBridge(
       "x-linear-webhook-id": webhookId,
     },
     body: JSON.stringify(bridgeJob),
-    signal: AbortSignal.timeout(12000),
   });
 
   const responseBody = await response.text();
@@ -820,62 +746,10 @@ async function forwardToMacBridge(
   });
 
   if (!response.ok) {
-    let bridgeError = "";
-    try {
-      const parsed: unknown = JSON.parse(responseBody);
-      if (parsed && typeof parsed === "object" && "error" in parsed) {
-        const value = (parsed as { error?: unknown }).error;
-        if (typeof value === "string") bridgeError = value;
-      }
-    } catch {
-      // Bridge responses may be non-JSON. Never forward raw bodies to Linear.
-    }
-    throw new BridgeDeliveryError(response.status, bridgeError);
+    throw new Error(
+      `Mac bridge returned ${response.status}: ${responseBody.slice(0, 500)}`,
+    );
   }
-}
-
-class BridgeDeliveryError extends Error {
-  readonly status: number;
-  readonly bridgeError: string;
-
-  constructor(status: number, bridgeError: string) {
-    super(`Bridge rejected delivery (HTTP ${status})`);
-    this.name = "BridgeDeliveryError";
-    this.status = status;
-    this.bridgeError = bridgeError;
-  }
-}
-
-// Only publish recognized, redacted failure details. Arbitrary upstream errors
-// can contain paths, credentials or tool output and must never go to Linear.
-function describePrelaunchFailure(error: unknown): string {
-  if (error instanceof BridgeDeliveryError) {
-    const prefix = "Antigravity launch was rejected by the bridge. ";
-    const unmapped = /^Unmapped Linear project: ([0-9a-f-]{36})$/i.exec(error.bridgeError.trim());
-    if (unmapped) {
-      return prefix + `The bridge has no routing entry for Linear project ${unmapped[1]}. The job is unrouted and requires operator reconciliation before work can start.`;
-    }
-    if (error.bridgeError.startsWith("Cannot load routing config ")) {
-      return prefix + `The bridge could not load its routing configuration (HTTP ${error.status}). Check configuration and reconcile the pending job.`;
-    }
-    if (/^Expected one mapped initiative for project [0-9a-f-]{36}, found 0;/.test(error.bridgeError)) {
-      return prefix + "The Worker could not supply a verified initiative membership. Check the association lookup and reconcile the unrouted job.";
-    }
-    return prefix + `Delivery rejected (HTTP ${error.status}). Check the local job ledger; failed/unrouted records may require manual reconciliation.`;
-  }
-  return "Antigravity handoff is not confirmed: the bridge request timed out or failed before acknowledgment. The job may have been accepted; inspect the ledger before replaying.";
-}
-
-// Linear accepts a caller-assigned UUIDv4 for agentActivityCreate. A stable
-// ID prevents duplicate visible failures if a callback succeeds but the Worker
-// loses its acknowledgment before persisting its local delivery marker.
-async function stableActivityId(key: string): Promise<string> {
-  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)));
-  const bytes = hash.slice(0, 16);
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
-  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
 }
 
 type AgentActivityContent =
@@ -888,7 +762,6 @@ async function createAgentActivity(
   accessToken: string,
   agentSessionId: string,
   content: AgentActivityContent,
-  activityId?: string,
 ): Promise<void> {
   const result = await linearGraphql<{
     agentActivityCreate: {
@@ -905,7 +778,6 @@ async function createAgentActivity(
       input: {
         agentSessionId,
         content,
-        ...(activityId ? { id: activityId } : {}),
       },
     },
   );
@@ -1014,7 +886,6 @@ async function linearGraphql<T>(
       "authorization": `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(8000),
   });
 
   const body = (await response.json()) as {
