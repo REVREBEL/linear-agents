@@ -54,15 +54,8 @@
           ]
         },
         "provider": {
-          "enum": [
-            "antigravity",
-            "chatgpt",
-            "opencode",
-            "gemini",
-            "gemma",
-            "trae",
-            "mock"
-          ]
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
         },
         "packageDir": {
           "$ref": "#/$defs/relativePath"
@@ -79,15 +72,8 @@
           ],
           "properties": {
             "runtime": {
-              "enum": [
-                "agy",
-                "opencode",
-                "gemini",
-                "gemma",
-                "trae",
-                "mock",
-                "review-inbox"
-              ]
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
             },
             "host": {
               "enum": [
