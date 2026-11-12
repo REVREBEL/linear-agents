@@ -1,0 +1,16 @@
+{
+  "id": "parallel",
+  "displayName": "parallel",
+  "kind": "coding-evaluation",
+  "provider": "openrouter",
+  "model": "parallel/decisions-fast:free",
+  "runtime": "openrouter-agent-sdk",
+  "permissions": {
+    "workspace": "write",
+    "githubWrite": true,
+    "linearWrite": true,
+    "deployment": true
+  },
+  "linearAgentApp": null,
+  "status": "isolated-evaluation"
+}

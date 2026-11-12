@@ -1,0 +1,17 @@
+{
+  "id": "stealth",
+  "displayName": "stealth",
+  "kind": "coding-evaluation",
+  "provider": "openrouter",
+  "model": "stealth/crouton-alpha",
+  "description": "Crouton Alpha is a lightweight model built for scalable coding, agentic, and multimodal workflows. It's ideal for executing agentic sub-tasks, tool use, and document analysis in high-volume, repeated work. Developers can combine it with frontier reasoning models to execute the bounded steps that turn plans and information into action.",
+  "runtime": "openrouter-agent-sdk",
+  "permissions": {
+    "workspace": "write",
+    "githubWrite": true,
+    "linearWrite": true,
+    "deployment": true
+  },
+  "linearAgentApp": null,
+  "status": "isolated-evaluation"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "llama-nemotron-rerank",
+  "displayName": "llama-nemotron-rerank",
+  "kind": "rerank",
+  "provider": "openrouter",
+  "model": "nvidia/llama-nemotron-rerank-vl-1b-v2:free",
+  "runtime": "openrouter-agent-sdk",
+  "permissions": {
+    "workspace": "write",
+    "githubWrite": true,
+    "linearWrite": true,
+    "deployment": true
+  },
+  "linearAgentApp": null,
+  "status": "isolated-evaluation"
+}
