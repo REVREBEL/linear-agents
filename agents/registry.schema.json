@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://revrebel.io/schemas/agent-registry.v1.schema.json",
+  "title": "REVREBEL Agent Registry v1",
+  "description": "Versioned physical agent/Worker discovery contract; no secrets or live credential values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "agents"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "$ref": "#/$defs/agent"
+      }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[a-zA-Z0-9._/-]+$"
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role",
+        "provider",
+        "packageDir",
+        "worker",
+        "execution",
+        "linear"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "antigravity",
+            "chatgpt",
+            "chatgpt-cli",
+            "gemini",
+            "gemma",
+            "trae",
+            "mock"
+          ]
+        },
+        "role": {
+          "enum": [
+            "coding",
+            "review",
+            "testing"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "antigravity",
+            "chatgpt",
+            "opencode",
+            "gemini",
+            "gemma",
+            "trae",
+            "mock"
+          ]
+        },
+        "packageDir": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "worker": {
+          "$ref": "#/$defs/worker"
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runtime",
+            "host"
+          ],
+          "properties": {
+            "runtime": {
+              "enum": [
+                "agy",
+                "opencode",
+                "gemini",
+                "gemma",
+                "trae",
+                "mock",
+                "review-inbox"
+              ]
+            },
+            "host": {
+              "enum": [
+                "bridge",
+                "macos",
+                "configurable"
+              ]
+            }
+          }
+        },
+        "linear": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "appIdentity",
+            "credentialPrefix"
+          ],
+          "properties": {
+            "appIdentity": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]+$"
+            },
+            "credentialPrefix": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]+$"
+            }
+          }
+        }
+      }
+    },
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "directory",
+        "config",
+        "serviceTemplate",
+        "prefixEnv",
+        "kvEnv",
+        "durableObject"
+      ],
+      "properties": {
+        "directory": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "config": {
+          "const": "wrangler.jsonc"
+        },
+        "serviceTemplate": {
+          "type": "string",
+          "pattern": "^linear-[a-z0-9-]+-agent$"
+        },
+        "prefixEnv": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]+$"
+        },
+        "kvEnv": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]+_KV_NAMESPACE_ID$"
+        },
+        "durableObject": {
+          "const": "DELIVERY_COORDINATOR"
+        }
+      }
+    }
+  }
+}
