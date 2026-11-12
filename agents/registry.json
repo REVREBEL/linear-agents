@@ -354,9 +354,9 @@
       "id": "trae",
       "role": "coding",
       "provider": "trae",
-      "packageDir": "linear-trae-worker",
+      "packageDir": "agents/coding/trae",
       "worker": {
-        "directory": "linear-trae-worker",
+        "directory": "agents/coding/trae/worker",
         "config": "wrangler.jsonc",
         "serviceTemplate": "linear-trae-agent",
         "prefixEnv": "TRAE_PREFIX",

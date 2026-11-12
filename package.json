@@ -7,7 +7,7 @@
     "linear-chatgpt-worker",
     "linear-chatgpt-cli-worker",
     "agents/coding/gemini/worker",
-    "linear-trae-worker",
+    "agents/coding/trae/worker",
     "agents/coding/mock/worker"
   ],
   "scripts": {
