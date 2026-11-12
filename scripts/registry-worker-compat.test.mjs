@@ -29,7 +29,7 @@ test("all seven existing Worker paths resolve through the registry without reloc
 test("registry shell bridge uses safe fields and rejects unknown agents", () => {
   const cli=path.join(root,"scripts/registry-worker-info.mjs");
   const valid=execFileSync(process.execPath,[cli,"chatgpt-cli"],{encoding:"utf8"}).trim().split("\t");
-  assert.deepEqual(valid,[path.join(root,"linear-chatgpt-cli-worker"),"CHATGPT_CLI","CHATGPT"]);
+  assert.deepEqual(valid,[path.join(root,"agents/coding/chatgpt-cli/worker"),"CHATGPT_CLI","CHATGPT"]);
   const invalid=spawnSync(process.execPath,[cli,"../invalid"],{encoding:"utf8"});
   assert.notEqual(invalid.status,0);
 });
