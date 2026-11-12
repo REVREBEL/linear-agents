@@ -564,7 +564,11 @@ async function handleLinearWebhook(
           routing = {
             projectId: result.issue.project.id,
             projectName: result.issue.project.name,
-            initiativeIds: result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
+            initiativeIds: await resolveProjectInitiativeIds(
+              installation.accessToken,
+              result.issue.project.id,
+              result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
+            ),
             agentLocation: issueAgentLocation(result.issue.labels?.nodes),
           };
         }
@@ -729,6 +733,51 @@ async function handleAgentComplete(
     organizationId,
     activityType,
   });
+}
+
+// Some Linear OAuth installations return an empty Project.initiatives
+// connection even when the initiative/project association exists. Recover
+// membership from the explicit association records; never infer IDs from
+// route names, issue text, or local configuration.
+async function resolveProjectInitiativeIds(
+  accessToken: string,
+  projectId: string,
+  directIds: string[],
+): Promise<string[]> {
+  const ids = [...new Set(directIds.filter(id => /^[0-9a-f-]{36}$/i.test(id)))];
+  if (ids.length) return ids;
+
+  let after: string | null = null;
+  const matches = new Set<string>();
+  for (let page = 0; page < 20; page++) {
+    const result = await linearGraphql<{
+      initiativeToProjects: {
+        nodes: Array<{ project: { id: string } | null; initiative: { id: string } | null }>;
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      };
+    }>(accessToken,
+      `query BridgeProjectInitiatives($after: String) {
+        initiativeToProjects(first: 100, after: $after) {
+          nodes { project { id } initiative { id } }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`, { after });
+    const connection = result.initiativeToProjects;
+    if (!connection || !Array.isArray(connection.nodes) || !connection.pageInfo) {
+      throw new Error("Linear initiative association response malformed");
+    }
+    for (const record of connection.nodes) {
+      if (record?.project?.id === projectId &&
+          typeof record.initiative?.id === "string") {
+        matches.add(record.initiative.id);
+      }
+    }
+    if (!connection.pageInfo.hasNextPage) return [...matches];
+    const next = connection.pageInfo.endCursor;
+    if (!next || next === after) throw new Error("Linear initiative association cursor invalid");
+    after = next;
+  }
+  throw new Error("Linear initiative associations exceeded 20 pages; refusing incomplete routing");
 }
 
 async function forwardToMacBridge(
