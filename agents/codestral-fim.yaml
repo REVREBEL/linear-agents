@@ -1,0 +1,65 @@
+id: codestral-fim
+displayName: Mistral Codestral Latest (FIM)
+description: Mistral AI 22B specialized code model featuring a 128K context window
+  and support for 80+ programming languages. Accessed via direct API endpoint for
+  Fill-in-the-Middle (prefix + suffix) surgical code insertion, method body synthesis,
+  and automated inline patch generation.
+kind: llm
+provider: Mistral AI
+model: text-completion-codestral/codestral-latest
+runtime:
+  transport: direct_api
+  executionHost: cloudflare_worker_or_ubuntu
+  workspaceRoot: /var/agent-bridge/fim
+linearBridge:
+  workerHost: linear-codestral.revrebel.io
+  tunnelHost: codestral-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Reflex
+  domain: Fill-in-the-Middle (FIM) surgical code completion, inline infill, and patch
+    application
+  top_skills:
+  - FIM prefix/suffix code insertion
+  - Single-function & method body generation
+  - Automated linting patch synthesis
+routing:
+  complexity_tier: Low
+  semantic_description: Non-conversational infill completion engine for surgical code
+    insertions between prefix and suffix snippets.
+  supported_intents:
+  - fim_code_completion
+  - generate_method_body
+  - synthesize_patch
+  task_ratings:
+    fim_completion: 4.9
+    single_function_generation: 4.8
+    multi_file_orchestration: 1.2
+execution:
+  autonomy_level: Recommender
+  memory_scope: stateless
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 30000
+    maxRetryAttempts: 2
+    exhaustionPattern: 429|rate_limited
+permissions:
+  sourceWrite: false
+  directoryMoves: false
+  gitCommit: false
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist: []
+  handoff_targets:
+  - north-mini-code
+  - flint
