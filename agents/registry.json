@@ -53,7 +53,7 @@
       "worker": {
         "directory": "linear-chatgpt-cli-worker",
         "config": "wrangler.jsonc",
-        "serviceTemplate": "linear-chatgpt-cli-agent",
+        "serviceTemplate": "linear-chatgpt-agent",
         "prefixEnv": "CHATGPT_CLI_PREFIX",
         "kvEnv": "CHATGPT_CLI_KV_NAMESPACE_ID",
         "durableObject": "DELIVERY_COORDINATOR"
