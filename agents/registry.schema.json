@@ -39,7 +39,8 @@
         "linear",
         "profile",
         "runtimeContract",
-        "executionPolicy"
+        "executionPolicy",
+        "targetPackageDir"
       ],
       "properties": {
         "id": {
@@ -58,7 +59,8 @@
           "pattern": "^[a-z][a-z0-9-]*$"
         },
         "packageDir": {
-          "$ref": "#/$defs/relativePath"
+          "$ref": "#/$defs/relativePath",
+          "description": "Current physical package directory; must exist at the checked-out revision."
         },
         "worker": {
           "$ref": "#/$defs/worker"
@@ -110,6 +112,10 @@
         },
         "executionPolicy": {
           "$ref": "#/$defs/executionPolicy"
+        },
+        "targetPackageDir": {
+          "$ref": "#/$defs/relativePath",
+          "description": "Planned post-P3 location; not used as a current runtime path."
         }
       }
     },
