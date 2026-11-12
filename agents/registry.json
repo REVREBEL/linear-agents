@@ -5,7 +5,7 @@
       "id": "antigravity",
       "role": "coding",
       "provider": "antigravity",
-      "packageDir": "agents/coding/antigravity",
+      "packageDir": "linear-antigravity-worker",
       "worker": {
         "directory": "linear-antigravity-worker",
         "config": "wrangler.jsonc",
@@ -123,13 +123,14 @@
             "human_supervisor"
           ]
         }
-      }
+      },
+      "targetPackageDir": "agents/coding/antigravity"
     },
     {
       "id": "chatgpt",
       "role": "review",
       "provider": "chatgpt",
-      "packageDir": "agents/bridge/reviewer",
+      "packageDir": "linear-chatgpt-worker",
       "worker": {
         "directory": "linear-chatgpt-worker",
         "config": "wrangler.jsonc",
@@ -176,13 +177,14 @@
           "mcpToolAllowlist": [],
           "handoff_targets": []
         }
-      }
+      },
+      "targetPackageDir": "agents/bridge/reviewer"
     },
     {
       "id": "chatgpt-cli",
       "role": "coding",
       "provider": "opencode",
-      "packageDir": "agents/coding/chatgpt-cli",
+      "packageDir": "linear-chatgpt-cli-worker",
       "worker": {
         "directory": "linear-chatgpt-cli-worker",
         "config": "wrangler.jsonc",
@@ -233,13 +235,14 @@
           "mcpToolAllowlist": [],
           "handoff_targets": []
         }
-      }
+      },
+      "targetPackageDir": "agents/coding/chatgpt-cli"
     },
     {
       "id": "gemini",
       "role": "coding",
       "provider": "gemini",
-      "packageDir": "agents/coding/gemini",
+      "packageDir": "linear-gemini-worker",
       "worker": {
         "directory": "linear-gemini-worker",
         "config": "wrangler.jsonc",
@@ -290,7 +293,8 @@
           "mcpToolAllowlist": [],
           "handoff_targets": []
         }
-      }
+      },
+      "targetPackageDir": "agents/coding/gemini"
     },
     {
       "id": "gemma",
@@ -343,13 +347,14 @@
           "mcpToolAllowlist": [],
           "handoff_targets": []
         }
-      }
+      },
+      "targetPackageDir": "agents/coding/gemma"
     },
     {
       "id": "trae",
       "role": "coding",
       "provider": "trae",
-      "packageDir": "agents/coding/trae",
+      "packageDir": "linear-trae-worker",
       "worker": {
         "directory": "linear-trae-worker",
         "config": "wrangler.jsonc",
@@ -400,13 +405,14 @@
           "mcpToolAllowlist": [],
           "handoff_targets": []
         }
-      }
+      },
+      "targetPackageDir": "agents/coding/trae"
     },
     {
       "id": "mock",
       "role": "testing",
       "provider": "mock",
-      "packageDir": "agents/coding/mock",
+      "packageDir": "linear-mock-worker",
       "worker": {
         "directory": "linear-mock-worker",
         "config": "wrangler.jsonc",
@@ -453,7 +459,8 @@
           "mcpToolAllowlist": [],
           "handoff_targets": []
         }
-      }
+      },
+      "targetPackageDir": "agents/coding/mock"
     }
   ]
 }
