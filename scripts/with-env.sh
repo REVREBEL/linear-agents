@@ -87,7 +87,11 @@ case "${1:-}" in
       mock) worker_dir="${REPO_ROOT}/linear-mock-worker"; prefix="MOCK" ;;
       *) usage ;;
     esac
-    # ChatGPT review and ChatGPT CLI share one Linear app registration.\n    # They keep separate Worker endpoints and KV namespaces.\n    credential_prefix="${prefix}"\n    if [[ "${agent}" == "chatgpt-cli" ]]; then credential_prefix="CHATGPT"; fi\n    if [[ "${action}" == kv ]]; then
+    # ChatGPT review and ChatGPT CLI share one Linear app registration.
+    # They keep separate Worker endpoints and KV namespaces.
+    credential_prefix="${prefix}"
+    if [[ "${agent}" == "chatgpt-cli" ]]; then credential_prefix="CHATGPT"; fi
+    if [[ "${action}" == kv ]]; then
       require CLOUDFLARE_ACCOUNT_ID
       require CLOUDFLARE_API_TOKEN
       cd "${REPO_ROOT}"
