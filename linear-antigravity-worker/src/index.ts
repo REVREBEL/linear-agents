@@ -546,9 +546,13 @@ async function handleLinearWebhook(
 
   // Enrich the signed session with stable Linear IDs; do not infer paths from issue prose.
   let routing: { projectId: string; projectName: string; initiativeIds: string[]; agentLocation?: string | null } | undefined;
+  const issueId = stringValue(getNested(payload, "agentSession", "issueId")) ||
+    stringValue(getNested(payload, "agentSession", "issue", "id")) ||
+    stringValue(getNested(payload, "data", "agentSession", "issueId")) ||
+    stringValue(getNested(payload, "data", "agentSession", "issue", "id"));
+  let routeFailure: "missing_issue" | "missing_project" | "missing_initiative" | "query_failed" | null = null;
   if (agentSessionId) {
-    const issueId = stringValue(getNested(payload, "agentSession", "issueId")) ||
-      stringValue(getNested(payload, "agentSession", "issue", "id"));
+    if (!issueId) routeFailure = "missing_issue";
     if (issueId) {
       try {
         const result = await linearGraphql<{
@@ -560,33 +564,63 @@ async function handleLinearWebhook(
               labels { nodes { name parent { name } } }
             }
           }`, { issueId });
-        if (result.issue?.project) {
+        if (result.issue?.project?.id) {
+          const initiativeIds = await resolveProjectInitiativeIds(
+            installation.accessToken,
+            result.issue.project.id,
+            result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
+          );
+          // An empty, verified initiative list is valid for standalone projects.
+          // Ubuntu's explicit routing registry decides whether it requires an
+          // initiative or has a project.repository mapping.
           routing = {
             projectId: result.issue.project.id,
             projectName: result.issue.project.name,
-            initiativeIds: await resolveProjectInitiativeIds(
-              installation.accessToken,
-              result.issue.project.id,
-              result.issue.project.initiatives?.nodes?.map(item => item.id) || [],
-            ),
+            initiativeIds,
             agentLocation: issueAgentLocation(result.issue.labels?.nodes),
           };
+        } else {
+          routeFailure = "missing_project";
         }
       } catch (error) {
+        routeFailure = "query_failed";
         console.error("Unable to enrich routing metadata", {
           agentSessionId,
-          error: error instanceof Error ? error.message : String(error),
+          issueId,
+          // Do not log raw GraphQL error bodies or upstream details.
+          category: "query_failed",
         });
       }
     }
   }
 
+  // Never send a malformed job to the bridge and create a permanent
+  // .unrouted.json claim. Report the pre-launch failure inside Linear instead.
+  if (agentSessionId && (!routing || routeFailure)) {
+    const category = routeFailure || "missing_project";
+    const messages: Record<string, string> = {
+      missing_issue: "Antigravity could not identify the Linear issue for this session.",
+      missing_project: "Antigravity could not verify the Linear project associated with this issue.",
+      missing_initiative: "Antigravity could not verify initiative membership for the Linear project.",
+      query_failed: "Antigravity could not retrieve complete routing metadata from Linear.",
+    };
+    try {
+      const failureId = await stableActivityId(`routing-enrichment:${installation.organizationId}:${webhookId}:${agentSessionId}`);
+      await activityOnce(`routing-enrichment:${webhookId}:${agentSessionId}`, () => createAgentActivity(
+        installation.accessToken,
+        agentSessionId,
+        { type: "error", body: `${messages[category]} No job was dispatched. The delivery remains retryable.` },
+        failureId,
+      ));
+    } catch {
+      console.error("Unable to publish Linear routing failure", { webhookId, agentSessionId, category });
+    }
+    return jsonResponse({ ok: false, accepted: false, error: "Routing metadata incomplete; retry required", category }, 503);
+  }
+
   const bridgeJob = {
     routing,
-    issueId: stringValue(getNested(payload, "agentSession", "issueId")) ||
-      stringValue(getNested(payload, "agentSession", "issue", "id")) ||
-      stringValue(getNested(payload, "data", "agentSession", "issueId")) ||
-      stringValue(getNested(payload, "data", "agentSession", "issue", "id")),
+    issueId,
     source: "linear",
     sessionAction: isAgentFollowup ? "prompted" : "created",
     receivedAt: new Date().toISOString(),

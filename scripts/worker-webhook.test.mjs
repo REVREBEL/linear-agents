@@ -158,6 +158,79 @@ test("antigravity: resolves initiative membership from association records when 
   } finally { globalThis.fetch = oldFetch; }
 });
 
+test("antigravity: nested session issue ID is used for routing", { concurrency: false }, async () => {
+  const workerModule = await loadWorker("antigravity");
+  const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
+  const body = JSON.stringify({ organizationId: "org", type: "AgentSessionEvent", action: "created",
+    agentSessionId: "session-nested", data: { agentSession: { issueId: "issue-nested" } },
+    promptContext: "Run task", webhookTimestamp: Date.now() });
+  const signature = crypto.createHmac("sha256", "webhook-secret").update(body).digest("hex");
+  const request = new Request("https://worker.test/webhook", { method: "POST",
+    headers: { "linear-signature": signature, "linear-delivery": "nested-issue",
+      "linear-event": "AgentSessionEvent" }, body });
+  const oldFetch = globalThis.fetch;
+  let forwarded = null;
+  try {
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes("api.linear.app/graphql")) {
+        const body = JSON.parse(String(options.body));
+        if (body.query.includes("AgentActivityCreate"))
+          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        assert.equal(body.variables.issueId, "issue-nested");
+        return Response.json({ data: { issue: { project: { id: "project-id", name: "Project",
+          initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } }, labels: { nodes: [] } } } });
+      }
+      if (String(url).includes("bridge.test")) {
+        forwarded = JSON.parse(String(options.body));
+        return Response.json({ ok: true, accepted: true }, { status: 202 });
+      }
+      throw Error("Unexpected request");
+    };
+    const result = await workerModule.default.fetch(request, config, {});
+    assert.equal(result.status, 200);
+    assert.equal(forwarded.issueId, "issue-nested");
+    assert.equal(forwarded.routing.projectId, "project-id");
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("antigravity: routing lookup failure reports Linear error without claiming bridge job", { concurrency: false }, async () => {
+  const workerModule = await loadWorker("antigravity");
+  const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
+  const request = await signedEvent("missing-routing");
+  const oldFetch = globalThis.fetch;
+  let forwarded = 0;
+  let errors = [];
+  try {
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes("api.linear.app/graphql")) {
+        const body = JSON.parse(String(options.body));
+        if (body.query.includes("AgentActivityCreate")) {
+          errors.push(body.variables.input);
+          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        }
+        return Response.json({ data: { issue: { project: null, labels: { nodes: [] } } } });
+      }
+      if (String(url).includes("bridge.test")) {
+        forwarded++;
+        return Response.json({ ok: true, accepted: true }, { status: 202 });
+      }
+      throw Error("Unexpected request");
+    };
+    const response = await workerModule.default.fetch(request(), config, {});
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).category, "missing_project");
+    assert.equal(forwarded, 0);
+    const error = errors.find(item => item.content.type === "error");
+    assert.ok(error);
+    assert.match(error.content.body, /No job was dispatched/);
+    assert.equal([...store.map.keys()].some(key => key.startsWith("webhook:")), false);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
 test("antigravity: completion callback preserves explicit activity type", { concurrency: false }, async () => {
   const workerModule = await loadWorker("antigravity");
   const store = kv({
@@ -242,7 +315,7 @@ for (const agent of agents) {
       globalThis.fetch = async url => {
         if (String(url).includes("api.linear.app/graphql")) {
           return Response.json({ data: { agentActivityCreate: { success: true },
-            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } } }
           } });
         }
         if (String(url).includes("bridge.test")) {
@@ -281,7 +354,7 @@ for (const agent of agents) {
             activityInputs.push(JSON.parse(String(options.body)).variables.input);
           }
           return Response.json({ data: { agentActivityCreate: { success: true },
-            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } } }
           } });
         }
         if (String(url).includes("bridge.test")) {
@@ -323,7 +396,7 @@ for (const agent of agents) {
       globalThis.fetch = async url => {
         if (String(url).includes("api.linear.app/graphql")) {
           return Response.json({ data: { agentActivityCreate: { success: true },
-            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } } }
           } });
         }
         if (String(url).includes("bridge.test")) {
@@ -355,7 +428,7 @@ for (const agent of agents) {
       globalThis.fetch = async url => {
         if (String(url).includes("api.linear.app/graphql")) {
           return Response.json({ data: { agentActivityCreate: { success: true },
-            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } }
+            issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } } }
           } });
         }
         if (String(url).includes("bridge.test")) {
@@ -434,7 +507,7 @@ test("replayed signed body cannot bypass dedupe by changing unsigned delivery he
     globalThis.fetch = async url => {
       if (String(url).includes("api.linear.app/graphql")) {
         return Response.json({ data: { agentActivityCreate: { success: true },
-          issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } } } } });
+          issue: { identifier: "REV-123", project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } } } } });
       }
       if (String(url).includes("bridge.test")) {
         forwarded++;
@@ -467,7 +540,7 @@ test("trae: Agent Location label is forwarded to the Ubuntu bridge", { concurren
         const input = JSON.parse(options.body);
         if (String(input.query).includes("BridgeIssueRouting")) {
           return Response.json({ data: {
-            issue: { project: { id: "project-1", name: "Metrics", initiatives: { nodes: [] } },
+            issue: { project: { id: "project-1", name: "Metrics", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } },
               labels: { nodes: [{ name: "macos", parent: { name: "agent-location" } }] } }
           } });
         }
