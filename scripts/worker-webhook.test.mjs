@@ -112,6 +112,52 @@ const installed = (expiresAt, refreshToken = "refresh") => JSON.stringify({
 });
 const agents = ["antigravity", "chatgpt", "chatgpt-cli", "gemini", "trae", "mock"];
 
+test("antigravity: resolves initiative membership from association records when project connection is empty", { concurrency: false }, async () => {
+  const workerModule = await loadWorker("antigravity");
+  const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(workerModule, config);
+  const request = await signedEvent("initiative-association-recovery");
+  const oldFetch = globalThis.fetch;
+  let delivered;
+  let associationQueries = 0;
+  try {
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes("api.linear.app/graphql")) {
+        const body = JSON.parse(String(options.body));
+        if (body.query.includes("AgentActivityCreate")) {
+          return Response.json({ data: { agentActivityCreate: { success: true } } });
+        }
+        if (body.query.includes("BridgeIssueRouting")) {
+          return Response.json({ data: { issue: {
+            project: { id: "eaf694c0-6845-473c-a102-bb1a1729f4bc", name: "Agent Bridge | Core", initiatives: { nodes: [] } },
+            labels: { nodes: [] },
+          } } });
+        }
+        if (body.query.includes("BridgeProjectInitiatives")) {
+          associationQueries++;
+          return Response.json({ data: { initiativeToProjects: {
+            nodes: [{ project: { id: "eaf694c0-6845-473c-a102-bb1a1729f4bc" },
+              initiative: { id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" } }],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          } } });
+        }
+        throw new Error("Unexpected GraphQL query");
+      }
+      if (String(url).includes("bridge.test")) {
+        delivered = JSON.parse(String(options.body));
+        return Response.json({ ok: true, accepted: true }, { status: 202 });
+      }
+      throw new Error("Unexpected external fetch: " + url);
+    };
+    const response = await workerModule.default.fetch(request(), config, {});
+    assert.equal(response.status, 200);
+    assert.equal(associationQueries, 1);
+    assert.deepEqual(delivered.routing.initiativeIds, ["65dc9ea9-8b90-46ed-ab59-10e507c033cc"]);
+    assert.equal(delivered.routing.projectId, "eaf694c0-6845-473c-a102-bb1a1729f4bc");
+  } finally { globalThis.fetch = oldFetch; }
+});
+
 test("antigravity: completion callback preserves explicit activity type", { concurrency: false }, async () => {
   const workerModule = await loadWorker("antigravity");
   const store = kv({
