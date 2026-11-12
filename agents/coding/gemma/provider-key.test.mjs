@@ -30,12 +30,15 @@ test("unlisted provider cannot invoke shell or read secrets", async () => {
   assert.equal(called, false);
 });
 
-test("LiteLLM does not request a provider secret from this loader", async () => {
-  let called = false;
-  await assert.rejects(loadGemmaProviderKey("litellm", {
-    execFile: async () => { called = true; return { stdout: "should-not-read" }; },
-  }), /Unsupported Gemma credential provider/);
-  assert.equal(called, false);
+test("LiteLLM loads only a distinct scoped client key", async () => {
+  const key = await loadGemmaProviderKey("litellm", {
+    execFile: async (_bin, args) => {
+      assert.match(args[1], /GEMMA_LITELLM_API_KEY/);
+      assert.doesNotMatch(args[1], /OPENROUTER_API_KEY|LITELLM_MASTER_KEY/);
+      return { stdout: "scoped-proxy-client-key" };
+    },
+  });
+  assert.equal(key, "scoped-proxy-client-key");
 });
 
 test("loader failure, empty value and oversized output fail closed", async () => {
