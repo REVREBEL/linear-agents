@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "workspaces": [
     "agents/coding/antigravity/worker",
-    "linear-chatgpt-worker",
+    "agents/bridge/reviewer/worker",
     "agents/coding/chatgpt-cli/worker",
     "agents/coding/gemini/worker",
     "agents/coding/trae/worker",
