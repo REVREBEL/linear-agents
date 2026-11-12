@@ -231,6 +231,68 @@ test("antigravity: routing lookup failure reports Linear error without claiming 
   } finally { globalThis.fetch = oldFetch; }
 });
 
+test("antigravity: no session ID cannot forward a job with null routing", { concurrency: false }, async () => {
+  const worker = await loadWorker("antigravity");
+  const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(worker, config);
+  const body = JSON.stringify({ organizationId: "org", type: "AgentSessionEvent",
+    action: "prompted", agentSession: { issueId: "issue-1" },
+    agentActivity: { content: { body: "Follow up" } }, webhookTimestamp: Date.now() });
+  const signature = crypto.createHmac("sha256", "webhook-secret").update(body).digest("hex");
+  const request = new Request("https://worker.test/webhook", { method: "POST",
+    headers: { "linear-signature": signature, "linear-event": "AgentSessionEvent" }, body });
+  const oldFetch = globalThis.fetch;
+  let bridgeCalls = 0;
+  try {
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes("api.linear.app/graphql"))
+        return Response.json({ data: { issue: { project: null, labels: { nodes: [] } } } });
+      if (String(url).includes("bridge.test")) {
+        bridgeCalls++;
+        return Response.json({ ok: true, accepted: true }, { status: 202 });
+      }
+      throw Error("Unexpected URL");
+    };
+    const response = await worker.default.fetch(request, config, {});
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).category, "missing_project");
+    assert.equal(bridgeCalls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("antigravity: no session ID still enriches routing from a verified issue", { concurrency: false }, async () => {
+  const worker = await loadWorker("antigravity");
+  const store = kv({ "installation:org": installed(Date.now() + 3600000) });
+  const config = env(store);
+  config.DELIVERY_COORDINATOR = makeCoordinatorNamespace(worker, config);
+  const body = JSON.stringify({ organizationId: "org", type: "AgentSessionEvent",
+    action: "prompted", agentSession: { issueId: "issue-1" },
+    agentActivity: { content: { body: "Follow up" } }, webhookTimestamp: Date.now() });
+  const signature = crypto.createHmac("sha256", "webhook-secret").update(body).digest("hex");
+  const request = new Request("https://worker.test/webhook", { method: "POST",
+    headers: { "linear-signature": signature, "linear-event": "AgentSessionEvent" }, body });
+  const oldFetch = globalThis.fetch;
+  let delivered;
+  try {
+    globalThis.fetch = async (url, options) => {
+      if (String(url).includes("api.linear.app/graphql"))
+        return Response.json({ data: { issue: { project: { id: "eaf694c0-6845-473c-a102-bb1a1729f4bc",
+          name: "Agent Bridge | Core", initiatives: { nodes: [{ id: "65dc9ea9-8b90-46ed-ab59-10e507c033cc" }] } },
+          labels: { nodes: [] } } } });
+      if (String(url).includes("bridge.test")) {
+        delivered = JSON.parse(String(options.body));
+        return Response.json({ ok: true, accepted: true }, { status: 202 });
+      }
+      throw Error("Unexpected URL");
+    };
+    const response = await worker.default.fetch(request, config, {});
+    assert.equal(response.status, 200);
+    assert.equal(delivered.routing.projectId, "eaf694c0-6845-473c-a102-bb1a1729f4bc");
+    assert.deepEqual(delivered.routing.initiativeIds, ["65dc9ea9-8b90-46ed-ab59-10e507c033cc"]);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
 test("antigravity: completion callback preserves explicit activity type", { concurrency: false }, async () => {
   const workerModule = await loadWorker("antigravity");
   const store = kv({
