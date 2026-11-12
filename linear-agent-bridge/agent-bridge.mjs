@@ -27,7 +27,7 @@ import { recordResumedConversation } from "./agy-conversation-state.mjs";
 // Linux agent processes inherit this systemd service identity. Fail before
 // accepting jobs if the bridge was accidentally launched as root or a
 // personal CLI account. Mac development remains unaffected.
-if (process.platform === "linux" && process.env.BRIDGE_REQUIRE_SERVICE_USER !== "false") {
+if (process.platform === "linux") {
   const identity = os.userInfo();
   if (identity.username !== "bridge" || process.getuid?.() === 0) {
     throw Error("Linux Agent Bridge must run as the bridge service user (systemd User=bridge)");
