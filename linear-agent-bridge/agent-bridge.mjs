@@ -21,8 +21,8 @@ import os from "node:os";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { createJobStore } from "../jobs/job-store.mjs";
-import { createSessionQueue } from "./agy-session-queue.mjs";
-import { recordResumedConversation } from "./agy-conversation-state.mjs";
+import { createSessionQueue } from "../conversations/agy-session-queue.mjs";
+import { recordResumedConversation } from "../conversations/agy-conversation-state.mjs";
 
 // Linux agent processes inherit this systemd service identity. Fail before
 // accepting jobs if the bridge was accidentally launched as root or a
