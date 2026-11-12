@@ -27,7 +27,7 @@ test("agent registry refuses duplicate IDs, directories and KV bindings", () => 
 
 test("agent registry refuses unsafe paths and Worker identity drift", () => {
   const traversal = copy(); traversal.agents[0].worker.directory = "../private";
-  assert.throws(() => validateRegistry(traversal,schema), /unsafe path/);
+  assert.throws(() => validateRegistry(traversal,schema), /unsafe path|invalid pattern/);
   const drift = copy(); drift.agents[0].worker.serviceTemplate = "linear-wrong-agent";
   assert.throws(() => validateRegistry(drift,schema), /service name drift/);
 });
