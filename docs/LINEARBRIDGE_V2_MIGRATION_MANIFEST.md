@@ -1,7 +1,7 @@
 # LinearBridge v2 | Baseline, Inventory & Staged Migration Manifest
 
 **Authority:** LinearBridge Architecture Document `4960a1d0f569` ([LinearBridge v2 architecture](https://linear.app/revrebel/document/linearbridge-v2-agent-centric-repository-structure-and-migration-4960a1d0f569)).  
-**Tracking Issue:** [ABR-28](https://linear.app/revrebel/issue/ABR-28/implement-agent-centric-linearbridge-v2-layout-with-colocated-workers) / [GitHub PR #64](https://github.com/REVREBEL/linear-agents/issues/64).  
+**Tracking Issue:** [ABR-28](https://linear.app/revrebel/issue/ABR-28/implement-agent-centric-linearbridge-v2-layout-with-colocated-workers) / [GitHub PR #107](https://github.com/REVREBEL/linear-agents/pull/107).  
 **Phase:** P0 Baseline & Manifest Specification.  
 **Baseline Git Commit SHA:** `b5d4988b62b8a42424171f2b348a53e3a74b713c` (HEAD of `main`).  
 **Date:** November 12, 2026.  
@@ -23,7 +23,7 @@ LinearBridge v2 establishes an **agent-centric monorepo structure** where each c
    - `integrations/` (Linear and GitHub API clients, OAuth verification)
    - `bridge/` (HTTP server, route handlers, orchestration engine)
 4. **External Skills Governance:** Skills remain external in `REVREBEL/skills-library` governed by SKIL Zero-Index. No duplicate skill taxonomy or copied skill bodies exist in LinearBridge.
-5. **Runtime Data Isolation:** Live state (`BRIDGE_DATA_DIR`, `.linear-agent/`, `linear-jobs/`) is strictly isolated from Git. No live job files or private keys are ever tracked or moved via `git mv`.
+5. **Runtime Data Isolation:** Live state (`BRIDGE_DATA_DIR`, `.linear-agent/`, `linear-jobs/`, `linear-jobs-interrupted/`) is strictly isolated from Git via root `.gitignore` and dynamic per-repository `.git/info/exclude`. No live job files or private keys are ever tracked or moved via `git mv`.
 6. **Strict Identity Preservation:** Existing Cloudflare Worker deployment names, custom domains, KV namespaces (`LINEAR_DATA`), Durable Objects (`DELIVERY_COORDINATOR`), OAuth app credentials, Tunnel hostnames, and accepted issue/session IDs remain 100% byte-for-byte and contractually intact.
 7. **Distinct Reviewer Workflow:** ChatGPT review-user identity and workflows live under `agents/bridge/reviewer/` and are strictly separated from `agents/coding/chatgpt-cli/`.
 
@@ -32,7 +32,7 @@ LinearBridge v2 establishes an **agent-centric monorepo structure** where each c
 ## 2. Baseline Environment & Test Suite Inventory
 
 ### Runtime Matrix
-- **Node.js:** v24.19.0+
+- **Node.js:** `26.13.0` (pinned via root `package.json` Volta block and CI workflow; compatible with Node.js v24.19.0+)
 - **npm:** v11.x (workspaces enabled)
 - **Python:** 3.12+ (Antigravity runner `run_agent.py`)
 - **OS Environments:**
@@ -48,42 +48,48 @@ LinearBridge v2 establishes an **agent-centric monorepo structure** where each c
 *Note: 1 test in `linear-agent-bridge/github-self-origin-dispatch.test.mjs` is intentionally skipped on macOS dev as it is a Linux CI-specific integration test.*
 
 ### Test Suite Breakdown
-1. **Memory & Checkpoints:**
-   - `linear-agent-bridge/active-task-memory.test.mjs` (6 tests)
-   - `linear-agent-bridge/memu-memory.test.mjs` (7 tests)
-2. **Launchers & Provider Sessions:**
-   - `linear-agent-bridge/agent-launchers.test.mjs` (2 tests: Antigravity, Gemini)
-   - `linear-agent-bridge/agy-conversation-state.test.mjs` (5 tests)
-   - `linear-agent-bridge/agy-session-queue.test.mjs` (2 tests)
-   - `linear-agent-bridge/chatgpt-opencode.test.mjs` (6 tests)
-   - `linear-agent-bridge/mac-remote-runner.test.mjs` (5 tests: Trae)
-   - `linear-agent-bridge/trae-completion.test.mjs` (2 tests)
-   - `linear-agent-bridge/remote-trae-activity.test.mjs` (3 tests)
-   - `agents/coding/gemma/inventory.test.mjs` (3 tests)
-   - `agents/coding/gemma/dev-tools.test.mjs` (3 tests)
-   - `agents/coding/gemma/provider-key.test.mjs` (2 tests)
-   - `integrations/litellm/agent-runtime.test.mjs` (5 tests)
-3. **Jobs & Ledger:**
-   - `linear-agent-bridge/job-store.test.mjs` (8 tests)
-   - `linear-agent-bridge/ordered-progress.test.mjs` (2 tests)
-4. **Routing & SSH:**
-   - `linear-agent-bridge/host-routing.test.mjs` (5 tests)
-   - `linear-agent-bridge/ssh-dispatch.test.mjs` (1 test)
-   - `linear-agent-bridge/linear-credentials.test.mjs` (1 test)
-5. **Review Automation & GitHub Events:**
-   - `linear-agent-bridge/github-events.test.mjs` (11 tests)
-   - `linear-agent-bridge/github-self-origin-dispatch.test.mjs` (1 skipped)
-   - `linear-agent-bridge/review-delivery.test.mjs` (3 tests)
-   - `linear-agent-bridge/review-inbox-api.test.mjs` (1 test)
-   - `linear-agent-bridge/review-inbox.test.mjs` (4 tests)
-   - `linear-agent-bridge/review-linear-notifier.test.mjs` (4 tests)
-   - `linear-agent-bridge/review-message-handoff.test.mjs` (5 tests)
-   - `scripts/macos/chatgpt-shortcuts/review-handoff.test.mjs` (1 test)
-6. **Platform Scripts & Edge Workers:**
-   - `scripts/platform-scripts.test.mjs` (7 tests)
-   - `scripts/oauth-errors.test.mjs` (1 test)
-   - `scripts/check-trae-callbacks.test.mjs` (1 test)
-   - `scripts/worker-webhook.test.mjs` (44 tests)
+
+#### Bridge Suite (`npm run bridge:test` — 90 tests total, 89 passed, 1 skipped)
+1. **Platform Scripts:**
+   - `scripts/platform-scripts.test.mjs` (10 tests: syntax, launcher selection, service inspection, KV setup)
+2. **Memory & Checkpoints:**
+   - `linear-agent-bridge/active-task-memory.test.mjs` (6 tests: persistence, serialization, progress events, schema v2, expiration)
+   - `linear-agent-bridge/memu-memory.test.mjs` (7 tests: compact recall, format fallback, timeout handling, promotion gate)
+3. **Launchers & Provider Sessions:**
+   - `linear-agent-bridge/agent-launchers.test.mjs` (2 tests: Antigravity, Gemini launcher boundary)
+   - `linear-agent-bridge/agy-conversation-state.test.mjs` (3 tests: conversation discovery, resumption flag, recovery provenance)
+   - `linear-agent-bridge/agy-session-queue.test.mjs` (2 tests: sequential execution, error isolation)
+   - `linear-agent-bridge/chatgpt-opencode.test.mjs` (6 tests: OAuth token handoff, daemon account inheritance, stream extraction, progress filtering)
+   - `linear-agent-bridge/mac-remote-runner.test.mjs` (5 tests: workspace resolution, traversal rejection, symlink checks, Git exclude, cleanup)
+   - `linear-agent-bridge/remote-trae-activity.test.mjs` (3 tests: authenticated activity forwarder, tunnel host validation, URL origin checks)
+   - `linear-agent-bridge/trae-completion.test.mjs` (2 tests: token forwarding, ambiguous status rejection)
+4. **Jobs & Ledger:**
+   - `linear-agent-bridge/job-store.test.mjs` (6 tests: atomic claims, transition serialization, ambiguous reconciliation, session matching, workspace rotation)
+   - `linear-agent-bridge/ordered-progress.test.mjs` (2 tests: monotonic ordering, resilient checkpoint writes)
+5. **Routing & SSH:**
+   - `linear-agent-bridge/host-routing.test.mjs` (5 tests: backward-compatibility fallback, macOS Trae route, root override, remote scope, shell safety)
+   - `linear-agent-bridge/ssh-dispatch.test.mjs` (1 test: payload isolation)
+   - `linear-agent-bridge/linear-credentials.test.mjs` (2 tests: credential isolation, access token caching)
+6. **Review Automation & GitHub Events:**
+   - `linear-agent-bridge/github-events.test.mjs` (12 tests: payload sanitization, PR link validation, event journal, review routing, sender checking)
+   - `linear-agent-bridge/github-self-origin-dispatch.test.mjs` (1 skipped on macOS: Linux CI self-origin dispatch)
+   - `linear-agent-bridge/review-delivery.test.mjs` (3 tests: verified review evidence, stale PR rejection, publication requirement)
+   - `linear-agent-bridge/review-inbox-api.test.mjs` (1 test: authenticated reviewer claim)
+   - `linear-agent-bridge/review-inbox.test.mjs` (3 tests: role isolation, duplicate rejection, serialized outcomes)
+   - `linear-agent-bridge/review-linear-notifier.test.mjs` (4 tests: PR UUID stability, issue assignment, updates, missing user refusal)
+   - `linear-agent-bridge/review-message-handoff.test.mjs` (4 tests: fixed runner dispatch, prompt-only handoff, double-submission suppression, EPIPE safety)
+
+#### Additional Reliability Suite Tests (`npm run test:reliability` — +60 tests, 150 total)
+1. **Edge Workers & Webhooks:**
+   - `scripts/worker-webhook.test.mjs` (38 tests: Webhook HMAC verification, DO deduplication, alarm replay, payload freshness, Agent Location routing across all workers)
+   - `scripts/oauth-errors.test.mjs` (4 tests: structured OAuth error reporting)
+   - `scripts/check-trae-callbacks.test.mjs` (3 tests: Trae callback route validation)
+   - `scripts/macos/chatgpt-shortcuts/review-handoff.test.mjs` (2 tests: macOS review handoff workflow)
+2. **Gemma & LiteLLM Isolated Runtime:**
+   - `agents/coding/gemma/inventory.test.mjs` (3 tests: task checkout, isolated fake filesystem, read-only tools)
+   - `agents/coding/gemma/dev-tools.test.mjs` (3 tests: model selection, input safety, path traversal prevention)
+   - `agents/coding/gemma/provider-key.test.mjs` (4 tests: scoped OpenRouter key, secret isolation)
+   - `integrations/litellm/agent-runtime.test.mjs` (3 tests: client key loading, official SDK moves, rate limits & step exhaustion)
 
 ---
 
@@ -153,17 +159,20 @@ LinearBridge v2 establishes an **agent-centric monorepo structure** where each c
 
 ## 5. Cloudflare Wrangler & Edge Infrastructure Inventory
 
-| Agent / Worker Identifier | Cloudflare Worker Deployed Name | Custom Domain Route | KV Binding | Durable Object Binding | Shared Secret Binding |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **antigravity** | `linear-antigravity-agent` | `linear-antigravity.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` |
-| **chatgpt** | `linear-chatgpt-agent` | `linear-chatgpt.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` |
-| **chatgpt-cli** | `linear-chatgpt-cli-agent` | `linear-chatgpt-cli.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` |
-| **gemini** | `linear-gemini-agent` | `linear-gemini.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` |
-| **gemma** | `linear-gemma-agent` | `linear-gemma.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` |
-| **trae** | `linear-trae-agent` | `linear-trae.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` |
-| **mock** | `linear-mock-agent` | `linear-mock.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` |
+| Agent / Worker Identifier | Cloudflare Worker Deployed Name | Custom Domain Route(s) | KV Binding | Durable Object Binding | Shared Secret Binding | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **antigravity** | `linear-antigravity-agent` | `linear-antigravity.<DOMAIN>`<br>`github-antigravity.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` | Primary coding agent with dual Linear + GitHub custom domains |
+| **chatgpt** | `linear-chatgpt-agent` | `linear-chatgpt.<DOMAIN>`<br>`github-chatgpt.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` | Legacy ChatGPT worker with dual Linear + GitHub custom domains |
+| **chatgpt-cli** | `linear-chatgpt-agent` | `linear-chatgpt-cli.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` | Shares deployed worker name & Linear OAuth app identity with `chatgpt`; distinct KV namespace ID and CLI route |
+| **gemini** | `linear-gemini-agent` | `linear-gemini.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` | Gemini coding agent ingress |
+| **gemma** | `linear-gemma-agent` | `linear-gemma.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` | Isolated OpenRouter/Gemma evaluation ingress |
+| **trae** | `linear-trae-agent` | `linear-trae.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` | Trae coding agent with macOS remote dispatch |
+| **mock** | `linear-mock-agent` | `linear-mock.<DOMAIN>` | `LINEAR_DATA` | `DELIVERY_COORDINATOR` | `BRIDGE_SHARED_SECRET` | Test and verification harness |
 
-*Configuration Engine:* `scripts/render-wrangler.mjs` reads manifest and environment variables, generating ephemeral `wrangler.local.$.$RANDOM.jsonc` without mutating git state or leaking secrets.
+### Configuration Engine (`scripts/render-wrangler.mjs`)
+- **Inputs:** Accepts CLI arguments `[agent, outPath]`, reads environment variables from root `.env` (`DOMAIN`, `${AGENT}_PREFIX`, `${AGENT}_KV_NAMESPACE_ID`), and parses the static template `wrangler.jsonc` in the target worker directory.
+- **Output:** Generates an ephemeral, untracked `wrangler.local.$.$RANDOM.jsonc` file with restrictive file permissions (`mode: 0o600`), replacing environment placeholders with concrete deployment IDs without mutating tracked repository templates.
+- **Phase P1 Evolution:** Directory lookup will be migrated from hardcoded ternary/switch paths to dynamic manifest resolution via `agents/registry/agent-manifest.mjs`.
 
 ---
 
@@ -189,28 +198,61 @@ LinearBridge v2 establishes an **agent-centric monorepo structure** where each c
 ## 7. Continuous Integration Inventory
 
 ### GitHub Actions Workflow (`.github/workflows/worker-reliability.yml`)
-- **Triggers:** Push to `main` and Pull Requests.
-- **Path Filter (v1):** `linear-*-worker/**`, `shared/**`, `linear-agent-bridge/**`, `scripts/**`
-- **Path Filter (v2):** `agents/**`, `bridge/**`, `jobs/**`, `conversations/**`, `memory/**`, `routing/**`, `integrations/**`, `shared/**`, `platforms/**`, `scripts/**`, `.github/workflows/**`
-- **Steps:**
-  1. `npm ci`
-  2. `npm run types` / `npm run typecheck`
-  3. `npm run bridge:test`
-  4. `npm run test:reliability`
+- **Trigger Events:**
+  - `pull_request` (scoped by path filters)
+  - `workflow_dispatch` (manual dispatch)
+- **Path Filter (v1 Current):**
+  - `linear-*-worker/**`
+  - `linear-agent-bridge/**`
+  - `agents/**`
+  - `integrations/**`
+  - `shared/**`
+  - `scripts/**`
+  - `package.json`
+  - `package-lock.json`
+  - `.github/workflows/worker-reliability.yml`
+- **Path Filter (v2 Target):**
+  - `agents/**`
+  - `bridge/**`
+  - `jobs/**`
+  - `conversations/**`
+  - `memory/**`
+  - `routing/**`
+  - `integrations/**`
+  - `shared/**`
+  - `platforms/**`
+  - `scripts/**`
+  - `package.json`
+  - `package-lock.json`
+  - `.github/workflows/worker-reliability.yml`
+- **Pipeline Steps:**
+  1. `actions/checkout@v7`
+  2. `actions/setup-node@v7` (Node.js version `26`, npm cache)
+  3. `npm ci`
+  4. Generate runtime types: `npm run types`
+  5. Check Worker TypeScript: `npm run typecheck`
+  6. Run reliability and bridge regression tests: `npm run test:reliability`
+  7. Validate isolated Gemma SDK dependency and test package
 
 ---
 
 ## 8. Bridge Runtime State & Ignore Pattern Ledger
 
-### Git Ignore Invariants (`.gitignore`)
-The following patterns isolate all live runtime state and secrets from source control:
-- `.env`, `.env.local`, `.env.*.local`
-- `.dev.vars`
-- `.linear-agent/` (per-repo task inbox and outbox)
-- `linear-jobs/`, `linear-jobs-interrupted/`
-- `pids/`, `*.pid`, `*.pid.lock`
-- `logs/`, `*.log`
-- `wrangler.local.*.jsonc`
+### Git Ignore Invariants
+Isolation of live runtime state, task payloads, and secrets from Git is enforced through two complementary mechanisms:
+
+1. **Root `.gitignore` Rules (Tracked in Repository):**
+   - Environment and secret files: `.env`, `.env.*`, `*.env`, `.dev.vars`, `.dev.vars.*` (except `.env.example`, `.dev.vars.example`)
+   - Bridge runtime ledgers & interrupted job storage: `linear-jobs/`, `linear-jobs-interrupted/`, `.linear-agent-bridge/linear-jobs/`
+   - Per-repo task directories: `.linear-agent/`
+   - Process IDs & locks: `pids`, `pids/`, `*.pid`, `*.pid.lock`
+   - Log files: `logs/`, `*.log`, `.linear-agent-bridge/trae-hook-events.log`
+   - Ephemeral configs: `wrangler.local.*.jsonc`, `**/worker-configuration.d.ts`
+   - Trae runtime prompt files: `.linear-agent-bridge/trae-pending-prompt.txt`, `.linear-agent-bridge/trae-consumed-prompts/`
+   - Private routing maps: `linear-agent-bridge/routing.json`
+
+2. **Dynamic Per-Repository Excludes (`.git/info/exclude`):**
+   - When the agent bridge runner executes tasks in local or remote repository worktrees, it dynamically ensures `.linear-agent/` and `.env.linear-bridge` are written to the target worktree's `.git/info/exclude` prior to task file creation, preventing task payload staging even if the target repository lacks a root rule.
 
 *Verification:* Zero live job data, OAuth refresh tokens, tunnel credentials, or private keys are stored in tracked repository files.
 
@@ -221,13 +263,13 @@ The following patterns isolate all live runtime state and secrets from source co
 | Current v1 Path | Target v2 Path | Domain Ownership | Responsibilities & Boundaries |
 | :--- | :--- | :--- | :--- |
 | **Worker Ingress** | | | |
-| `linear-antigravity-worker/` | `agents/coding/antigravity/worker/` | Antigravity Ingress | Webhook HMAC verification, OAuth token exchange, DO deduplication |
-| `linear-chatgpt-worker/` | `agents/coding/chatgpt/worker/` | ChatGPT Legacy Ingress | Legacy ChatGPT Webhook/OAuth ingress |
-| `linear-chatgpt-cli-worker/` | `agents/coding/chatgpt-cli/worker/` | ChatGPT CLI Ingress | Dedicated CLI Worker endpoint and KV store |
-| `linear-gemini-worker/` | `agents/coding/gemini/worker/` | Gemini Ingress | Gemini Webhook HMAC verification & OAuth token exchange |
-| `linear-trae-worker/` | `agents/coding/trae/worker/` | Trae Ingress | Trae Webhook/OAuth ingress, Activity and progress callback proxy |
-| `linear-mock-worker/` | `agents/coding/mock/worker/` | Mock Agent Ingress | Test and verification Worker harness |
-| *(Already v2)* | `agents/coding/gemma/worker/` | Gemma Ingress | Isolated OpenRouter/Gemma Worker ingress |
+| `linear-antigravity-worker/` | `agents/coding/antigravity/worker/` | Antigravity Ingress | Webhook HMAC verification, OAuth token exchange, DO deduplication, dual custom domains (`linear-antigravity.*`, `github-antigravity.*`) |
+| `linear-chatgpt-worker/` | `agents/coding/chatgpt/worker/` | ChatGPT Legacy Ingress | Legacy ChatGPT Webhook/OAuth ingress, dual custom domains (`linear-chatgpt.*`, `github-chatgpt.*`) |
+| `linear-chatgpt-cli-worker/` | `agents/coding/chatgpt-cli/worker/` | ChatGPT CLI Ingress | Dedicated CLI Worker endpoint and KV store (`linear-chatgpt-cli.*`) |
+| `linear-gemini-worker/` | `agents/coding/gemini/worker/` | Gemini Ingress | Gemini Webhook HMAC verification & OAuth token exchange (`linear-gemini.*`) |
+| `linear-trae-worker/` | `agents/coding/trae/worker/` | Trae Ingress | Trae Webhook/OAuth ingress, Activity and progress callback proxy (`linear-trae.*`) |
+| `linear-mock-worker/` | `agents/coding/mock/worker/` | Mock Agent Ingress | Test and verification Worker harness (`linear-mock.*`) |
+| *(Already v2)* | `agents/coding/gemma/worker/` | Gemma Ingress | Isolated OpenRouter/Gemma Worker ingress (`linear-gemma.*`) |
 | **Provider Scripts & Launchers** | | | |
 | `linear-agent-bridge/agents/antigravity/scripts/launch.mjs` | `agents/coding/antigravity/scripts/launch.mjs` | Antigravity Runner | Spawns `run_agent.py`, manages sandbox, intercepts quota signals |
 | `linear-agent-bridge/run_agent.py` | `agents/coding/antigravity/scripts/run_agent.py` | Antigravity Runner | Python AGY CLI runner with stream-json and linear progress |
@@ -273,7 +315,7 @@ The following patterns isolate all live runtime state and secrets from source co
 The migration proceeds across six strictly sequenced, non-destructive phases:
 
 ### Phase P0: Baseline & Manifest (First PR)
-- **Objective:** Establish the comprehensive baseline document and verify test integrity before code moves.
+- **Objective:** Establish the comprehensive baseline document, audit Git ignore patterns, and verify test suite integrity before code moves.
 - **Verification:** Run `npm run bridge:test` (90 tests) and `npm run test:reliability` (150 tests).
 - **Rollback:** Single-commit revert of documentation files.
 
@@ -294,12 +336,13 @@ The migration proceeds across six strictly sequenced, non-destructive phases:
 
 ### Phase P4: Bridge Decomposition (Fifth PR)
 - **Objective:** Decompose `linear-agent-bridge/agent-bridge.mjs` (~93 KB) into `bridge/{server,handlers,orchestration,config}` with a stable entrypoint shim.
-- **Verification:** Exact HTTP contract testing on `/jobs`, `/complete`, `/health`, `/github-events`.
+- **Job State Anchoring Invariant:** The runtime data root (`JOBS_DIR`) must explicitly remain anchored to the existing `linear-agent-bridge/linear-jobs/` location (or resolve to `BRIDGE_DATA_DIR` / explicit repository root configuration) rather than deriving `JOBS_DIR` from the newly extracted `bridge/server/` module location. This guarantees pre-existing job claims, checkpoints, and review deduplication ledgers remain intact and readable without re-executing completed work.
+- **Verification:** Exact HTTP contract testing on `/jobs`, `/complete`, `/health`, `/github-events`, and verification that historical job ledger records remain visible and unmodified.
 - **Rollback:** Revert to monolithic `agent-bridge.mjs`.
 
 ### Phase P5: Cutover, Docs & Shim Retirement (Final PRs)
 - **Objective:** Following separate human authorization, verify live bridge endpoints across Ubuntu and macOS, update runbooks, and retire compatibility shims.
-- **Verification:** End-to-end OAuth and webhook delivery verification on all 6 worker domains.
+- **Verification:** End-to-end OAuth and webhook delivery verification across all 7 Worker domains (`antigravity`, `chatgpt`, `chatgpt-cli`, `gemini`, `gemma`, `trae`, `mock`).
 - **Rollback:** Restore compatibility shims if any unmigrated consumer remains.
 
 ---
@@ -309,6 +352,6 @@ The migration proceeds across six strictly sequenced, non-destructive phases:
 - [x] Baseline SHA recorded: `b5d4988b62b8a42424171f2b348a53e3a74b713c`
 - [x] Zero live runtime data, task files, or secret keys included
 - [x] Pre-move test count verified (150 reliability tests, 90 bridge tests)
-- [x] Cloudflare Worker identities and custom domains mapped 1:1
-- [x] Non-destructive rollback plans defined for all stages
+- [x] Cloudflare Worker identities and custom domains mapped 1:1 (including GitHub routes and shared deployment names)
+- [x] Non-destructive rollback plans and job directory anchoring defined for all stages
 - [x] External skills library boundary respected
