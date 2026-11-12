@@ -1,11 +1,11 @@
-import { githubAppHomePage } from "../../shared/github-app-homepage";
+import { githubAppHomePage } from "../../../../../shared/github-app-homepage";
 import { DurableObject } from "cloudflare:workers";
-import { issueAgentLocation, type LinearIssueLabel } from "../../shared/agent-location";
-import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, routeCompleteToCoordinator, onceDeliveryActivity } from "../../shared/delivery-coordinator";
-import { ReauthorizationRequiredError } from "../../shared/oauth-errors";
-import { getInstallation } from "../../shared/oauth-installation";
+import { issueAgentLocation, type LinearIssueLabel } from "../../../../../shared/agent-location";
+import { coordinateWebhook, retryPendingWebhooks, routeWebhookToCoordinator, routeCompleteToCoordinator, onceDeliveryActivity } from "../../../../../shared/delivery-coordinator";
+import { ReauthorizationRequiredError } from "../../../../../shared/oauth-errors";
+import { getInstallation } from "../../../../../shared/oauth-installation";
 
-import { serveBridgeAccessToken } from "../../shared/bridge-access-token";
+import { serveBridgeAccessToken } from "../../../../../shared/bridge-access-token";
 
 interface Env {
   LINEAR_DATA: KVNamespace;

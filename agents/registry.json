@@ -184,9 +184,9 @@
       "id": "chatgpt-cli",
       "role": "coding",
       "provider": "opencode",
-      "packageDir": "linear-chatgpt-cli-worker",
+      "packageDir": "agents/coding/chatgpt-cli",
       "worker": {
-        "directory": "linear-chatgpt-cli-worker",
+        "directory": "agents/coding/chatgpt-cli/worker",
         "config": "wrangler.jsonc",
         "serviceTemplate": "linear-chatgpt-agent",
         "prefixEnv": "CHATGPT_CLI_PREFIX",
