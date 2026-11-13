@@ -1,3 +1,4 @@
+import { dispatchLocalTraeAgent } from "../jobs/trae-local-dispatch.mjs";
 import { dispatchGeminiAgent } from "../jobs/gemini-dispatch.mjs";
 import { dispatchChatgptHumanHandoff } from "../jobs/chatgpt-human-handoff.mjs";
 import { dispatchAntigravityAgent } from "../jobs/antigravity-dispatch.mjs";
@@ -1600,4 +1601,129 @@ test("P4 Gemini execution stays within original bridge state and Warp implementa
   assert.ok(src.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(src.includes('const server = http.createServer(async (request, response) => {'));
   assert.ok(handler.includes('attachProcessLogs(geminiProcess, "Gemini", jobKey)'));
+});
+
+test("P4 local Trae missing binary fails without examining prompt or spawning", async () => {
+  const recorded=[],logs=[];
+  await dispatchLocalTraeAgent({
+    job:{},filename:"/safe/task.json",workspace:"/repo",jobKey:"trae:missing",credential:null,
+    repositoryRoot:"/repo",traeBin:"",traeArgsTemplate:"",
+    jobStore:{transition:async(...args)=>recorded.push(args)},
+    extractPromptContext:()=>{throw Error("should not inspect prompt");},
+    logger:{error:(...args)=>logs.push(args),log:()=>{}},
+  });
+  await Promise.resolve();
+  assert.deepEqual(recorded,[["trae:missing","failed",{error:"TRAE_BIN not configured"}]]);
+  assert.deepEqual(logs,[["TRAE_BIN is not configured. Job saved but Trae was not started."]]);
+});
+test("P4 local Trae rejects empty prompt before writing capability", async () => {
+  const recorded=[];
+  await dispatchLocalTraeAgent({
+    job:{},filename:"/task.json",workspace:"/repo",jobKey:"trae:empty",credential:null,
+    repositoryRoot:"/repo",traeBin:"trae",traeArgsTemplate:"{prompt}",
+    jobStore:{transition:async(...args)=>recorded.push(args)},
+    extractPromptContext:()=>"",
+    buildGenericArgs:()=>{throw Error("must not compose args");},
+    logger:{log:()=>{},error:()=>{}},
+  });
+  await Promise.resolve();
+  assert.deepEqual(recorded,[["trae:empty","failed",{error:"Missing Trae promptContext"}]]);
+});
+test("P4 local Trae missing callback context transitions failed without spawning", async () => {
+  const recorded=[];
+  await dispatchLocalTraeAgent({
+    job:{},filename:"/task.json",workspace:"/repo",jobKey:"trae:no-session",
+    credential:{variable:"TRAE_LINEAR_API_KEY",accessToken:"test"},
+    repositoryRoot:"/repo",traeBin:"trae",traeArgsTemplate:"{prompt}",
+    jobStore:{transition:async(...args)=>recorded.push(args)},
+    extractPromptContext:()=>"do work",
+    extractAgentSessionId:()=>null,
+    buildGenericArgs:()=>["chat","do work"],
+    maskArg:x=>x,
+    spawnProcess:()=>{throw Error("must not spawn");},
+    logger:{log:()=>{},error:()=>{}},
+  });
+  assert.deepEqual(recorded,[["trae:no-session","failed",{error:"Missing Trae activity session context"}]]);
+});
+test("P4 local Trae persists 0600 capability before launching with scoped identity", async () => {
+  const fs=await import("node:fs/promises");
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr28-trae-launch-"));
+  const events=[],child={pid:1234};
+  const token="a".repeat(64);
+  const env={PATH:"/usr/bin",LINEAR_API_KEY:"legacy",LINEAR_ACCESS_TOKEN:"old",
+    TRAE_GITHUB_APP_NAME:"revrebel-trae",TRAE_GITHUB_APP_ID:"5660644"};
+  const job={completionUrl:"https://linear-trae.example/complete"};
+  const cred={variable:"TRAE_LINEAR_API_KEY",accessToken:"mock-app-token"};
+  try {
+    const result=await dispatchLocalTraeAgent({
+      job,filename:root+"/job.json",workspace:root,jobKey:"trae:delivery-1",
+      credential:cred,repositoryRoot:root,traeBin:"/usr/local/bin/trae",
+      traeArgsTemplate:"chat {prompt}",env,
+      generateToken:()=>token,now:()=>"2026-11-13T00:00:00.000Z",
+      jobStore:{transition:async(key,state,patch)=>{events.push(["ledger",key,state,patch]);}},
+      extractPromptContext:()=>"Code task",
+      extractAgentSessionId:()=> "session-1",
+      buildGenericArgs:(...args)=>{events.push(["args",...args]);return ["chat","Code task"];},
+      maskArg:x=>x,
+      spawnProcess:(command,args,options)=>{events.push(["spawn",command,args,options]);return child;},
+      attachProcessLogs:(process,agent,key)=>events.push(["attach",process,agent,key]),
+      logger:{log:()=>{},error:()=>{}},
+    });
+    assert.equal(result,undefined);
+    assert.equal(events[0][0],"args");
+    assert.deepEqual(events[0].slice(1),["chat {prompt}","Code task",root+"/job.json",root]);
+    const contextPath=path.join(root,".linear-agent","trae-active-session.json");
+    const context=JSON.parse(await fs.readFile(contextPath,"utf8"));
+    assert.deepEqual(context,{
+      token,agentSessionId:"session-1",
+      completionUrl:"https://linear-trae.example/complete",
+      workspace:root,jobKey:"trae:delivery-1",updatedAt:"2026-11-13T00:00:00.000Z",
+    });
+    assert.equal((await fs.stat(contextPath)).mode & 0o777,0o600);
+    assert.equal((await fs.stat(path.dirname(contextPath))).mode & 0o777,0o700);
+    assert.deepEqual(events[1],["ledger","trae:delivery-1","launching",{activityContextFile:contextPath}]);
+    assert.equal(events[2][0],"spawn");
+    assert.equal(events[2][1],"/usr/local/bin/trae");
+    assert.deepEqual(events[2][2],["chat","Code task"]);
+    assert.equal(events[2][3].cwd,root);
+    assert.deepEqual(events[2][3].stdio,["ignore","pipe","pipe"]);
+    assert.equal(events[2][3].env.TRAE_LINEAR_API_KEY,"mock-app-token");
+    assert.equal(events[2][3].env.LINEAR_API_KEY,"");
+    assert.equal(events[2][3].env.LINEAR_ACCESS_TOKEN,"");
+    assert.equal(events[2][3].env.GIT_AUTHOR_NAME,"revrebel-trae[bot]");
+    assert.equal(events[2][3].env.GIT_AUTHOR_EMAIL,"5660644+revrebel-trae[bot]@users.noreply.github.com");
+    assert.equal(events[2][3].env.GIT_COMMITTER_NAME,"revrebel-trae[bot]");
+    assert.equal(events[2][3].env.GIT_COMMITTER_EMAIL,"5660644+revrebel-trae[bot]@users.noreply.github.com");
+    assert.deepEqual(events[3],["attach",child,"Trae","trae:delivery-1"]);
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 local Trae does not spawn when capability ledger transition fails", async () => {
+  const fs=await import("node:fs/promises");
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr28-trae-ledger-"));
+  let spawned=false;
+  try{
+    await assert.rejects(dispatchLocalTraeAgent({
+      job:{completionUrl:"https://linear-trae.example/complete"},
+      filename:root+"/task.json",workspace:root,jobKey:"trae:failed",
+      credential:{variable:"TRAE_LINEAR_API_KEY",accessToken:"test"},
+      repositoryRoot:root,traeBin:"trae",traeArgsTemplate:"{prompt}",
+      jobStore:{transition:async()=>{throw Error("durable ledger unavailable");}},
+      extractPromptContext:()=>"Task",extractAgentSessionId:()=>"session",
+      buildGenericArgs:()=>["Task"],maskArg:x=>x,
+      spawnProcess:()=>{spawned=true;},logger:{log:()=>{},error:()=>{}}
+    }),/durable ledger unavailable/);
+    assert.equal(spawned,false);
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 Trae local dispatch retains original bridge state and remote SSH lifecycle", async () => {
+  const fs=await import("node:fs/promises");
+  const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const local=await fs.readFile(new URL("../jobs/trae-local-dispatch.mjs",import.meta.url),"utf8");
+  assert.ok(bridge.includes('from "../jobs/trae-local-dispatch.mjs"'));
+  assert.ok(bridge.includes("await dispatchLocalTraeAgent({"));
+  assert.ok(bridge.includes("launchMacTrae({ job: message, jobKey, jobStore })"));
+  assert.ok(bridge.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
+  assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
+  assert.ok(local.includes('path.join(repositoryRoot, ".linear-agent")'));
+  assert.ok(local.includes('attachProcessLogs(traeProcess, "Trae", jobKey)'));
 });
