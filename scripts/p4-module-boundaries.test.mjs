@@ -1396,7 +1396,7 @@ test("P4 Antigravity dispatch keeps original queue and runtime ownership in main
   assert.ok(src.includes('from "../jobs/antigravity-dispatch.mjs"'));
   assert.ok(src.includes("dispatchAntigravityAgent({"));
   assert.ok(src.includes("const agySessionQueue = createSessionQueue("));
-  assert.ok(src.includes("async function startAntigravity("));
+  assert.ok(src.includes("function startAntigravity("));
   assert.ok(src.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(src.includes('const server = http.createServer(async (request, response) => {'));
   assert.ok(src.includes('agent === "chatgpt-cli"'));
