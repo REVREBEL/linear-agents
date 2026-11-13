@@ -36,3 +36,15 @@ This is the first low-risk P4 boundary. Migrate other domains in separate small 
 Regression tests cover function identity, actual persisted resume transitions through the legacy entrypoint, preservation of original verification metadata, concurrent session isolation, same-session ordering, and recovery after a failed queued task.
 
 This PR does not introduce new persisted session directories, relocate existing records, change agent runner CLI flags, alter provider conversation identities or restart the bridge.
+
+## P4 checkpoint and long-term recall boundary
+
+- `memory/active-task-memory.mjs` is the canonical implementation of durable, redacted per-issue checkpoints.
+- `memory/memu-memory.mjs` is the canonical optional memU retrieval adapter.
+- The two old `linear-agent-bridge/*-memory.mjs` paths remain pure re-exports. The main server imports the canonical sources directly.
+- `activeTaskMemory = createActiveTaskMemory(JOBS_DIR)` is unchanged. The checkpoint directory remains `linear-agent-bridge/linear-jobs/active-task-memory/` and existing revision, file lock, redaction, expiration and promotion behavior are preserved.
+- memU retrieval remains disabled unless configured; failures continue without long-term recall rather than blocking jobs.
+
+Both isolated bridge integration fixtures stage `memory/` alongside `routing/`, `jobs/`, and `conversations/`. Added tests validate one shared module identity, persisted checkpoint reads/writes through both import paths, revision checks, sensitive text redaction, and memU fail-open behavior.
+
+No database change, checkpoint migration, external memU setup, runtime data movement, Worker deployment, or Ubuntu restart is included.
