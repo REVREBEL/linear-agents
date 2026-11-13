@@ -1,3 +1,4 @@
+import { prepareLocalAgentTask } from "../jobs/local-task-preparation.mjs";
 import { preflightLinearJob } from "../jobs/job-preflight.mjs";
 import { identifyLinearJobDelivery, linearJobDuplicateResponse } from "../jobs/job-admission.mjs";
 import { createIssueCompletionRoute } from "../bridge/issue-completion-route.mjs";
@@ -994,7 +995,9 @@ test("P4 /jobs keeps authentication and preflight before durable delivery claim"
   assert.match(src,/from "\.\.\/jobs\/job-preflight\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
-  assert.match(src,/await jobStore\.transition\(jobKey, "queued"/);
+  const preparation=await fs.readFile(new URL("../jobs/local-task-preparation.mjs",import.meta.url),"utf8");
+  assert.ok(preparation.includes('await jobStore.transition(jobKey, "queued"'));
+  assert.ok(src.includes("await prepareLocalAgentTask({"));
 });
 
 test("P4 preflight preserves per-agent token synchronization and Mac non-persistence", async () => {
@@ -1052,4 +1055,89 @@ test("P4 preflight keeps unrouted jobs eligible for ledger classification", asyn
   assert.equal(response.route.ok,false);
   assert.equal(response.credential,null);
   assert.equal(response.rejection,null);
+});
+
+test("P4 local task preparation writes one canonical prompt, retains routing metadata and ordering", async () => {
+  const fs=await import("node:fs/promises");
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr28-local-task-"));
+  const calls=[];
+  const job={routing:{project:"p1"},issueId:"issue-1",issueMetadata:{id:"issue-1",title:"Fix code"},
+    source:"linear",sessionAction:"prompted",receivedAt:"now",organizationId:"org-1",
+    agentSessionId:"session-1",completionUrl:"https://example.test/complete",
+    payload:{data:{agentSessionId:"session-1",promptContext:"Original instruction",completionUrl:"https://example.test/complete"}}};
+  const route={repositoryRoot:root,scopeKey:"scope-1",launchDirectory:root,
+    projectScope:"scope-1",projectId:"project-1",initiativeId:"initiative-1",
+    chatgptProjectUrl:"https://chatgpt.com/g/g-test",chatgptConversationMode:"new",
+    chatgptAutoSend:true,agentRole:"coding",codeReviewRole:"review",
+    agyConversationMode:"reuse-existing",agyConversationId:"conversation-1"};
+  const activeTaskMemory={
+    read:async(rootArg,id)=>{calls.push("read");assert.equal(rootArg,root);assert.equal(id,"issue-1");return {note:"safe checkpoint"};},
+    recoveryPreamble:prior=>{calls.push("recovery");assert.equal(prior.note,"safe checkpoint");return "Resume safe checkpoint";},
+    update:async(rootArg,id,patch)=>{calls.push("update");assert.equal(rootArg,root);assert.equal(id,"issue-1");
+      assert.equal(patch.state,"active");assert.equal(patch.lastJobKey,"antigravity:delivery-1");},
+  };
+  const jobStore={transition:async(key,state,patch)=>{
+    calls.push("queued");
+    assert.equal(key,"antigravity:delivery-1");
+    assert.equal(state,"queued");
+    assert.equal(patch.issueId,"issue-1");
+    assert.equal(patch.repositoryRoot,root);
+    assert.equal(patch.workspace,root);
+    assert.ok(patch.taskFile.endsWith("/delivery-1.json"));
+  }};
+  try{
+    const result=await prepareLocalAgentTask({
+      job,route,agent:"antigravity",jobKey:"antigravity:delivery-1",safeJobId:"delivery-1",
+      jobStore,activeTaskMemory,
+      drainProgressWrites:async()=>{calls.push("drain");},
+      retrieveMemuMemory:async()=>{calls.push("memu");return "UNTRUSTED MEMORY SECRET INSTRUCTIONS";},
+      extractDirectTask:value=>{calls.push("direct");return value;},
+      extractPromptContext:value=>{calls.push("prompt");return value.payload.data.promptContext;},
+      logger:{log:()=>{},warn:()=>{}},
+    });
+    const persisted=JSON.parse(await fs.readFile(result.filename,"utf8"));
+    assert.deepEqual(calls,["drain","read","prompt","direct","recovery","memu","update","queued"]);
+    assert.equal(result.workspace,root);
+    assert.equal(result.routedJob.payload.data.promptContext,"Resume safe checkpoint\n\nOriginal instruction");
+    assert.equal(persisted.payload.data.promptContext,result.routedJob.payload.data.promptContext);
+    assert.equal(JSON.stringify(persisted).includes("UNTRUSTED MEMORY"),false);
+    assert.equal(persisted.resolvedRouting.linearProjectId,"project-1");
+    assert.equal(persisted.resolvedRouting.linearInitiativeId,"initiative-1");
+    assert.equal(persisted.resolvedRouting.agyConversationId,"conversation-1");
+    assert.equal(persisted.resolvedRouting.chatgptAutoSend,true);
+    assert.equal((await fs.stat(result.filename)).mode&0o777,0o600);
+    assert.equal((await fs.stat(path.dirname(result.filename))).mode&0o777,0o700);
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 local task preparation fails before queued transition on write or memory failure", async () => {
+  const fs=await import("node:fs/promises");
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr28-local-failure-"));
+  let queued=false;
+  try{
+    await assert.rejects(prepareLocalAgentTask({
+      job:{issueId:"issue-2",payload:{data:{promptContext:"Task"}}},
+      route:{repositoryRoot:root,scopeKey:"scope-2",launchDirectory:root},
+      agent:"gemini",jobKey:"gemini:key",safeJobId:"job-2",
+      jobStore:{transition:async()=>{queued=true;}},
+      activeTaskMemory:{read:async()=>{throw Error("memory unavailable");},
+        recoveryPreamble:()=>"",update:async()=>{}},
+      drainProgressWrites:async()=>{},
+      retrieveMemuMemory:async()=>"",
+      extractDirectTask:v=>v,
+      extractPromptContext:v=>v.payload?.data?.promptContext,
+      logger:{log:()=>{},warn:()=>{}}
+    }),/memory unavailable/);
+    assert.equal(queued,false);
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 local task preparation preserves bridge-owned launches and runtime job root", async () => {
+  const fs=await import("node:fs/promises");
+  const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const from=bridge.indexOf("await prepareLocalAgentTask({");
+  const launched=bridge.indexOf('await jobStore.transition(jobKey, "launching"',from);
+  assert.ok(from>=0&&launched>from);
+  assert.ok(bridge.includes('from "../jobs/local-task-preparation.mjs"'));
+  assert.ok(bridge.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
+  assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
+  assert.ok(bridge.includes('await startGemini(routedJob, filename, workspace, jobKey, credential)'));
 });
