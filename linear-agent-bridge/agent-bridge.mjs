@@ -1,3 +1,4 @@
+import { normalizeHost, matchesHost, readBody, sendJson } from "../bridge/http-helpers.mjs";
 import { syncLinearCredential } from "../integrations/linear-credentials.mjs";
 import { chooseExecutionHost, makeRemoteRoute } from "../routing/host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "../routing/ssh-dispatch.mjs";
@@ -1903,14 +1904,6 @@ function attachProcessLogs(child, label, jobKey, external = false) {
   });
 }
 
-function normalizeHost(hostHeader) {
-  return String(hostHeader || "").split(":")[0].toLowerCase();
-}
-
-function matchesHost(actualHost, expectedHost) {
-  return actualHost === expectedHost || actualHost.endsWith(`.${expectedHost}`);
-}
-
 function agentForHost(host) {
   if (matchesHost(host, MOCK_HOST)) return "mock";
   if (matchesHost(host, ANTIGRAVITY_HOST)) return "antigravity";
@@ -1920,38 +1913,4 @@ function agentForHost(host) {
   if (matchesHost(host, GEMINI_HOST)) return "gemini";
   if (matchesHost(host, GEMMA_HOST)) return "gemma";
   return "unknown";
-}
-
-function readBody(request) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let totalBytes = 0;
-
-    request.on("data", (chunk) => {
-      totalBytes += chunk.length;
-
-      if (totalBytes > 1_000_000) {
-        reject(new Error("Body too large"));
-        request.destroy();
-        return;
-      }
-
-      chunks.push(chunk);
-    });
-
-    request.on("end", () => {
-      resolve(Buffer.concat(chunks).toString("utf8"));
-    });
-
-    request.on("error", reject);
-  });
-}
-
-function sendJson(response, status, body) {
-  response.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
-  });
-
-  response.end(JSON.stringify(body, null, 2));
 }
