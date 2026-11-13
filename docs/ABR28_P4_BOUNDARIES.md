@@ -181,3 +181,15 @@ No real callback, production agent launch, Cloudflare deploy, Ubuntu service res
 - No existing persisted job records are moved or rewritten by the refactor itself; cleanup only occurs on an authenticated runtime request as before.
 
 New tests verify unauthorized/malformed requests have no side effects, non-route fallthrough, macOS ACK-before-transition ordering, exact local inbox path filtering and original job-store ownership.
+
+## P4 Linear job admission and duplicate-claim policy
+
+- `jobs/job-admission.mjs` now defines the pure delivery-identity and duplicate-response policy for authenticated POST `/jobs`. The existing HTTP route still reads and authenticates requests, resolves job routes, synchronizes agent credentials, and owns the live job ledger and all agent launch branches.
+- `identifyLinearJobDelivery` retains the original upstream webhook ID in the per-agent ledger key while sanitizing only the filesystem-safe job ID. When an upstream delivery ID is absent, it preserves the SHA-256 body hash for retry idempotency and the original generated display job-ID semantics.
+- `linearJobDuplicateResponse` retains fail-closed 503 responses for old `claimed`, `received`, `unrouted`, `failed`, or `interrupted` records. Only accepted job states receive a 202 duplicate acknowledgement with the original job ID.
+- The bridge still resolves the job route and synchronizes credentials **before** claiming a delivery so transient failures remain retryable. All `JOBS_DIR`, task-file, active memory, agent isolation and execution state transitions remain anchored to the original bridge.
+- The main HTTP listener and platform-specific agent launch paths are deliberately not moved by this slice.
+
+Regression coverage verifies raw-vs-sanitized webhook IDs, independent ChatGPT user and CLI keys, deterministic fallback deduplication, rejected partial/failed duplicates, accepted replay response shape and critical admission ordering.
+
+No production job is submitted or dispatched, no live data migrated, and no Ubuntu service, Worker or credential configuration changed.

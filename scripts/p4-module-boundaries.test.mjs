@@ -1,3 +1,4 @@
+import { identifyLinearJobDelivery, linearJobDuplicateResponse } from "../jobs/job-admission.mjs";
 import { createIssueCompletionRoute } from "../bridge/issue-completion-route.mjs";
 import { createTraeCallbackRoutes } from "../bridge/trae-callback-routes.mjs";
 import { createGithubWebhookRoutes } from "../bridge/github-webhook-routes.mjs";
@@ -924,4 +925,68 @@ test("P4 issue completion source retains unchanged main jobs route and job-store
   assert.ok(src.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(src.includes('request.method !== "POST" || url.pathname !== "/jobs"'));
   assert.ok(src.includes('const server = http.createServer(async (request, response) => {'));
+});
+
+test("P4 job admission scopes raw delivery IDs by agent while sanitizing task filenames", () => {
+  const headers={"x-linear-webhook-id":"upstream:review/0001"};
+  const a=identifyLinearJobDelivery({headers,rawBody:"{}",agent:"chatgpt-cli"});
+  assert.deepEqual(a,{
+    safeJobId:"upstream_review_0001",
+    deliveryId:"upstream:review/0001",
+    jobKey:"chatgpt-cli:upstream:review/0001",
+  });
+  const b=identifyLinearJobDelivery({headers,rawBody:"{}",agent:"chatgpt"});
+  assert.equal(b.jobKey,"chatgpt:upstream:review/0001");
+  assert.notEqual(a.jobKey,b.jobKey);
+});
+test("P4 job admission uses deterministic payload hash without upstream delivery ID", () => {
+  const headers={};
+  const options={headers,rawBody:'{"task":"same job"}',agent:"antigravity",
+    now:()=>1234,randomUUID:()=>"uuid-1"};
+  const a=identifyLinearJobDelivery(options);
+  const b=identifyLinearJobDelivery({...options,now:()=>5678,randomUUID:()=>"uuid-2"});
+  assert.equal(a.safeJobId,"job-1234-uuid-1");
+  assert.equal(b.safeJobId,"job-5678-uuid-2");
+  assert.match(a.deliveryId,/^[0-9a-f]{64}$/);
+  assert.equal(a.deliveryId,b.deliveryId);
+  assert.equal(a.jobKey,b.jobKey);
+  assert.notEqual(a.jobKey,identifyLinearJobDelivery({...options,rawBody:"another body"}).jobKey);
+});
+test("P4 job admission fails closed on pending and failed duplicate deliveries", () => {
+  assert.equal(linearJobDuplicateResponse({created:true}, "job-test", "host"),null);
+  for(const state of ["claimed","received","unrouted","failed","interrupted"]){
+    const result=linearJobDuplicateResponse({created:false,record:{state}},"job-test","agent.host");
+    assert.equal(result.status,503);
+    assert.deepEqual(result.body,{
+      ok:false,accepted:false,duplicate:true,state,
+      error:"Existing delivery was not accepted; inspect local job ledger before replay",
+    });
+  }
+  const missing=linearJobDuplicateResponse({created:false,record:null},"job-test","agent.host");
+  assert.equal(missing.status,503);
+  assert.equal(missing.body.state,"claimed");
+});
+test("P4 accepted duplicate preserves 202 status and original job ID", () => {
+  for(const state of ["queued","launching","running","awaiting_external","completed"]){
+    const result=linearJobDuplicateResponse({created:false,record:{state,jobId:"existing-id"}},
+      "new-id","agent.host");
+    assert.deepEqual(result,{
+      status:202,
+      body:{ok:true,accepted:true,duplicate:true,jobId:"existing-id",state,host:"agent.host"}
+    });
+  }
+});
+test("P4 /jobs route continues to authenticate and synchronize credentials before claiming", async () => {
+  const fs=await import("node:fs/promises");
+  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const auth=src.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
+  const identity=src.indexOf("identifyLinearJobDelivery({");
+  const route=src.indexOf("const route = await resolveJobRoute(job);",identity);
+  const credential=src.indexOf("const credential = route.ok ? await syncLinearCredential(",route);
+  const claim=src.indexOf("const claimed = await jobStore.claim(",credential);
+  assert.ok(auth>=0 && auth<identity && identity<route && route<credential && credential<claim);
+  assert.match(src,/from "\.\.\/jobs\/job-admission\.mjs"/);
+  assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+  assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
+  assert.match(src,/await jobStore\.transition\(jobKey, "queued"/);
 });

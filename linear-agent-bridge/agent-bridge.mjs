@@ -1,3 +1,4 @@
+import { identifyLinearJobDelivery, linearJobDuplicateResponse } from "../jobs/job-admission.mjs";
 import { createIssueCompletionRoute } from "../bridge/issue-completion-route.mjs";
 import { createTraeCallbackRoutes } from "../bridge/trae-callback-routes.mjs";
 import { createGithubWebhookRoutes } from "../bridge/github-webhook-routes.mjs";
@@ -431,16 +432,10 @@ const server = http.createServer(async (request, response) => {
     const rawBody = await readBody(request);
     const job = JSON.parse(rawBody);
 
-    const jobId =
-      request.headers["x-linear-webhook-id"] ??
-      `job-${Date.now()}-${crypto.randomUUID()}`;
-    const safeJobId = String(jobId).replace(/[^a-zA-Z0-9._-]/g, "_");
     const agent = agentForHost(host);
-    // Scope delivery identifiers by agent and preserve their original contents.
-    // For missing upstream IDs, hash the payload so retries stay idempotent.
-    const deliveryId = request.headers["x-linear-webhook-id"] ??
-      crypto.createHash("sha256").update(rawBody).digest("hex");
-    const jobKey = `${agent}:${String(deliveryId)}`;
+    const { safeJobId, deliveryId, jobKey } = identifyLinearJobDelivery({
+      headers: request.headers, rawBody, agent,
+    });
     // Resolve and synchronize before claiming a delivery, so transient credential
     // failures can be retried without leaving a permanently claimed job.
     const route = await resolveJobRoute(job);
@@ -462,20 +457,9 @@ const server = http.createServer(async (request, response) => {
       }
     }
     const claimed = await jobStore.claim(jobKey, { agent, deliveryId: String(deliveryId), jobId: safeJobId });
-    if (!claimed.created) {
-      const state = claimed.record?.state || "claimed";
-      // An old failed/unrouted/partial claim must not be reported to the
-      // Worker as successfully delivered. Manual reconciliation is required.
-      if (["claimed", "received", "unrouted", "failed", "interrupted"].includes(state)) {
-        return sendJson(response, 503, {
-          ok: false, accepted: false, duplicate: true, state,
-          error: "Existing delivery was not accepted; inspect local job ledger before replay",
-        });
-      }
-      return sendJson(response, 202, {
-        ok: true, accepted: true, duplicate: true, jobId: claimed.record?.jobId || safeJobId,
-        state, host,
-      });
+    const duplicateResponse = linearJobDuplicateResponse(claimed, safeJobId, host);
+    if (duplicateResponse) {
+      return sendJson(response, duplicateResponse.status, duplicateResponse.body);
     }
     if (!route.ok) {
       const pendingFile = path.join(AGENT_JOB_DIRS[agent], `${safeJobId}.unrouted.json`);
