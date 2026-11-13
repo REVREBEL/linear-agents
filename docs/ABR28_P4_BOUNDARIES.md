@@ -214,3 +214,13 @@ Regression tests cover credential parameters, Mac persistence isolation, failed 
 - macOS Trae SSH dispatch and unrouted jobs retain their separate existing paths; neither is processed by this module.
 
 Regression tests assert task JSON, permission bits, safe recovery prompt, absence of untrusted memory text, persisted routing metadata, precise operation ordering, and no queued transition when preparation fails. No existing job files are relocated and no actual agent is launched by this refactor.
+
+## P4 simple Mock and Gemma dispatch adapters
+
+- `jobs/simple-agent-dispatch.mjs` now owns the original lightweight Mock dispatch acknowledgement and Gemma asynchronous launch error adapter. These are the first two agent-specific branches separated from the main `/jobs` HTTP handler.
+- The main `linear-agent-bridge/agent-bridge.mjs` still owns HTTP authentication, job admission and preflight, the original durable job store, the `launching` transition, and all full agent launch implementations (including isolated Gemma execution).
+- Mock requests still transition to `awaiting_external` with the same CLI guidance and task file before logging their queue confirmation. Failure to persist that transition is still propagated.
+- Gemma launch remains fire-and-forget after the upstream 202 response path, rather than waiting for an SDK execution to finish. Asynchronous launcher rejections are still logged and recorded as generic `Gemma execution failure` in the durable ledger without exposing restricted error details to the request.
+- Review-user and ChatGPT CLI identities, Antigravity conversation queueing, Mac Trae SSH routing, task-file location and session persistence are unchanged.
+
+Regression tests verify exact Mock transition shape and ordering, fail-closed ledger errors, nonblocking Gemma launch argument forwarding, asynchronous failure handling, and unchanged agent/HTTP entrypoint anchoring. No live agent is launched or production service restarted.
