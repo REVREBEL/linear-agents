@@ -105,7 +105,9 @@ test("Linux handoff source does not claim an unsupported automatic GitHub review
   const tokenGuard = src.indexOf('env.CHATGPT_REVIEW_INBOX_TOKEN.length < 32');
   assert.ok(tokenGuard !== -1 && tokenGuard < claim, "Inbox mode must validate the consumer token before claiming delivery");
   const bridge = readFileSync(path.join(root, "linear-agent-bridge/agent-bridge.mjs"), "utf8");
-  assert.ok(bridge.includes("Linux ChatGPT browser/Shortcuts handoff unsupported"));
+  const humanHandoff = readFileSync(path.join(root, "jobs/chatgpt-human-handoff.mjs"), "utf8");
+  assert.ok(humanHandoff.includes("Linux ChatGPT browser/Shortcuts handoff unsupported"));
+  assert.ok(bridge.includes("await dispatchChatgptHumanHandoff({"));
   assert.ok(bridge.includes("createGithubWebhookRoutes("));
 });
 

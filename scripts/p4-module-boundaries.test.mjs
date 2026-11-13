@@ -1,3 +1,4 @@
+import { dispatchChatgptHumanHandoff } from "../jobs/chatgpt-human-handoff.mjs";
 import { dispatchAntigravityAgent } from "../jobs/antigravity-dispatch.mjs";
 import { dispatchChatgptCliAgent } from "../jobs/chatgpt-cli-dispatch.mjs";
 import { dispatchMockAgent, dispatchGemmaAgent } from "../jobs/simple-agent-dispatch.mjs";
@@ -1401,4 +1402,112 @@ test("P4 Antigravity dispatch keeps original queue and runtime ownership in main
   assert.ok(src.includes('const server = http.createServer(async (request, response) => {'));
   assert.ok(src.includes('agent === "chatgpt-cli"'));
   assert.ok(src.includes('agent === "chatgpt"'));
+});
+
+test("P4 human ChatGPT handoff never starts desktop UI on Linux", async () => {
+  const events=[];
+  await dispatchChatgptHumanHandoff({
+    route:{chatgptProjectUrl:"https://chatgpt.com/g/project",chatgptAutoSend:true},
+    job:{payload:{data:{promptContext:"Do work"}}},
+    filename:"/safe/task.json",safeJobId:"job-1",jobKey:"chatgpt:job-1",
+    jobStore:{transition:async(...args)=>events.push(args)},
+    extractPromptContext:()=>{throw Error("must not read prompt on Linux");},
+    enqueueChatgptHandoff:()=>{throw Error("must not enqueue on Linux");},
+    spawnProcess:()=>{throw Error("must not spawn on Linux");},
+    platform:"linux",env:{CHATGPT_HANDOFF_MODE:"shortcuts"},
+    logger:{warn:()=>{},log:()=>{},error:()=>{}},
+  });
+  assert.deepEqual(events,[["chatgpt:job-1","awaiting_external",{
+    taskFile:"/safe/task.json",
+    note:"Linux ChatGPT browser/Shortcuts handoff unsupported; task retained for a supported runner; automatic dispatch not attempted"
+  }]]);
+});
+test("P4 human ChatGPT handoff fails without mapped project before attempting UI", async () => {
+  const events=[];
+  await dispatchChatgptHumanHandoff({
+    route:{chatgptProjectUrl:""},job:{},filename:"/task.json",
+    safeJobId:"id",jobKey:"chatgpt:missing",
+    jobStore:{transition:async(...args)=>events.push(args)},
+    extractPromptContext:()=>{throw Error("should not inspect prompt");},
+    enqueueChatgptHandoff:()=>{throw Error("should not enqueue");},
+    platform:"darwin",env:{CHATGPT_HANDOFF_MODE:"shortcuts"},
+    logger:{warn:()=>{},log:()=>{},error:()=>{}},
+  });
+  assert.deepEqual(events,[["chatgpt:missing","failed",{
+    error:"No chatgpt.projectUrl in Linear project mapping"
+  }]]);
+});
+test("P4 human ChatGPT supervised Shortcut preserves prompt marker, permissions and manual execution", async () => {
+  const fs=await import("node:fs/promises");
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr28-human-handoff-"));
+  const events=[];let queued=0;
+  const filename=path.join(root,"task.json");
+  try{
+    await dispatchChatgptHumanHandoff({
+      route:{chatgptProjectUrl:"https://chatgpt.com/g/test",chatgptAutoSend:false},
+      job:{payload:{data:{promptContext:"Review PR"}}},
+      filename,safeJobId:"job-2",jobKey:"chatgpt:job-2",
+      jobStore:{transition:async(...args)=>events.push(args)},
+      extractPromptContext:job=>job.payload.data.promptContext,
+      enqueueChatgptHandoff:()=>{queued++;},
+      spawnProcess:()=>{throw Error("supervised handoff must not spawn");},
+      projectDir:root,platform:"darwin",env:{CHATGPT_HANDOFF_MODE:"shortcuts"},
+      logger:{warn:()=>{},log:()=>{},error:()=>{}},
+    });
+    const handoff=filename+".chatgpt-handoff.json";
+    const body=JSON.parse(await fs.readFile(handoff,"utf8"));
+    assert.deepEqual(body,{
+      conversationUrl:"https://chatgpt.com/g/test",
+      prompt:"Linear Bridge Automated Prompt: Review PR",handoffId:"job-2"
+    });
+    assert.equal((await fs.stat(handoff)).mode&0o777,0o600);
+    assert.equal(queued,0);
+    assert.equal(events.length,1);
+    assert.equal(events[0][1],"awaiting_external");
+    assert.equal(events[0][2].handoffFile,handoff);
+    assert.equal(events[0][2].handoffId,"job-2");
+    assert.match(events[0][2].note,/Supervised Apple Shortcut handoff ready/);
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 human ChatGPT auto-send queues one Playwright child and records asynchronous failure", async () => {
+  const fs=await import("node:fs/promises");
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr28-human-auto-"));
+  const filename=path.join(root,"job.json"),events=[],transitions=[];
+  let work,finish;
+  const recorded=new Promise(resolve=>{finish=resolve;});
+  try{
+    await dispatchChatgptHumanHandoff({
+      route:{chatgptProjectUrl:"https://chatgpt.com/g/test",chatgptConversationMode:"new",chatgptAutoSend:true},
+      job:{payload:{data:{promptContext:"Linear Bridge Automated Prompt: Already marked"}}},
+      filename,safeJobId:"job-3",jobKey:"chatgpt:job-3",
+      jobStore:{transition:async(...args)=>{transitions.push(args);if(args[1]==="failed")finish();}},
+      extractPromptContext:job=>job.payload.data.promptContext,
+      enqueueChatgptHandoff:task=>{work=task;return Promise.resolve();},
+      spawnProcess:(_exe,args,opts)=>{events.push({args,opts});throw Error("fake child could not start");},
+      projectDir:root,platform:"darwin",env:{CHATGPT_HANDOFF_MODE:"supervised-playwright"},
+      execPath:"/usr/bin/node",
+      logger:{warn:()=>{},log:()=>{},error:()=>{}},
+    });
+    assert.equal(transitions[0][1],"awaiting_external");
+    assert.match(transitions[0][2].note,/Automatic Playwright submission launched/);
+    assert.equal(typeof work,"function");
+    assert.equal(events.length,0);
+    const body=JSON.parse(await fs.readFile(filename+".chatgpt-handoff.json","utf8"));
+    assert.equal(body.prompt,"Linear Bridge Automated Prompt: Already marked");
+    assert.equal(body.autoSend,true);
+    assert.equal(body.jobFile,filename);
+    await assert.rejects(work(),/fake child could not start/);
+    // The test-enqueued task is independent from the simulated rejection.
+    assert.equal(transitions.length,1);
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 human ChatGPT handoff remains distinct from CLI dispatch and review routes", async () => {
+  const fs=await import("node:fs/promises");
+  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.ok(source.includes('from "../jobs/chatgpt-human-handoff.mjs"'));
+  assert.ok(source.includes('await dispatchChatgptHumanHandoff({'));
+  assert.ok(source.includes('dispatchChatgptCliAgent({'));
+  assert.ok(source.includes('from "../bridge/review-routes.mjs"'));
+  assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
+  assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
 });
