@@ -824,6 +824,23 @@ function startChatGPT(job, filename) {
   console.log(`ChatGPT job file: ${filename}`);
 }
 
+function safeTokenEqual(actual, expected) {
+  if (typeof actual !== "string" || typeof expected !== "string") return false;
+  const left = Buffer.from(actual);
+  const right = Buffer.from(expected);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function sanitizeTraeActivityBody(value) {
+  if (typeof value !== "string") return null;
+  const body = value.replace(/[\r\n\0]+/g, " ").trim();
+  if (!body || body.length > 240) return null;
+  if (/(gh[opusr]_[A-Za-z0-9_]{20,}|github_pat_|bearer\s+[A-Za-z0-9._-]{20,}|private[-_ ]?key)/i.test(body)) {
+    return "Trae completed a protected operation.";
+  }
+  return body;
+}
+
 async function readTraeActivityContext(workspace) {
   const projectsRoot = path.resolve(PROJECTS_ROOT);
   let current = path.resolve(workspace);
