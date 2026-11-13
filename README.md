@@ -1,3 +1,14 @@
+
+<p align="left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme-banner_dark.jpg" />
+    <img src=".github/assets/readme-banner_light.jpg" alt="REVREBEL Linear Agents" />
+  </picture>
+</p>
+
+
+```
+
 ### AGENT BRIDGE
 
 **REVREBEL's Linear-to-local-agent integration.** Four independently installed Linear app agents each use a Cloudflare Worker for OAuth, authenticated webhooks, initial Agent Session activity and completion callbacks. Workers forward jobs over Cloudflare Tunnel to a local machine. This comprehensive knowledge base synthesizes the architecture, operational runbooks, and milestone evolutions of the **REVREBEL Agent Bridge** (`I-4`), consolidating the findings across technical design documents, system audits, conversational developments, and the 44 tracked Linear issues.
@@ -334,15 +345,6 @@ For local development with the root `.env`, continue to use `bash scripts/with-e
 
 All local credentials and Cloudflare resource IDs are configured through one root [`.env.example`](.env.example). Copy it to an ignored `.env`. Use [`scripts/with-env.sh`](scripts/with-env.sh) to load that file for Terraform, local Worker development, production Worker secret uploads and manual bridge launches. No per-Agent `.dev.vars.example` or `.tfvars` file is required. See the [Cloudflare setup guide](infrastructure/cloudflare/README.md) before importing existing security resources; do not run Terraform apply until the deployed WAF ruleset and list are reconciled.
 
-<p align="left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme-banner_dark.jpg" />
-    <img src=".github/assets/readme-banner_light.jpg" alt="REVREBEL Linear Agents" />
-  </picture>
-</p>
-
-
-```
 
 | Agent | Worker directory | Worker hostname | Tunnel hostname |
 |---|---|---|---|
