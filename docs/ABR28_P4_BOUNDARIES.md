@@ -255,3 +255,13 @@ Regression tests cover project-key serialization, project conversation lookup/pe
 - Live files, job/session state, credentials, worker endpoints, ChatGPT reviewer authentication and CLI execution queue are unchanged.
 
 Regression tests cover Linux fail-closed behavior, missing project mappings, supervised handoff payloads and file permissions, automatic mode arguments, and independent identity boundaries.
+
+## P4 Gemini launcher boundary
+
+- `jobs/gemini-dispatch.mjs` now owns the original Gemini executable/prompt prechecks, macOS-only Warp admission, headless launch argument construction, process spawning and process-log attachment, with all adapters supplied by the existing bridge.
+- The original `linear-agent-bridge/agent-bridge.mjs` continues to own the HTTP listener, durable ledger, `launching` transition, agent dispatch selection, credential sync, process logging implementation, launch configuration and `startGeminiInWarp` file generation. Gemini's Warp prompt file, command and tab configuration paths remain unchanged.
+- A missing executable or prompt still transitions to `failed` with the same diagnostic. Warp on Linux remains rejected with `Gemini Warp mode requires macOS; use GEMINI_LAUNCH_MODE=headless on Ubuntu`. On macOS, Warp still delegates to the original bridge helper instead of spawning the headless binary.
+- Headless mode passes the original binary, argument template, canonical prompt, task filename, workspace and credential into `buildGeminiLaunch`, then spawns and attaches the original process-log listener. No new subprocess modes, credentials or execution identities are introduced.
+- ChatGPT human and CLI dispatch, Antigravity conversation recovery, Mac Trae, Mock/Gemma, job admission, memory and persisted job paths remain untouched.
+
+New P4 tests cover missing executable, missing prompt, Linux Warp rejection, macOS Warp helper delegation, exact headless launcher argument forwarding and bridge state ownership. No production Gemini runner is invoked, no user data is migrated and no service is deployed.
