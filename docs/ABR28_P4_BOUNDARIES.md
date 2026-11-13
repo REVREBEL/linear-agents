@@ -81,3 +81,15 @@ No GitHub App or webhook subscription changes, no deployed Worker changes and no
 New regression checks old/new import identity, persistent queue interoperability, claim exclusivity, rejection of unverified published-review outcomes, retained permissions, and no automatic replay after an uncertain ChatGPT message handoff.
 
 The purpose is only to relocate orchestration source code. No pending reviews, message submissions or live files are moved or replayed, and no deployment or Ubuntu service changes are authorized.
+
+## P4 published review delivery, Mac message handoff and Linear notification boundaries
+
+- `bridge/review-delivery.mjs` now verifies a published GitHub review against the current PR head and configured reviewer identity. `linear-agent-bridge/review-delivery.mjs` remains a pure re-export.
+- `bridge/review-message-handoff.mjs` retains the trusted SSH runner configuration, validated ChatGPT conversation URLs, bounded payloads and explicit handoff acknowledgments. `linear-agent-bridge/review-message-handoff.mjs` remains a pure re-export.
+- `integrations/review-linear-notifier.mjs` manages deterministic Linear review issue IDs, user-review assignment and idempotent create/update. `linear-agent-bridge/review-linear-notifier.mjs` remains a pure re-export.
+- The bridge imports all three canonical sources directly. No existing worker, webhook, authentication, host, file path or runtime service configuration is modified.
+- Existing review inbox state, single-attempt submission markers, duplicate claims, and reviewed-state validation are unchanged.
+
+Tests assert canonical/legacy export identity, exact-commit published review evidence, immutable Linear review issue identity and human reviewer role, SSH trusted runner constraints, and original bridge data root.
+
+No review submission, GitHub API call, Linear mutation, deployment or runtime data migration is made by this refactor.
