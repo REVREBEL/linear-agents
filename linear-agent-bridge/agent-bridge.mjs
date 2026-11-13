@@ -1,3 +1,4 @@
+import { preflightLinearJob } from "../jobs/job-preflight.mjs";
 import { identifyLinearJobDelivery, linearJobDuplicateResponse } from "../jobs/job-admission.mjs";
 import { createIssueCompletionRoute } from "../bridge/issue-completion-route.mjs";
 import { createTraeCallbackRoutes } from "../bridge/trae-callback-routes.mjs";
@@ -436,26 +437,12 @@ const server = http.createServer(async (request, response) => {
     const { safeJobId, deliveryId, jobKey } = identifyLinearJobDelivery({
       headers: request.headers, rawBody, agent,
     });
-    // Resolve and synchronize before claiming a delivery, so transient credential
-    // failures can be retried without leaving a permanently claimed job.
-    const route = await resolveJobRoute(job);
-    const credential = route.ok ? await syncLinearCredential({
-      agent,
-      repositoryRoot: route.repositoryRoot,
-      organizationId: job.organizationId,
-      completionUrl: job.completionUrl || job.payload?.data?.completionUrl,
-      sharedSecret: SHARED_SECRET,
-      persist: route.executionHost !== "macos",
-    }) : null;
-    if (agent === "chatgpt-cli") {
-      try { await checkOpenCodeReady(); }
-      catch (error) {
-        return sendJson(response, 503, {
-          ok: false, accepted: false,
-          error: "OpenCode ChatGPT runtime not ready: " + error.message,
-        });
-      }
-    }
+    // Resolve, synchronize and verify runtime availability before claiming.
+    const { route, credential, rejection } = await preflightLinearJob({
+      job, agent, sharedSecret: SHARED_SECRET, resolveJobRoute,
+      syncLinearCredential, checkOpenCodeReady,
+    });
+    if (rejection) return sendJson(response, rejection.status, rejection.body);
     const claimed = await jobStore.claim(jobKey, { agent, deliveryId: String(deliveryId), jobId: safeJobId });
     const duplicateResponse = linearJobDuplicateResponse(claimed, safeJobId, host);
     if (duplicateResponse) {
