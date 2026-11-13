@@ -1,3 +1,4 @@
+import { createReviewRoutes } from "../bridge/review-routes.mjs";
 import { createDiagnosticRoutes } from "../bridge/diagnostic-routes.mjs";
 import { normalizeHost, matchesHost, readBody, sendJson } from "../bridge/http-helpers.mjs";
 import { PassThrough } from "node:stream";
@@ -530,4 +531,84 @@ test("P4 diagnostic handlers are delegated but HTTP listener and job routes rema
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/request\.method !== "POST" \|\| url\.pathname !== "\/jobs"/);
+});
+
+test("P4 review HTTP routes retain separate token, claim, completion and published evidence policy", async () => {
+  const requests=[];
+  const reviewId="a".repeat(64),headSha="b".repeat(40);
+  const record={reviewId,repository:"REVREBEL/linear-agents",number:131,headSha,state:"claimed"};
+  const reviewInbox={
+    list:async query=>{requests.push(["list",query]);return [record];},
+    claim:async (id,reviewer)=>{requests.push(["claim",id,reviewer]);return record;},
+    get:async id=>{requests.push(["get",id]);return record;},
+    finish:async (id,body)=>{requests.push(["finish",id,body]);return {...record,state:body.status,delivery:body.delivery};},
+  };
+  const verifyPublishedGithubReview=async (existing,body,options)=>{
+    requests.push(["verify",existing,body,options]);
+    return {githubReviewId:101,githubReviewedCommit:headSha,verifiedAt:"2026-11-12T00:00:00Z"};
+  };
+  const handle=createReviewRoutes({reviewInbox,verifyPublishedGithubReview,
+    safeTokenEqual:(actual,expected)=>actual===expected,
+    env:{CHATGPT_REVIEW_MODE:"inbox",CHATGPT_REVIEW_INBOX_TOKEN:"s".repeat(40),
+      CHATGPT_REVIEW_GITHUB_TOKEN:"test-token",CHATGPT_REVIEW_GITHUB_LOGIN:"reviewer"}});
+  const invoke=async (method,pathname,payload,authorization="Bearer "+"s".repeat(40))=>{
+    const stream=new PassThrough();
+    stream.method=method;stream.headers={authorization};
+    const response={status:null,body:null,writeHead(status){this.status=status;},end(data){this.body=JSON.parse(data);}};
+    const run=handle(stream,response,{url:new URL("http://localhost"+pathname)});
+    if(payload!==undefined)stream.end(JSON.stringify(payload));else stream.end();
+    const handled=await run;
+    return {handled,...response};
+  };
+  const other=await invoke("POST","/jobs");
+  assert.equal(other.handled,false);
+  const denied=await invoke("GET","/reviews/pending",undefined,"Bearer wrong");
+  assert.equal(denied.status,401);
+  assert.equal(requests.length,0);
+  const pending=await invoke("GET","/reviews/pending");
+  assert.equal(pending.status,200);
+  assert.deepEqual(pending.body.reviews,[record]);
+  assert.deepEqual(requests[0],["list",{limit:20}]);
+  const claimed=await invoke("POST","/reviews/claim",{reviewId,reviewer:"chatgpt-user"});
+  assert.equal(claimed.status,200);
+  assert.deepEqual(requests[1],["claim",reviewId,"chatgpt-user"]);
+  const reviewed=await invoke("POST","/reviews/complete",{reviewId,status:"reviewed",summary:"Published"});
+  assert.equal(reviewed.status,200);
+  assert.equal(requests[3][0],"verify");
+  assert.equal(requests[3][3].reviewerLogin,"reviewer");
+  assert.equal(requests[4][0],"finish");
+  assert.equal(requests[4][2].delivery.githubReviewedCommit,headSha);
+  const unsupported=await invoke("DELETE","/reviews/pending");
+  assert.equal(unsupported.status,405);
+  const disabled=createReviewRoutes({reviewInbox,verifyPublishedGithubReview,
+    safeTokenEqual:()=>true,env:{CHATGPT_REVIEW_MODE:"off"}});
+  const response={status:null,writeHead(code){this.status=code;},end(){}};
+  assert.equal(await disabled({method:"GET",headers:{}},response,{url:new URL("http://localhost/reviews/pending")}),true);
+  assert.equal(response.status,404);
+});
+test("P4 review routes keep evidence-verification failure and unclaimed states as conflicts", async () => {
+  const makeResponse=()=>({status:null,body:null,writeHead(status){this.status=status;},end(body){this.body=JSON.parse(body);}});
+  const reviewId="a".repeat(64);
+  const handler=createReviewRoutes({
+    reviewInbox:{get:async()=>({state:"pending"}),finish:async()=>{throw Error("must not finish");}},
+    verifyPublishedGithubReview:async()=>{throw Error("must not verify");},
+    safeTokenEqual:(a,b)=>a===b,
+    env:{CHATGPT_REVIEW_MODE:"inbox",CHATGPT_REVIEW_INBOX_TOKEN:"s".repeat(40)}
+  });
+  const request=new PassThrough();request.method="POST";request.headers={authorization:"Bearer "+"s".repeat(40)};
+  const response=makeResponse();
+  const called=handler(request,response,{url:new URL("http://localhost/reviews/complete")});
+  request.end(JSON.stringify({reviewId,status:"reviewed",summary:"Test"}));
+  assert.equal(await called,true);
+  assert.equal(response.status,409);
+  assert.equal(response.body.error,"Review must be claimed first");
+});
+test("P4 review route extraction keeps original job dispatcher and path anchors", async () => {
+  const fs=await import("node:fs/promises");
+  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.match(source,/from "\.\.\/bridge\/review-routes\.mjs"/);
+  assert.match(source,/await handleReviewRoute\(request, response, \{ url \}\)/);
+  assert.match(source,/const server = http\.createServer\(async \(request, response\) => \{/);
+  assert.match(source,/createReviewInbox\(JOBS_DIR\)/);
+  assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
 });
