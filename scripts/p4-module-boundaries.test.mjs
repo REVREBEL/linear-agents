@@ -1,3 +1,9 @@
+import * as reviewDelivery from "../bridge/review-delivery.mjs";
+import * as legacyReviewDelivery from "../linear-agent-bridge/review-delivery.mjs";
+import * as messageHandoff from "../bridge/review-message-handoff.mjs";
+import * as legacyMessageHandoff from "../linear-agent-bridge/review-message-handoff.mjs";
+import * as linearReviewNotifier from "../integrations/review-linear-notifier.mjs";
+import * as legacyLinearReviewNotifier from "../linear-agent-bridge/review-linear-notifier.mjs";
 import { createReviewInbox } from "../bridge/review-inbox.mjs";
 import { createReviewInbox as legacyCreateReviewInbox } from "../linear-agent-bridge/review-inbox.mjs";
 import * as githubIntegration from "../integrations/github-events.mjs";
@@ -294,4 +300,57 @@ test("P4 bridge imports canonical review inbox while retaining original journal 
   assert.match(source,/from "\.\.\/bridge\/review-inbox\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(source,/createReviewInbox\(JOBS_DIR\)/);
+});
+
+test("P4 review delivery and notification APIs preserve legacy function identity", () => {
+  for (const [canonical, legacy] of [
+    [reviewDelivery,legacyReviewDelivery],
+    [messageHandoff,legacyMessageHandoff],
+    [linearReviewNotifier,legacyLinearReviewNotifier],
+  ]) {
+    assert.deepEqual(Object.keys(legacy).sort(),Object.keys(canonical).sort());
+    for (const [name,fn] of Object.entries(canonical))
+      assert.equal(legacy[name],fn,"review export identity: "+name);
+  }
+});
+test("P4 review delivery retains exact-head published-review evidence requirement", async () => {
+  const sha="a".repeat(40), record={repository:"REVREBEL/linear-agents",number:126,headSha:sha};
+  const fetchImpl=async url=>({ok:true,json:async()=>url.endsWith("/reviews/321")
+    ? {id:321,state:"COMMENTED",submitted_at:"2026-11-12T12:00:00Z",user:{login:"revrebel-chatgpt"},
+      commit_id:sha,html_url:"https://github.com/REVREBEL/linear-agents/pull/126#pullrequestreview-321"}
+    : {number:126,base:{repo:{full_name:record.repository}},head:{sha}}});
+  const verify=evidence=>reviewDelivery.verifyPublishedGithubReview(record,evidence,{token:"test",reviewerLogin:"revrebel-chatgpt",fetchImpl});
+  const result=await verify({githubReviewId:321});
+  assert.equal(result.githubReviewedCommit,sha);
+  assert.ok(result.verifiedAt);
+  await assert.rejects(verify({githubReviewId:0}),/Valid GitHub review ID/);
+  await assert.rejects(reviewDelivery.verifyPublishedGithubReview({...record,headSha:"b".repeat(40)},{githubReviewId:321},
+    {token:"test",reviewerLogin:"revrebel-chatgpt",fetchImpl}),/stale/);
+});
+test("P4 Linear reviewer notifications keep stable PR UUID and human reviewer role", () => {
+  const record={repository:"REVREBEL/linear-agents",number:126,
+    prUrl:"https://github.com/REVREBEL/linear-agents/pull/126",reviewId:"a".repeat(64),
+    reason:"new-commit",headSha:"b".repeat(40)};
+  const opts={teamId:"00000000-0000-4000-8000-000000000001",userId:"00000000-0000-4000-8000-000000000002"};
+  const input=linearReviewNotifier.reviewIssueInput(record,opts);
+  assert.equal(input.id,legacyLinearReviewNotifier.reviewLinearIssueId(record.repository,126));
+  assert.equal(input.assigneeId,opts.userId);
+  assert.match(input.description,/NOT an assignment to the ChatGPT CLI coding agent/);
+  assert.notEqual(input.id,linearReviewNotifier.reviewLinearIssueId(record.repository,127));
+});
+test("P4 review SSH handoff preserves fixed trusted runner policy", () => {
+  const env={MAC_SSH_HOST:"mac",MAC_NODE_BIN:"node",OSX_PROJECTS_ROOT:"/Users/rebel/repos"};
+  const args=messageHandoff.reviewSshArgs(env);
+  assert.equal(args.at(-2),"mac");
+  assert.ok(args.includes("StrictHostKeyChecking=yes"));
+  assert.throws(()=>messageHandoff.reviewSshArgs({...env,MAC_SSH_HOST:"-evil"}),/trusted SSH/);
+});
+test("P4 canonical review modules are used by bridge without relocating review data", async () => {
+  const fs=await import("node:fs/promises");
+  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  for(const location of ["../bridge/review-delivery.mjs","../bridge/review-message-handoff.mjs",
+    "../integrations/review-linear-notifier.mjs"])
+    assert.ok(src.includes('from "'+location+'"'));
+  assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+  assert.match(src,/createReviewInbox\(JOBS_DIR\)/);
 });
