@@ -147,3 +147,15 @@ The new regression covers the full health shape, correct 401 and 400 responses, 
 - The review inbox persists under the same `JOBS_DIR/github-events/review-inbox/` directory. No records, handoff attempts, credentials, Worker endpoints, or active sessions are moved or replayed.
 
 Regression tests verify unauthorized denial, enabled/disabled route modes, claim and published-review completion dependencies, unsupported operations, conflict responses and non-review fallthrough. Existing full bridge API tests remain in the CI suite.
+
+## P4 GitHub webhook HTTP handler boundary
+
+- `bridge/github-webhook-routes.mjs` is the canonical POST `/github/events` handler, with transport and authenticated delivery intake extracted from the monolithic HTTP listener.
+- The main `linear-agent-bridge/agent-bridge.mjs` still owns the HTTP server, process lifecycle, GitHub review dispatch coordinator, task memory and underlying job/review persistence. The handler receives these existing capabilities through explicit dependencies.
+- Exact shared-secret Bearer authentication, allowed ChatGPT/Antigravity sources, sanitized event envelope, platform-specific review handoff preflights, inbox minimum-token requirement and Linear user-review notification prerequisites are preserved.
+- Delivery claims still use `JOBS_DIR/github-events/<source>-<delivery>.claim` with exclusive file creation. Existing semantic review dispatch claims, duplicate delivery retry/recovery behavior, GitHub event journal writes and short-term PR memory updates are unchanged.
+- Retained original `202`, `400`, `401` and `503` outcomes and response bodies. On processing errors, uncommitted claims are still removed to permit retry; unrelated routes continue to the same existing main router.
+
+Added regression coverage for denied/invalid requests without disk or dispatch side effects, preflight rejection without claim, accepted event journaling, duplicate replay suppression, and rollback of a failed delivery claim. Existing full bridge web-hook tests continue to run.
+
+No production webhook, review or PR notification is sent by this source-only extraction. No job files, bridge configuration, Cloudflare deployment, SSH runner or Ubuntu service is changed.
