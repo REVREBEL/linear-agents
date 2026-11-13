@@ -9,7 +9,7 @@
 
 ```
 
-### AGENT BRIDGE
+# AGENT BRIDGE
 
 **REVREBEL's Linear-to-local-agent integration.** Four independently installed Linear app agents each use a Cloudflare Worker for OAuth, authenticated webhooks, initial Agent Session activity and completion callbacks. Workers forward jobs over Cloudflare Tunnel to a local machine. This comprehensive knowledge base synthesizes the architecture, operational runbooks, and milestone evolutions of the **REVREBEL Agent Bridge** (`I-4`), consolidating the findings across technical design documents, system audits, conversational developments, and the 44 tracked Linear issues.
 
