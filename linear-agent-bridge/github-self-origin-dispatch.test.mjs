@@ -93,7 +93,7 @@ async function runCase(identityEnv, assertions) {
     };
     // The bridge now imports stateless domain modules from repository-root folders.
     // Mirror those modules into this isolated fixture without copying live state.
-    for (const folder of ["routing", "jobs", "conversations", "memory", "integrations"]) {
+    for (const folder of ["routing", "jobs", "conversations", "memory", "integrations", "bridge"]) {
       await cp(path.join(sourceDir, "..", folder), path.join(temp, folder), { recursive: true });
     }
     const routingFile = path.join(temp, "routing.json");
