@@ -159,3 +159,15 @@ Regression tests verify unauthorized denial, enabled/disabled route modes, claim
 Added regression coverage for denied/invalid requests without disk or dispatch side effects, preflight rejection without claim, accepted event journaling, duplicate replay suppression, and rollback of a failed delivery claim. Existing full bridge web-hook tests continue to run.
 
 No production webhook, review or PR notification is sent by this source-only extraction. No job files, bridge configuration, Cloudflare deployment, SSH runner or Ubuntu service is changed.
+
+## P4 Trae remote activity and completion HTTP endpoints
+
+- `bridge/trae-callback-routes.mjs` now handles only POST `/trae-activity` and POST `/trae-complete`. The original `linear-agent-bridge/agent-bridge.mjs` continues to own the listening server, durable job store, project root, remote-session lookup, activity throttling map, and Linear activity publisher.
+- Authenticated remote activity still requires a per-job capability token, the exact agent/session/workspace identity, eligible job state and confirmed HTTPS completion endpoint. The legacy workspace-session validation path remains unchanged.
+- Progress events retain the existing 10-second per-session throttle and 60-second duplicate-body suppression. Activity records are updated only after successful Linear publication.
+- Terminal callbacks still require `completed` or `failed`, a bounded nonempty response, successful Linear publication before a durable job transition, and an idempotent 202 duplicate result for already-completed matching jobs. In particular, SSH closure alone never marks a job completed.
+- All callback URLs and response status codes are preserved; other methods and paths fall through to the main bridge unchanged. Existing job files, session IDs and `linear-jobs/` layout are not moved.
+
+New P4 regressions cover capability authorization, progress throttling, invalid terminal states, confirmed completion ledger updates, duplicate completed callbacks and listener/storage anchors.
+
+No real callback, production agent launch, Cloudflare deploy, Ubuntu service restart or persistent-state migration is performed.
