@@ -137,3 +137,13 @@ This PR makes no changes to authentication, side-effecting route handlers, job c
 - Non-diagnostic routes continue through exactly the same handler code. Review inbox, credentials, jobs, memory and journal storage paths, service host binding and all provider callbacks are untouched.
 
 The new regression covers the full health shape, correct 401 and 400 responses, successful probe metadata, a missing secret, non-diagnostic fall-through, unexpected HTTP methods and the continued original HTTP server/job-route location. No production probe, service restart or deployed Worker change is performed.
+
+## P4 ChatGPT user-review HTTP routes
+
+- `bridge/review-routes.mjs` now handles only the existing `/reviews/*` endpoints. It receives the existing inbox, GitHub publication verifier and timing-safe token comparator from the unchanged bridge entrypoint.
+- The main `linear-agent-bridge/agent-bridge.mjs` still owns the HTTP listener, host selection, process configuration, lifecycle and every other route; unmatched requests fall through without side effects.
+- Existing `CHATGPT_REVIEW_MODE=inbox`, dedicated `CHATGPT_REVIEW_INBOX_TOKEN` (minimum 32 chars), review-user authentication, pending list, claim and completion endpoints preserve their response shapes and status codes.
+- A `reviewed` completion continues to require a previously claimed task and independently verified published GitHub review of the expected head SHA by the configured reviewer identity. Unverifiable publication still returns conflict rather than marking a task complete.
+- The review inbox persists under the same `JOBS_DIR/github-events/review-inbox/` directory. No records, handoff attempts, credentials, Worker endpoints, or active sessions are moved or replayed.
+
+Regression tests verify unauthorized denial, enabled/disabled route modes, claim and published-review completion dependencies, unsupported operations, conflict responses and non-review fallthrough. Existing full bridge API tests remain in the CI suite.
