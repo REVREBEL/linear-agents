@@ -1,3 +1,7 @@
+import * as remoteActivity from "../routing/remote-trae-activity.mjs";
+import * as legacyRemoteActivity from "../linear-agent-bridge/remote-trae-activity.mjs";
+import * as sshDispatch from "../routing/ssh-dispatch.mjs";
+import * as legacySshDispatch from "../linear-agent-bridge/ssh-dispatch.mjs";
 import * as linearCredentials from "../integrations/linear-credentials.mjs";
 import * as legacyLinearCredentials from "../linear-agent-bridge/linear-credentials.mjs";
 import * as reviewDelivery from "../bridge/review-delivery.mjs";
@@ -393,4 +397,44 @@ test("P4 bridge imports canonical credentials without moving its startup entrypo
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.match(src,/from "\.\.\/integrations\/linear-credentials\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+});
+
+test("P4 remote activity and SSH dispatch maintain legacy export function identity", () => {
+  for (const [canonical,legacy] of [[remoteActivity,legacyRemoteActivity],[sshDispatch,legacySshDispatch]]) {
+    assert.deepEqual(Object.keys(canonical).sort(),Object.keys(legacy).sort());
+    for (const [name,fn] of Object.entries(canonical)) assert.equal(legacy[name],fn,name+" compatibility");
+  }
+});
+test("P4 remote Trae capability requires exact job, session, workspace, host, state and token", () => {
+  const token="a".repeat(64);
+  const job={agent:"trae",executionHost:"macos",key:"delivery-777",agentSessionId:"linear-session-7",
+    workspace:"REVREBEL/project",remoteActivityTokenHash:remoteActivity.hashRemoteToken(token),
+    state:"running",remoteCompletionUrl:"https://linear-trae.example.com/complete"};
+  const activity={token,jobKey:job.key,agentSessionId:job.agentSessionId,workspace:job.workspace};
+  assert.equal(remoteActivity.validateRemoteTraeActivity(activity,job),true);
+  for(const patch of [{jobKey:"wrong"},{agentSessionId:"wrong"},{workspace:"wrong"},{token:"b".repeat(64)}])
+    assert.equal(remoteActivity.validateRemoteTraeActivity({...activity,...patch},job),false);
+  for(const patch of [{agent:"chatgpt-cli"},{executionHost:"bridge-server"},{state:"completed"},{remoteCompletionUrl:"http://untrusted/complete"}])
+    assert.equal(remoteActivity.validateRemoteTraeActivity(activity,{...job,...patch}),false);
+  assert.equal(remoteActivity.validateActivityEndpoint("https://linear-trae.example.com/trae-activity","linear-trae.example.com"),
+    "https://linear-trae.example.com/trae-activity");
+  assert.throws(()=>remoteActivity.validateActivityEndpoint("https://evil.example.com/trae-activity","linear-trae.example.com"),/expected HTTPS/);
+  assert.throws(()=>remoteActivity.validateTraeCompletionUrl("http://linear-trae.example.com/complete","linear-trae.example.com"),/Unexpected/);
+});
+test("P4 SSH dispatch preserves trusted alias, fixed runner and no issue text interpolation", () => {
+  const env={MAC_SSH_HOST:"mac-agent",MAC_NODE_BIN:"node",OSX_PROJECTS_ROOT:"/Users/rebel/repositories"};
+  const args=sshDispatch.buildSshArgs(env);
+  assert.equal(args.at(-2),"mac-agent");
+  assert.ok(args.includes("StrictHostKeyChecking=yes"));
+  assert.match(args.at(-1),/agents\/trae\/scripts\/launch\.mjs/);
+  assert.ok(!args.join(" ").includes("issue body"));
+  assert.throws(()=>sshDispatch.buildSshArgs({...env,MAC_SSH_HOST:"-oProxyCommand=evil"}),/trusted SSH/);
+  assert.throws(()=>sshDispatch.buildSshArgs({...env,MAC_NODE_BIN:"node;evil"}),/MAC_NODE_BIN/);
+});
+test("P4 bridge imports canonical remote activity and SSH dispatch without moving job roots", async () => {
+  const fs=await import("node:fs/promises");
+  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.match(source,/from "\.\.\/routing\/remote-trae-activity\.mjs"/);
+  assert.match(source,/from "\.\.\/routing\/ssh-dispatch\.mjs"/);
+  assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
 });

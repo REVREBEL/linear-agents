@@ -1,10 +1,10 @@
 import { syncLinearCredential } from "../integrations/linear-credentials.mjs";
 import { chooseExecutionHost, makeRemoteRoute } from "../routing/host-routing.mjs";
-import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
+import { launchMacTrae, cleanupMacTrae } from "../routing/ssh-dispatch.mjs";
 import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";
 import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
 import { buildOpenCodeLaunch, runOpenCode, checkOpenCodeReady } from "./agents/chatgpt/scripts/launch.mjs";
-import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "./remote-trae-activity.mjs";
+import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "../routing/remote-trae-activity.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "../integrations/github-events.mjs";
 import { createGithubTaskMemory } from "../memory/github-task-memory.mjs";
 import { createReviewInbox } from "../bridge/review-inbox.mjs";
