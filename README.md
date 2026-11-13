@@ -1,8 +1,37 @@
-
-
 ### AGENT BRIDGE
 
-This comprehensive knowledge base synthesizes the architecture, operational runbooks, and milestone evolutions of the **REVREBEL Agent Bridge** (`I-4`), consolidating the findings across technical design documents, system audits, conversational developments, and the 44 tracked Linear issues.
+**REVREBEL's Linear-to-local-agent integration.** Four independently installed Linear app agents each use a Cloudflare Worker for OAuth, authenticated webhooks, initial Agent Session activity and completion callbacks. Workers forward jobs over Cloudflare Tunnel to a local machine. This comprehensive knowledge base synthesizes the architecture, operational runbooks, and milestone evolutions of the **REVREBEL Agent Bridge** (`I-4`), consolidating the findings across technical design documents, system audits, conversational developments, and the 44 tracked Linear issues.
+
+
+> **Repository status:** The canonical hostname router is now checked in at [`linear-agent-bridge/agent-bridge.mjs`](linear-agent-bridge/agent-bridge.mjs). The older `chatgpt-bridge.mjs` and `bridge_daemon.py` receivers have been retired. The Antigravity Python runner `run_agent.py` remains in `linear-agent-bridge/` and may still need to be referenced via `RUN_AGENT_PATH` on the deployed Mac.
+
+See [AGENTS.md](AGENTS.md) for the current architecture, local file paths, safety invariants and agent development checklist. Historical review notes under `docs/` may describe older implementations.
+
+---
+
+## Architecture
+
+```text
+Linear (AgentSessionEvent)
+  |  signed webhook
+  v
+linear-<agent>.yourdomain.com          Cloudflare Worker
+  |  OAuth token in LINEAR_DATA KV
+  |  acknowledge Linear via agentActivityCreate ("thought")
+  |  append session-specific /complete command
+  |  POST /jobs with shared bearer authentication
+  v
+<agent>-agent.yourdomain.com           Cloudflare Tunnel
+  |
+  v
+127.0.0.1:8788                     Local bridge
+  |  save job + dispatch local CLI (depending on deployed bridge)
+  v
+Antigravity / Trae / Gemini CLI / ChatGPT file handoff
+  |
+  +--> POST https://linear-<agent>.yourdomain.com/complete
+       Worker issues final "response" or "error" Agent Activity
+```
 
 ---
 
@@ -237,7 +266,10 @@ A review across all **44 tracked Linear issues** in the Agent Bridge workspace e
 | **`ABR-49`** | Core | **Done** | Enforced production Linux agent CLIs run under the unified `bridge` user. |
 | **`ABR-50`** | Core | **Done** | Sanitized npm `allow-scripts` environment for dry-run lockfile validation. |
 
+
 ---
+
+
 
 ### 8. Planned Forward Roadmap & Execution Sequence
 
@@ -278,10 +310,6 @@ Based on current operational dependencies, forward execution follows a gated fou
 
 ---
 
-📊 Would you like me to generate a Gantt milestone roadmap or a tracking script to monitor the transition of the remaining Backlog issues into In Progress?
-
-
-
 ## Node.js dependencies and npm workspaces
 
 The five Cloudflare Workers are npm workspaces managed from the repository root. Run **one** installation from the root rather than `npm install` in each Worker folder. The root `package-lock.json` is the canonical lockfile, and dependencies are installed in root `node_modules/`.
@@ -313,36 +341,7 @@ All local credentials and Cloudflare resource IDs are configured through one roo
   </picture>
 </p>
 
-# LINEAR AGENTS
 
-**REVREBEL's Linear-to-local-agent integration.** Four independently installed Linear app agents each use a Cloudflare Worker for OAuth, authenticated webhooks, initial Agent Session activity and completion callbacks. Workers forward jobs over Cloudflare Tunnel to a local machine.
-
-> **Repository status:** The canonical hostname router is now checked in at [`linear-agent-bridge/agent-bridge.mjs`](linear-agent-bridge/agent-bridge.mjs). The older `chatgpt-bridge.mjs` and `bridge_daemon.py` receivers have been retired. The Antigravity Python runner `run_agent.py` remains in `linear-agent-bridge/` and may still need to be referenced via `RUN_AGENT_PATH` on the deployed Mac.
-
-See [AGENTS.md](AGENTS.md) for the current architecture, local file paths, safety invariants and agent development checklist. Historical review notes under `docs/` may describe older implementations.
-
-## Architecture
-
-```text
-Linear (AgentSessionEvent)
-  |  signed webhook
-  v
-linear-<agent>.yourdomain.com          Cloudflare Worker
-  |  OAuth token in LINEAR_DATA KV
-  |  acknowledge Linear via agentActivityCreate ("thought")
-  |  append session-specific /complete command
-  |  POST /jobs with shared bearer authentication
-  v
-<agent>-agent.yourdomain.com           Cloudflare Tunnel
-  |
-  v
-127.0.0.1:8788                     Local bridge
-  |  save job + dispatch local CLI (depending on deployed bridge)
-  v
-Antigravity / Trae / Gemini CLI / ChatGPT file handoff
-  |
-  +--> POST https://linear-<agent>.yourdomain.com/complete
-       Worker issues final "response" or "error" Agent Activity
 ```
 
 | Agent | Worker directory | Worker hostname | Tunnel hostname |
@@ -370,6 +369,8 @@ linear-agent-bridge/run_agent.py # Antigravity CLI runner
 ```
 
 Each Worker retains its own `wrangler.jsonc`, `src/index.ts`, and workspace `package.json`, while npm dependencies and the lockfile are shared at the root. The shared source is duplicated between Worker folders, so a fix in one does **not** automatically reach the others.
+
+---
 
 ## Setup overview
 
