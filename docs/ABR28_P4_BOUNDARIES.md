@@ -203,3 +203,14 @@ No production job is submitted or dispatched, no live data migrated, and no Ubun
 - No endpoint, agent identity, on-disk file location, ledger state, runtime host, OAuth secret or process launch behavior is changed. The functions use existing runtime dependencies rather than introducing new service state.
 
 Regression tests cover credential parameters, Mac persistence isolation, failed token fetch retryability, CLI readiness rejection, unrouted-job handling and source ordering of authentication, preflight and ledger claim.
+
+## P4 local task preparation before agent execution
+
+- `jobs/local-task-preparation.mjs` now contains the original Linux-local task inbox creation, Git local exclusion best-effort setup, active-task memory recovery, guarded memU retrieval, canonical prompt normalization, resolved-routing payload writing and `queued` ledger transition.
+- The main bridge still owns `/jobs` request authentication, routing, credential synchronization, durable delivery claim, platform selection and **all agent launch branches**. It injects existing memory and ledger adapters and receives the same `{workspace,filename,routedJob}` values previously computed inline.
+- Local inbox paths remain `<repositoryRoot>/.linear-agent/projects/<scopeKey>/inbox/<safeJobId>.json` with mode 0700 for newly created directories and 0600 for payload files. The tracked repository `.gitignore` remains untouched, while `.git/info/exclude` is updated best-effort as before.
+- Short-term memory writes, recovery preamble construction and progress-write draining keep their original order. Untrusted memU output stays outside agent instructions. Source issue and session metadata retain the same canonical task format.
+- The ledger transitions to `queued` only after the task file is saved. The bridge transitions to `launching` afterward, before choosing the existing agent-specific launcher.
+- macOS Trae SSH dispatch and unrouted jobs retain their separate existing paths; neither is processed by this module.
+
+Regression tests assert task JSON, permission bits, safe recovery prompt, absence of untrusted memory text, persisted routing metadata, precise operation ordering, and no queued transition when preparation fails. No existing job files are relocated and no actual agent is launched by this refactor.
