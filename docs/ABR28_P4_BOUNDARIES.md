@@ -193,3 +193,13 @@ New tests verify unauthorized/malformed requests have no side effects, non-route
 Regression coverage verifies raw-vs-sanitized webhook IDs, independent ChatGPT user and CLI keys, deterministic fallback deduplication, rejected partial/failed duplicates, accepted replay response shape and critical admission ordering.
 
 No production job is submitted or dispatched, no live data migrated, and no Ubuntu service, Worker or credential configuration changed.
+
+## P4 preclaim job route and credential preflight
+
+- `jobs/job-preflight.mjs` performs the original route resolution, per-agent Linear access-token synchronization and ChatGPT CLI runtime readiness check, in the same order, before any durable delivery claim.
+- The original `linear-agent-bridge/agent-bridge.mjs` remains the HTTP server, authorizes the request, determines the delivery identity, calls the preflight, then performs durable claim, routing and all existing agent-specific launch branches.
+- A route failure still skips token synchronization while permitting an unrouted ledger record to be created. For macOS dispatch, the access token is fetched without persisting it; Linux dispatch preserves normal credential persistence.
+- A token-fetch failure still propagates before the claim, allowing upstream retries without creating a stuck duplicate. ChatGPT CLI readiness errors retain the same fail-closed 503 response and are never treated as accepted. Other agent identities do not run the OpenCode readiness check.
+- No endpoint, agent identity, on-disk file location, ledger state, runtime host, OAuth secret or process launch behavior is changed. The functions use existing runtime dependencies rather than introducing new service state.
+
+Regression tests cover credential parameters, Mac persistence isolation, failed token fetch retryability, CLI readiness rejection, unrouted-job handling and source ordering of authentication, preflight and ledger claim.
