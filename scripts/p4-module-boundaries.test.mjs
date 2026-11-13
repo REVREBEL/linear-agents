@@ -1,3 +1,7 @@
+import { createActiveTaskMemory, sanitizeCheckpoint, sanitizeCheckpointText, isCheckpointExpired } from "../memory/active-task-memory.mjs";
+import * as legacyActiveMemory from "../linear-agent-bridge/active-task-memory.mjs";
+import { compactRecall, retrieveMemuMemory } from "../memory/memu-memory.mjs";
+import * as legacyMemuMemory from "../linear-agent-bridge/memu-memory.mjs";
 import { recordResumedConversation } from "../conversations/agy-conversation-state.mjs";
 import { recordResumedConversation as legacyRecordResumedConversation } from "../linear-agent-bridge/agy-conversation-state.mjs";
 import { createSessionQueue } from "../conversations/agy-session-queue.mjs";
@@ -104,4 +108,46 @@ test("P4 bridge uses canonical conversation modules without changing state locat
   assert.match(src,/from "\.\.\/conversations\/agy-conversation-state\.mjs"/);
   assert.match(src,/from "\.\.\/conversations\/agy-session-queue\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+});
+
+test("P4 memory imports share one implementation and preserve durable issue checkpoints", async () => {
+  const fs = await import("node:fs/promises");
+  for (const [name,fn] of Object.entries({createActiveTaskMemory,sanitizeCheckpoint,sanitizeCheckpointText,isCheckpointExpired}))
+    assert.equal(legacyActiveMemory[name],fn);
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(),"abr28-memory-"));
+  try {
+    const original=createActiveTaskMemory(dir);
+    const saved=await original.update("REVREBEL/linear-agents","ABR-28",{
+      lastJobKey:"delivery123",lastSessionId:"session-xyz",
+      nextAction:"Inspect CI",notes:"token=secret-test-value"
+    });
+    assert.equal(saved.revision,1);
+    assert.equal(saved.lastSessionId,"session-xyz");
+    const older=legacyActiveMemory.createActiveTaskMemory(dir);
+    const reopened=await older.read("REVREBEL/linear-agents","ABR-28");
+    assert.deepEqual(reopened,saved);
+    assert.equal(reopened.notes,"token=[REDACTED]");
+    const next=await older.update("REVREBEL/linear-agents","ABR-28",{
+      expectedRevision:1,lastVerifiedResult:"Tests passed"
+    });
+    assert.equal(next.revision,2);
+    assert.equal((await original.read("REVREBEL/linear-agents","ABR-28")).lastVerifiedResult,"Tests passed");
+    const entries=await fs.readdir(path.join(dir,"active-task-memory"));
+    assert.equal(entries.filter(x=>x.endsWith(".json")).length,1);
+    assert.ok(!entries.some(x=>x.endsWith(".lock")));
+  } finally {await fs.rm(dir,{recursive:true,force:true});}
+});
+test("P4 memU import identity and fail-open behavior remain unchanged", async () => {
+  assert.equal(legacyMemuMemory.compactRecall,compactRecall);
+  assert.equal(legacyMemuMemory.retrieveMemuMemory,retrieveMemuMemory);
+  assert.equal(await retrieveMemuMemory("query",{enabled:false}),"");
+  assert.equal(compactRecall({hits:[{description:"Relevant",text:"prior decision"}]}),"Relevant: prior decision");
+});
+test("P4 bridge uses canonical memory modules but keeps storage roots unchanged", async () => {
+  const fs=await import("node:fs/promises");
+  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.match(source,/from "\.\.\/memory\/active-task-memory\.mjs"/);
+  assert.match(source,/from "\.\.\/memory\/memu-memory\.mjs"/);
+  assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+  assert.match(source,/createActiveTaskMemory\(JOBS_DIR\)/);
 });
