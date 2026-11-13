@@ -98,13 +98,15 @@ test("Linux restart uses the exact passwordless sudoers unit argument", () => {
 });
 
 test("Linux handoff source does not claim an unsupported automatic GitHub review", () => {
-  const src = readFileSync(path.join(root, "linear-agent-bridge/agent-bridge.mjs"), "utf8");
-  const guard = src.indexOf('process.env.CHATGPT_REVIEW_MODE !== "inbox" &&');
+  const src = readFileSync(path.join(root, "bridge/github-webhook-routes.mjs"), "utf8");
+  const guard = src.indexOf('env.CHATGPT_REVIEW_MODE !== "inbox" &&');
   const claim = src.indexOf('const claimFile = path.join(eventDir');
   assert.ok(guard !== -1 && guard < claim, "Linux unsupported-mode guard must precede delivery claim");
-  const tokenGuard = src.indexOf('CHATGPT_REVIEW_INBOX_TOKEN.length < 32');
+  const tokenGuard = src.indexOf('env.CHATGPT_REVIEW_INBOX_TOKEN.length < 32');
   assert.ok(tokenGuard !== -1 && tokenGuard < claim, "Inbox mode must validate the consumer token before claiming delivery");
-  assert.match(src, /Linux ChatGPT browser\/Shortcuts handoff unsupported/);
+  const bridge = readFileSync(path.join(root, "linear-agent-bridge/agent-bridge.mjs"), "utf8");
+  assert.match(bridge, /Linux ChatGPT browser\\/Shortcuts handoff unsupported/);
+  assert.match(bridge, /createGithubWebhookRoutes\\(/);
 });
 
 test("Linux bridge status uses systemctl and local health without modifying services", () => {
