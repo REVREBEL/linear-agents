@@ -995,7 +995,9 @@ test("P4 /jobs keeps authentication and preflight before durable delivery claim"
   assert.match(src,/from "\.\.\/jobs\/job-preflight\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
-  assert.match(src,/await jobStore\.transition\(jobKey, "queued"/);
+  const preparation=await fs.readFile(new URL("../jobs/local-task-preparation.mjs",import.meta.url),"utf8");
+  assert.match(preparation,/await jobStore\\.transition\\(jobKey, "queued"/);
+  assert.match(src,/await prepareLocalAgentTask\\(\\{/);
 });
 
 test("P4 preflight preserves per-agent token synchronization and Mac non-persistence", async () => {
