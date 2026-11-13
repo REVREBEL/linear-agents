@@ -7,7 +7,6 @@
 </p>
 
 
-```
 
 # AGENT BRIDGE
 
