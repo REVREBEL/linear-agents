@@ -1,3 +1,4 @@
+import { createDiagnosticRoutes } from "../bridge/diagnostic-routes.mjs";
 import { normalizeHost, matchesHost, readBody, sendJson } from "../bridge/http-helpers.mjs";
 import { PassThrough } from "node:stream";
 import * as remoteActivity from "../routing/remote-trae-activity.mjs";
@@ -480,4 +481,53 @@ test("P4 live bridge invokes canonical helpers and retains original HTTP route t
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.equal(source.includes("function readBody(request) {"),false);
   assert.equal(source.includes("function sendJson(response, status, body) {"),false);
+});
+
+test("P4 diagnostics preserve health shape and exact probe authentication", () => {
+  const makeResponse=()=>({status:null,headers:null,body:null,
+    writeHead(status,headers){this.status=status;this.headers=headers;},
+    end(body){this.body=JSON.parse(body);}
+  });
+  const health={port:8788,jobsDir:"/same/linear-jobs",hasBridgeSharedSecret:true,
+    antigravityHost:"ag.example.test",chatgptHost:"chatgpt.example.test",mockHost:"mock.example.test"};
+  const handle=createDiagnosticRoutes({health,sharedSecret:"test-shared-secret",agentForHost:host=>
+    host==="ag.example.test"?"antigravity":"unknown"});
+  const call=(method,pathname,headers={})=>{
+    const request={method,headers},response=makeResponse();
+    const handled=handle(request,response,{host:"ag.example.test",url:new URL("http://ag.example.test"+pathname)});
+    return {handled,response};
+  };
+  const healthResult=call("GET","/health");
+  assert.equal(healthResult.handled,true);
+  assert.equal(healthResult.response.status,200);
+  assert.deepEqual(healthResult.response.body,{ok:true,service:"local-linear-agent-router",host:"ag.example.test",...health});
+  assert.equal(healthResult.response.headers["cache-control"],"no-store");
+  const denied=call("POST","/diagnostics/probe",{authorization:"Bearer incorrect","x-bridge-probe-id":"a".repeat(36)});
+  assert.equal(denied.response.status,401);
+  assert.deepEqual(denied.response.body,{ok:false,error:"Unauthorized"});
+  const malformed=call("POST","/diagnostics/probe",{authorization:"Bearer test-shared-secret","x-bridge-probe-id":"too-short"});
+  assert.equal(malformed.response.status,400);
+  const probeId="12345678-1234-1234-1234-123456789abc";
+  const allowed=call("POST","/diagnostics/probe",{authorization:"Bearer test-shared-secret","x-bridge-probe-id":probeId});
+  assert.equal(allowed.response.status,200);
+  assert.deepEqual(allowed.response.body,{ok:true,probeId,service:"local-linear-agent-router",agent:"antigravity"});
+  const other=call("POST","/jobs");
+  assert.equal(other.handled,false);
+  assert.equal(other.response.status,null);
+  assert.equal(call("GET","/diagnostics/probe").handled,false);
+  assert.equal(call("POST","/health").handled,false);
+  const withoutSecret=createDiagnosticRoutes({health,sharedSecret:"",agentForHost:()=> "unknown"});
+  const response=makeResponse();
+  assert.equal(withoutSecret({method:"POST",headers:{authorization:"Bearer "} },response,
+    {host:"ag.example.test",url:new URL("http://ag.example.test/diagnostics/probe")}),true);
+  assert.equal(response.status,401);
+});
+test("P4 diagnostic handlers are delegated but HTTP listener and job routes remain anchored", async () => {
+  const fs=await import("node:fs/promises");
+  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.match(src,/from "\.\.\/bridge\/diagnostic-routes\.mjs"/);
+  assert.match(src,/if \(handleDiagnosticRoute\(request, response, \{ host, url \}\)\) return;/);
+  assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
+  assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+  assert.match(src,/request\.method !== "POST" \|\| url\.pathname !== "\/jobs"/);
 });
