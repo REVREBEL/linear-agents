@@ -1722,6 +1722,9 @@ test("P4 Trae local dispatch retains original bridge state and remote SSH lifecy
   assert.ok(bridge.includes('from "../jobs/trae-local-dispatch.mjs"'));
   assert.ok(bridge.includes("await dispatchLocalTraeAgent({"));
   assert.ok(bridge.includes("launchMacTrae({ job: message, jobKey, jobStore })"));
+  assert.ok(bridge.includes("function safeTokenEqual(actual, expected)"));
+  assert.ok(bridge.includes("function sanitizeTraeActivityBody(value)"));
+  assert.ok(bridge.includes("createTraeCallbackRoutes({"));
   assert.ok(bridge.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
   assert.ok(local.includes('path.join(repositoryRoot, ".linear-agent")'));
