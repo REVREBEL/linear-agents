@@ -8,9 +8,9 @@ import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, 
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "../integrations/github-events.mjs";
 import { createGithubTaskMemory } from "../memory/github-task-memory.mjs";
 import { createReviewInbox } from "../bridge/review-inbox.mjs";
-import { sendInitialReviewMessage } from "./review-message-handoff.mjs";
-import { notifyLinearReview } from "./review-linear-notifier.mjs";
-import { verifyPublishedGithubReview } from "./review-delivery.mjs";
+import { sendInitialReviewMessage } from "../bridge/review-message-handoff.mjs";
+import { notifyLinearReview } from "../integrations/review-linear-notifier.mjs";
+import { verifyPublishedGithubReview } from "../bridge/review-delivery.mjs";
 import { createActiveTaskMemory } from "../memory/active-task-memory.mjs";
 import { retrieveMemuMemory } from "../memory/memu-memory.mjs";
 import { createOrderedProgressQueue } from "../jobs/ordered-progress.mjs";
