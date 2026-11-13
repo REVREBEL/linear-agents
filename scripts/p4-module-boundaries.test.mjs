@@ -1,3 +1,4 @@
+import { dispatchGeminiAgent } from "../jobs/gemini-dispatch.mjs";
 import { dispatchChatgptHumanHandoff } from "../jobs/chatgpt-human-handoff.mjs";
 import { dispatchAntigravityAgent } from "../jobs/antigravity-dispatch.mjs";
 import { dispatchChatgptCliAgent } from "../jobs/chatgpt-cli-dispatch.mjs";
@@ -1143,7 +1144,7 @@ test("P4 local task preparation preserves bridge-owned launches and runtime job 
   assert.ok(bridge.includes('from "../jobs/local-task-preparation.mjs"'));
   assert.ok(bridge.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
-  assert.ok(bridge.includes('await startGemini(routedJob, filename, workspace, jobKey, credential)'));
+  assert.ok(bridge.includes('await dispatchGeminiAgent({'));
 });
 
 test("P4 Mock dispatch awaits durable awaiting_external state before logging", async () => {
@@ -1510,4 +1511,93 @@ test("P4 human ChatGPT handoff remains distinct from CLI dispatch and review rou
   assert.ok(source.includes('from "../bridge/review-routes.mjs"'));
   assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
+});
+
+test("P4 Gemini dispatch fails closed for missing executable before reading prompt", async () => {
+  const transitions=[],logs=[];
+  await dispatchGeminiAgent({
+    job:{},filename:"/task.json",workspace:"/repo",jobKey:"gemini:one",credential:null,
+    geminiBin:"",geminiLaunchMode:"headless",
+    jobStore:{transition:async(...args)=>transitions.push(args)},
+    extractPromptContext:()=>{throw Error("must not inspect prompt");},
+    logger:{error:(...args)=>logs.push(args),log:()=>{}},
+  });
+  assert.deepEqual(transitions,[["gemini:one","failed",{error:"GEMINI_BIN not configured"}]]);
+  assert.deepEqual(logs,[["GEMINI_BIN is not configured. Job saved but Gemini was not started."]]);
+});
+test("P4 Gemini dispatch rejects missing prompt without starting subprocess", async () => {
+  const transitions=[];
+  await dispatchGeminiAgent({
+    job:{},filename:"/task.json",workspace:"/repo",jobKey:"gemini:two",credential:null,
+    geminiBin:"gemini",geminiLaunchMode:"headless",
+    jobStore:{transition:async(...args)=>transitions.push(args)},
+    extractPromptContext:()=>"",
+    spawnProcess:()=>{throw Error("must not start Gemini");},
+    logger:{error:()=>{},log:()=>{}},
+  });
+  assert.deepEqual(transitions,[["gemini:two","failed",{error:"Missing Gemini promptContext"}]]);
+});
+test("P4 Gemini Warp mode stays macOS-only and preserves legacy error string", async () => {
+  const transitions=[];
+  await dispatchGeminiAgent({
+    job:{},filename:"/task.json",workspace:"/repo",jobKey:"gemini:warp",credential:null,
+    geminiBin:"gemini",geminiLaunchMode:"warp",platform:"linux",
+    jobStore:{transition:async(...args)=>transitions.push(args)},
+    extractPromptContext:()=>"Task",
+    startGeminiInWarp:async()=>{throw Error("Warp must not launch on Linux");},
+    spawnProcess:()=>{throw Error("must not spawn");},
+    logger:{error:()=>{},log:()=>{}},
+  });
+  assert.deepEqual(transitions,[["gemini:warp","failed",{
+    error:"Gemini Warp mode requires macOS; use GEMINI_LAUNCH_MODE=headless on Ubuntu"
+  }]]);
+});
+test("P4 Gemini Warp invokes existing bridge generator on macOS without headless spawn", async () => {
+  const invoked=[],credential={accessToken:"test"};
+  await dispatchGeminiAgent({
+    job:{},filename:"/repo/inbox/task.json",workspace:"/repo",jobKey:"gemini:mac",credential,
+    geminiBin:"gemini",geminiLaunchMode:"warp",platform:"darwin",
+    jobStore:{transition:async()=>{throw Error("Warp launch should own state");}},
+    extractPromptContext:()=>"Continue issue",
+    startGeminiInWarp:async(...args)=>invoked.push(args),
+    spawnProcess:()=>{throw Error("must not spawn headless");},
+    logger:{error:()=>{},log:()=>{}},
+  });
+  assert.deepEqual(invoked,[["Continue issue","/repo/inbox/task.json","/repo","gemini:mac"]]);
+});
+test("P4 Gemini headless launch forwards original options and attaches process logs", async () => {
+  const calls=[],credential={accessToken:"fake"},child={pid:123};
+  const job={payload:{data:{promptContext:"Task"}}};
+  const buildArgs=()=>["--args"];
+  await dispatchGeminiAgent({
+    job,filename:"/repo/inbox/task.json",workspace:"/repo",jobKey:"gemini:headless",credential,
+    geminiBin:"/bin/gemini",geminiArgsTemplate:"{prompt}",geminiLaunchMode:"headless",platform:"linux",
+    jobStore:{transition:async()=>{throw Error("valid run must not transition");}},
+    extractPromptContext:()=> "Task",
+    buildGeminiLaunch:opts=>{
+      calls.push(["build",opts]);
+      return {command:"/bin/gemini",args:["--prompt","Task"],options:{cwd:"/repo"}};
+    },
+    buildGenericArgs:buildArgs,maskArg:value=>value,
+    spawnProcess:(command,args,options)=>{calls.push(["spawn",command,args,options]);return child;},
+    attachProcessLogs:(proc,agent,key)=>calls.push(["attach",proc,agent,key]),
+    logger:{log:()=>{},error:()=>{}},
+  });
+  assert.deepEqual(calls,[
+    ["build",{binary:"/bin/gemini",template:"{prompt}",prompt:"Task",
+      taskFile:"/repo/inbox/task.json",workspace:"/repo",credential,buildArgs}],
+    ["spawn","/bin/gemini",["--prompt","Task"],{cwd:"/repo"}],
+    ["attach",child,"Gemini","gemini:headless"],
+  ]);
+});
+test("P4 Gemini execution stays within original bridge state and Warp implementation", async () => {
+  const fs=await import("node:fs/promises");
+  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const handler=await fs.readFile(new URL("../jobs/gemini-dispatch.mjs",import.meta.url),"utf8");
+  assert.ok(src.includes('from "../jobs/gemini-dispatch.mjs"'));
+  assert.ok(src.includes('await dispatchGeminiAgent({'));
+  assert.ok(src.includes('async function startGeminiInWarp('));
+  assert.ok(src.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
+  assert.ok(src.includes('const server = http.createServer(async (request, response) => {'));
+  assert.ok(handler.includes('attachProcessLogs(geminiProcess, "Gemini", jobKey)'));
 });
