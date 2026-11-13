@@ -10,8 +10,8 @@ export async function dispatchGeminiAgent({
   spawnProcess, platform = process.platform, logger = console,
 }) {
   if (!geminiBin) {
-    await jobStore.transition(jobKey, "failed", { error: "geminiBin not configured" });
-    logger.error("geminiBin is not configured. Job saved but Gemini was not started.");
+    await jobStore.transition(jobKey, "failed", { error: "GEMINI_BIN not configured" });
+    logger.error("GEMINI_BIN is not configured. Job saved but Gemini was not started.");
     return;
   }
 
@@ -25,7 +25,7 @@ export async function dispatchGeminiAgent({
   if (geminiLaunchMode === "warp") {
     if (platform !== "darwin") {
       await jobStore.transition(jobKey, "failed", {
-        error: "Gemini Warp mode requires macOS; use geminiLaunchMode=headless on Ubuntu",
+        error: "Gemini Warp mode requires macOS; use GEMINI_LAUNCH_MODE=headless on Ubuntu",
       });
       return;
     }
