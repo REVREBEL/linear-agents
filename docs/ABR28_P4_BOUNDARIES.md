@@ -58,3 +58,14 @@ No database change, checkpoint migration, external memU setup, runtime data move
 - Review state, previous head SHA, decision, and processed change markers continue to be read from the existing journal directory. No checkpoint or event journal files are moved.
 
 The new regression proves old/new import identity, read/write interoperability for a single PR, persistence of previous review markers, and preservation of the hashed filenames in the original folder. No change to GitHub webhooks, ChatGPT review inbox routing, duplicate suppression policy, or runtime job orchestration occurs in this extraction.
+
+## P4 GitHub event ingress and classification boundary
+
+- `integrations/github-events.mjs` owns GitHub event envelope validation, sanitization, journaling, first-pass actionable classification, explicit self-origin filtering, change-key generation, review destination resolution and prompt construction.
+- `linear-agent-bridge/github-events.mjs` remains a compatibility-only re-export of the identical functions. Both `agent-bridge.mjs` and `review-inbox.mjs` import the canonical module.
+- Runtime journal records remain anchored to `JOBS_DIR/github-events/events.jsonl`. Comment bodies are excluded from persisted event journals.
+- Event payload contracts, accepted GitHub event/action names, external review handoff, idempotent task memory and user-vs-CLI identities are unchanged.
+
+Isolated bridge fixtures copy `integrations/` as well as existing domain folders. New regressions prove the old/new exports are the same functions, explicitly configured self-origin identities still suppress matched events (while no implicit identity suppresses unrelated events), and journal records retain their exact path and redaction behavior.
+
+No GitHub App or webhook subscription changes, no deployed Worker changes and no live state migration.
