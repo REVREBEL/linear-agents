@@ -224,3 +224,12 @@ Regression tests assert task JSON, permission bits, safe recovery prompt, absenc
 - Review-user and ChatGPT CLI identities, Antigravity conversation queueing, Mac Trae SSH routing, task-file location and session persistence are unchanged.
 
 Regression tests verify exact Mock transition shape and ordering, fail-closed ledger errors, nonblocking Gemma launch argument forwarding, asynchronous failure handling, and unchanged agent/HTTP entrypoint anchoring. No live agent is launched or production service restarted.
+
+## P4 ChatGPT CLI serialized coding dispatch
+
+- `jobs/chatgpt-cli-dispatch.mjs` now owns the thin asynchronous handoff from an accepted coding job to the existing serialized ChatGPT CLI queue. The coding-agent identity remains `chatgpt-cli`, explicitly separate from the ChatGPT human review-user inbox and browser handoff identity.
+- The bridge continues to own `enqueueChatgptHandoff`, `startChatgptOpenCode`, the active OpenCode runtime, task memory, the job ledger and all HTTP request/admission semantics.
+- As before, the route does **not** await completion of serialized CLI execution before returning its normal accepted HTTP acknowledgement. A queued execution rejection continues to log the original failure message and transition that job to `failed` with the original error string; failed ledger writes are logged without propagating a second HTTP response.
+- The queue remains global and serial, so separately delivered coding tasks do not bypass the established ChatGPT handoff ordering. The human review inbox, dedicated review token, review publication verification, and ChatGPT UI/Shortcuts branch are not modified.
+
+Regression tests protect argument forwarding, queue-only invocation before task execution, nonblocking acceptance, asynchronous queue rejection, failed-job ledger recording and identity separation. No production agent launch, active conversation, authentication configuration, file location, or deployed Worker changes.
