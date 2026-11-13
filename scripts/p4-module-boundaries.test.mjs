@@ -1,3 +1,5 @@
+import * as githubIntegration from "../integrations/github-events.mjs";
+import * as legacyGithubIntegration from "../linear-agent-bridge/github-events.mjs";
 import { createGithubTaskMemory } from "../memory/github-task-memory.mjs";
 import { createGithubTaskMemory as legacyGithubTaskMemory } from "../linear-agent-bridge/github-task-memory.mjs";
 import { createActiveTaskMemory, sanitizeCheckpoint, sanitizeCheckpointText, isCheckpointExpired } from "../memory/active-task-memory.mjs";
@@ -186,4 +188,50 @@ test("P4 GitHub task memory remains anchored to original bridge journal root", a
   assert.match(source,/from "\.\.\/memory\/github-task-memory\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(source,/createGithubTaskMemory\(JOBS_DIR\)/);
+});
+
+test("P4 GitHub event classification retains legacy function identity and explicit self-origin policy", () => {
+  for (const [name, fn] of Object.entries(githubIntegration))
+    assert.equal(legacyGithubIntegration[name], fn, "Legacy GitHub event export must be same function: " + name);
+  const input = {
+    event:"pull_request", delivery:"delivery-abr28-001",
+    payload:{
+      action:"ready_for_review", repository:{full_name:"REVREBEL/linear-agents"},
+      sender:{id:5321,login:"outside-reviewer"},
+      pull_request:{number:124,html_url:"https://github.com/REVREBEL/linear-agents/pull/124",
+        head:{sha:"a".repeat(40)},draft:false}
+    }
+  };
+  const event=githubIntegration.sanitizeGithubEvent(input);
+  assert.deepEqual(legacyGithubIntegration.classifyGithubReviewEvent(event,{}),
+    githubIntegration.classifyGithubReviewEvent(event,{}));
+  assert.equal(githubIntegration.classifyGithubReviewEvent(event,{}).actionable,true);
+  assert.equal(githubIntegration.classifyGithubReviewEvent(event,{ids:["5321"]}).reason,"self-authored-event");
+  assert.equal(githubIntegration.classifyGithubReviewEvent(event,{logins:["outside-reviewer"]}).reason,"self-authored-event");
+  assert.equal(githubIntegration.classifyGithubReviewEvent(event,{ids:[],logins:[]}).actionable,true);
+  assert.equal(githubIntegration.githubReviewChangeKey(event),legacyGithubIntegration.githubReviewChangeKey(event));
+});
+test("P4 GitHub event journal preserves original path and avoids storing comment bodies", async () => {
+  const fs=await import("node:fs/promises");
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr28-github-events-"));
+  try {
+    const event={event:"issue_comment",delivery:"delivery-abr28-002",repository:"REVREBEL/linear-agents",
+      number:124,commentBody:"Sensitive review body",commentId:8811,action:"created"};
+    const result=await legacyGithubIntegration.recordGithubEvent(root,event,"chatgpt");
+    assert.equal(result.journal,path.join(root,"github-events","events.jsonl"));
+    const records=(await fs.readFile(result.journal,"utf8")).trim().split("\n");
+    assert.equal(records.length,1);
+    assert.equal(JSON.parse(records[0]).commentBody,undefined);
+    assert.equal(JSON.parse(records[0]).source,"chatgpt");
+    await assert.rejects(githubIntegration.recordGithubEvent(root,event,"invalid"),/Invalid GitHub source/);
+  } finally {await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 bridge and review inbox reference canonical GitHub event adapter", async () => {
+  const fs=await import("node:fs/promises");
+  for(const file of ["agent-bridge.mjs","review-inbox.mjs"]){
+    const content=await fs.readFile(new URL("../linear-agent-bridge/"+file,import.meta.url),"utf8");
+    assert.match(content,/from "\.\.\/integrations\/github-events\.mjs"/);
+  }
+  const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.match(bridge,/recordGithubEvent\(JOBS_DIR, event, source\)/);
 });
