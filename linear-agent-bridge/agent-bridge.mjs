@@ -1,3 +1,4 @@
+import { dispatchGeminiAgent } from "../jobs/gemini-dispatch.mjs";
 import { dispatchChatgptHumanHandoff } from "../jobs/chatgpt-human-handoff.mjs";
 import { dispatchAntigravityAgent } from "../jobs/antigravity-dispatch.mjs";
 import { dispatchChatgptCliAgent } from "../jobs/chatgpt-cli-dispatch.mjs";
@@ -565,7 +566,14 @@ const server = http.createServer(async (request, response) => {
         job: routedJob, workspace, jobKey, credential, startGemma, jobStore,
       });
     } else if (agent === "gemini") {
-      await startGemini(routedJob, filename, workspace, jobKey, credential);
+      await dispatchGeminiAgent({
+        job: routedJob, filename, workspace, jobKey, credential,
+        geminiBin: GEMINI_BIN, geminiLaunchMode: GEMINI_LAUNCH_MODE,
+        geminiArgsTemplate: GEMINI_ARGS_TEMPLATE,
+        jobStore, extractPromptContext, startGeminiInWarp,
+        buildGeminiLaunch, buildGenericArgs, maskArg, attachProcessLogs,
+        spawnProcess: spawn,
+      });
     } else {
       await jobStore.transition(jobKey, "failed", { error: "Unknown agent host" });
       console.log(`Unknown agent hostname: ${host}. Job saved but not executed.`);
@@ -1043,47 +1051,6 @@ async function startGemma(job, workspace, jobKey, credential) {
     await jobStore.transition(jobKey, "failed", { error: "Gemma SDK execution failed" });
     await sendOpenCodeActivity(callback, agentSessionId, "error", "Gemma execution failed; see restricted bridge diagnostics.").catch(() => {});
   }
-}
-
-async function startGemini(job, filename, workspace, jobKey, credential) {
-  if (!GEMINI_BIN) {
-    await jobStore.transition(jobKey, "failed", { error: "GEMINI_BIN not configured" });
-    console.error("GEMINI_BIN is not configured. Job saved but Gemini was not started.");
-    return;
-  }
-
-  const promptContext = extractPromptContext(job);
-  if (!promptContext) {
-    await jobStore.transition(jobKey, "failed", { error: "Missing Gemini promptContext" });
-    console.error("Gemini skipped. No promptContext found.");
-    return;
-  }
-
-  if (GEMINI_LAUNCH_MODE === "warp") {
-    if (process.platform !== "darwin") {
-      await jobStore.transition(jobKey, "failed", {
-        error: "Gemini Warp mode requires macOS; use GEMINI_LAUNCH_MODE=headless on Ubuntu",
-      });
-      return;
-    }
-    await startGeminiInWarp(promptContext, filename, workspace, jobKey);
-    return;
-  }
-
-  const launch = buildGeminiLaunch({
-    binary: GEMINI_BIN, template: GEMINI_ARGS_TEMPLATE,
-    prompt: promptContext, taskFile: filename, workspace,
-    credential, buildArgs: buildGenericArgs,
-  });
-
-  console.log("Gemini job accepted. Spawning Gemini CLI...");
-  console.log(`Gemini binary: ${launch.command}`);
-  console.log(`Gemini workspace: ${workspace}`);
-  console.log(`Gemini args: ${launch.args.map(maskArg).join(" ")}`);
-
-  const geminiProcess = spawn(launch.command, launch.args, launch.options);
-
-  attachProcessLogs(geminiProcess, "Gemini", jobKey);
 }
 
 async function startGeminiInWarp(promptContext, filename, workspace, jobKey) {
