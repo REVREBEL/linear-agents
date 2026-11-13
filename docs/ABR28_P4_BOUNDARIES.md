@@ -233,3 +233,14 @@ Regression tests verify exact Mock transition shape and ordering, fail-closed le
 - The queue remains global and serial, so separately delivered coding tasks do not bypass the established ChatGPT handoff ordering. The human review inbox, dedicated review token, review publication verification, and ChatGPT UI/Shortcuts branch are not modified.
 
 Regression tests protect argument forwarding, queue-only invocation before task execution, nonblocking acceptance, asynchronous queue rejection, failed-job ledger recording and identity separation. No production agent launch, active conversation, authentication configuration, file location, or deployed Worker changes.
+
+## P4 Antigravity serialized conversation and recovery dispatch
+
+- `jobs/antigravity-dispatch.mjs` now owns the original asynchronous Antigravity queue handoff, conversation lookup/reuse, optional cross-session issue recovery, provenance recording and queue-failure handling. The original bridge still owns the queue instance, durable ledger, project conversation store, agent runtime launcher and all HTTP routing.
+- Shared `agyConversationMode=reuse-existing` continues to serialize by `project:<projectId>` and read the project's saved conversation when no configured ID exists. Other sessions serialize by the verified agent session ID.
+- Prompted deliveries still seek conversation continuity through the same Linear agent session first. Cross-session issue recovery is opt-in through `ANTIGRAVITY_ISSUE_RECOVERY_ENABLED=true`, only on unprompted/new sessions, and must not override a same-session or explicitly reused conversation.
+- When cross-session recovery finds a prior completed conversation, its source job/session IDs are recorded in the `launching` ledger entry, and the chosen conversation is journaled before launching Antigravity. Project conversation IDs are persisted only when returned and verified by the existing runtime flow.
+- As before, `/jobs` acknowledges accepted dispatch without awaiting the asynchronous conversation queue. Queue failures log their error and durably mark the job `failed` without emitting a second HTTP response.
+- The seven agent identities, original `linear-jobs/` state path, ChatGPT CLI queue, ChatGPT review inbox, Mac Trae SSH execution, job preflight and actual Antigravity binary invocation remain unchanged.
+
+Regression tests cover project-key serialization, project conversation lookup/persistence, same-session follow-up precedence, disabled/enabled issue recovery, provenance ordering and failed queue recording. No real agent is launched, no production conversations are resumed, and no live data or service configuration is changed.

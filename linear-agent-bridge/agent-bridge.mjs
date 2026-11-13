@@ -1,3 +1,4 @@
+import { dispatchAntigravityAgent } from "../jobs/antigravity-dispatch.mjs";
 import { dispatchChatgptCliAgent } from "../jobs/chatgpt-cli-dispatch.mjs";
 import { dispatchMockAgent, dispatchGemmaAgent } from "../jobs/simple-agent-dispatch.mjs";
 import { prepareLocalAgentTask } from "../jobs/local-task-preparation.mjs";
@@ -539,50 +540,11 @@ const server = http.createServer(async (request, response) => {
     if (agent === "mock") {
       await dispatchMockAgent({ jobStore, jobKey, filename });
     } else if (agent === "antigravity") {
-      const sessionId = extractAgentSessionId(routedJob);
-      // Shared project conversations must not receive concurrent invocations.
-      const projectConversationQueueKey = route.agyConversationMode === "reuse-existing"
-        ? "project:" + route.projectId : sessionId;
-      void agySessionQueue.enqueue(projectConversationQueueKey, async () => {
-        let conversationId = route.agyConversationId || null;
-        let conversationSource = conversationId ? "project_reuse" : "follow_up";
-        if (route.agyConversationMode === "reuse-existing" && !conversationId) {
-          conversationId = await readAgyProjectConversation(route.projectId, workspace);
-          if (conversationId) conversationSource = "project_reuse";
-        }
-        if (!conversationId && route.agyConversationMode !== "reuse-existing" && routedJob.sessionAction === "prompted") {
-          const prior = await jobStore.findLatestConversationBySessionId(sessionId, jobKey, workspace);
-          conversationId = prior?.conversationId || null;
-        }
-        // Cross-session recovery is opt-in and never supersedes same-session continuity.
-        if (!conversationId && route.agyConversationMode !== "reuse-existing" && routedJob.sessionAction !== "prompted" && process.env.ANTIGRAVITY_ISSUE_RECOVERY_ENABLED === "true") {
-          const issueId = routedJob.issueMetadata?.id || routedJob.issueId || null;
-          const prior = await jobStore.findLatestCompletedConversationByIssueId(issueId, sessionId, workspace, jobKey);
-          if (prior) {
-            conversationId = prior.conversationId;
-            conversationSource = "issue_recovery";
-            await jobStore.transition(jobKey, "launching", {
-              recoveredFromAgentSessionId: prior.agentSessionId,
-              recoveredFromJobKey: prior.key,
-            });
-          }
-        }
-        await recordResumedConversation(jobStore, jobKey, conversationId, conversationSource);
-        const actualConversationId = await startAntigravity(
-          routedJob, filename, workspace, jobKey, conversationId,
-          route.agyConversationMode === "reuse-existing"
-            ? async id => saveAgyProjectConversation(route.projectId, workspace, id)
-            : null, credential
-        );
-        if (route.agyConversationMode === "reuse-existing" && actualConversationId) {
-          await saveAgyProjectConversation(route.projectId, workspace, actualConversationId);
-          console.log(`[Antigravity] Project ${route.projectId} conversation: ${actualConversationId}`);
-        } else if (route.agyConversationMode === "reuse-existing") {
-          console.warn(`[Antigravity] Project ${route.projectId}: no verified conversation ID; next delivery will start fresh`);
-        }
-      }).catch(async error => {
-        console.error("AGY queued execution failed:", error);
-        await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(console.error);
+      dispatchAntigravityAgent({
+        job: routedJob, route, filename, workspace, jobKey, credential,
+        agySessionQueue, extractAgentSessionId, readAgyProjectConversation,
+        saveAgyProjectConversation, recordResumedConversation, startAntigravity,
+        jobStore,
       });
     } else if (agent === "chatgpt-cli") {
       dispatchChatgptCliAgent({

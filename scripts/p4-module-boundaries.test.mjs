@@ -1,3 +1,4 @@
+import { dispatchAntigravityAgent } from "../jobs/antigravity-dispatch.mjs";
 import { dispatchChatgptCliAgent } from "../jobs/chatgpt-cli-dispatch.mjs";
 import { dispatchMockAgent, dispatchGemmaAgent } from "../jobs/simple-agent-dispatch.mjs";
 import { prepareLocalAgentTask } from "../jobs/local-task-preparation.mjs";
@@ -1271,4 +1272,133 @@ test("P4 ChatGPT CLI dispatch preserves serialized queue and human-review identi
   assert.ok(source.includes('from "../bridge/review-routes.mjs"'));
   assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
+});
+
+test("P4 Antigravity project reuse serializes by project and saves verified conversation ID", async () => {
+  const trace=[],job={sessionAction:"created",issueId:"issue-1"},credential={accessToken:"token"};
+  let task;
+  const deps={
+    job,route:{projectId:"project-1",agyConversationMode:"reuse-existing",agyConversationId:null},
+    filename:"/repo/task.json",workspace:"/repo",jobKey:"antigravity:one",credential,
+    agySessionQueue:{enqueue:(key,fn)=>{trace.push(["enqueue",key]);task=fn;return Promise.resolve();}},
+    extractAgentSessionId:()=> "session-1",
+    readAgyProjectConversation:async(id,workspace)=>{trace.push(["read",id,workspace]);return "prior-conversation";},
+    saveAgyProjectConversation:async(id,workspace,value)=>{trace.push(["save",id,workspace,value]);},
+    recordResumedConversation:async(_ledger,key,id,source)=>trace.push(["record",key,id,source]),
+    startAntigravity:async(...args)=>{
+      trace.push(["launch",args.slice(0,5)]);
+      assert.equal(args[6],credential);
+      assert.equal(typeof args[5],"function");
+      await args[5]("new-conversation");
+      return "new-conversation";
+    },
+    jobStore:{transition:async()=>{throw Error("not expected");}},
+    logger:{log:msg=>trace.push(["log",msg]),warn:msg=>trace.push(["warn",msg]),error:()=>{throw Error("unexpected error");}}
+  };
+  assert.equal(dispatchAntigravityAgent(deps),undefined);
+  assert.deepEqual(trace,[["enqueue","project:project-1"]]);
+  await task();
+  assert.deepEqual(trace,[
+    ["enqueue","project:project-1"],
+    ["read","project-1","/repo"],
+    ["record","antigravity:one","prior-conversation","project_reuse"],
+    ["launch",[job,"/repo/task.json","/repo","antigravity:one","prior-conversation"]],
+    ["save","project-1","/repo","new-conversation"],
+    ["save","project-1","/repo","new-conversation"],
+    ["log","[Antigravity] Project project-1 conversation: new-conversation"]
+  ]);
+});
+test("P4 Antigravity prompted delivery recovers same-session conversation before cross-issue recovery", async () => {
+  const trace=[];let task;
+  const deps={
+    job:{sessionAction:"prompted",issueId:"issue-2"},
+    route:{projectId:"project-2",agyConversationMode:"new",agyConversationId:null},
+    filename:"/task.json",workspace:"/repo",jobKey:"antigravity:two",credential:null,
+    agySessionQueue:{enqueue:(key,fn)=>{trace.push(["enqueue",key]);task=fn;return Promise.resolve();}},
+    extractAgentSessionId:()=> "session-2",
+    readAgyProjectConversation:async()=>{throw Error("should not read project");},
+    saveAgyProjectConversation:async()=>{throw Error("should not save project");},
+    recordResumedConversation:async(_ledger,key,id,source)=>trace.push(["record",key,id,source]),
+    startAntigravity:async(...args)=>{trace.push(["launch",args[4]]);assert.equal(args[5],null);return "same-session";},
+    jobStore:{
+      findLatestConversationBySessionId:async(...args)=>{trace.push(["session",...args]);return {conversationId:"same-session"};},
+      findLatestCompletedConversationByIssueId:async()=>{throw Error("cross-issue must not be checked");},
+      transition:async()=>{throw Error("must not transition during reuse");}
+    },
+    issueRecoveryEnabled:true,
+    logger:{log:()=>{},warn:()=>{},error:()=>{throw Error("unexpected error");}}
+  };
+  dispatchAntigravityAgent(deps);
+  await task();
+  assert.deepEqual(trace,[
+    ["enqueue","session-2"],
+    ["session","session-2","antigravity:two","/repo"],
+    ["record","antigravity:two","same-session","follow_up"],
+    ["launch","same-session"],
+  ]);
+});
+test("P4 Antigravity cross-session recovery requires explicit opt-in and records provenance before launch", async () => {
+  const trace=[];let task;let recoveryLookups=0;
+  const deps={
+    job:{sessionAction:"created",issueMetadata:{id:"issue-3"}},
+    route:{projectId:"project-3",agyConversationMode:"new"},
+    filename:"/task.json",workspace:"/repo",jobKey:"antigravity:three",credential:null,
+    agySessionQueue:{enqueue:(_key,fn)=>{task=fn;return Promise.resolve();}},
+    extractAgentSessionId:()=> "session-3",
+    readAgyProjectConversation:async()=>null,
+    saveAgyProjectConversation:async()=>{},
+    recordResumedConversation:async(_store,key,id,source)=>trace.push(["record",key,id,source]),
+    startAntigravity:async(...args)=>{trace.push(["launch",args[4]]);return null;},
+    jobStore:{
+      findLatestCompletedConversationByIssueId:async(...args)=>{
+        recoveryLookups++;
+        assert.deepEqual(args,["issue-3","session-3","/repo","antigravity:three"]);
+        return {conversationId:"recovered-3",agentSessionId:"prior-session",key:"prior-job"};
+      },
+      transition:async(...args)=>trace.push(["transition",...args]),
+    },
+    issueRecoveryEnabled:false,
+    logger:{log:()=>{},warn:()=>{},error:()=>{throw Error("unexpected error");}},
+  };
+  dispatchAntigravityAgent(deps);
+  await task();
+  assert.equal(recoveryLookups,0);
+  assert.deepEqual(trace,[["record","antigravity:three",null,"follow_up"],["launch",null]]);
+  trace.length=0;deps.issueRecoveryEnabled=true;
+  dispatchAntigravityAgent(deps);
+  await task();
+  assert.equal(recoveryLookups,1);
+  assert.deepEqual(trace,[
+    ["transition","antigravity:three","launching",{recoveredFromAgentSessionId:"prior-session",recoveredFromJobKey:"prior-job"}],
+    ["record","antigravity:three","recovered-3","issue_recovery"],
+    ["launch","recovered-3"],
+  ]);
+});
+test("P4 Antigravity queue failures asynchronously record failed ledger state", async () => {
+  const trace=[];let complete;
+  const written=new Promise(resolve=>{complete=resolve;});
+  const result=dispatchAntigravityAgent({
+    job:{},route:{agyConversationMode:"new"},filename:"/task.json",workspace:"/repo",
+    jobKey:"antigravity:fail",credential:null,extractAgentSessionId:()=> "session-4",
+    agySessionQueue:{enqueue:()=>Promise.reject(Error("queue failed"))},
+    jobStore:{transition:async(key,state,patch)=>{trace.push(["transition",key,state,patch]);complete();}},
+    logger:{error:(...args)=>trace.push(["error",...args]),log:()=>{},warn:()=>{}}
+  });
+  assert.equal(result,undefined);
+  await written;
+  assert.equal(trace[0][0],"error");
+  assert.equal(trace[0][1],"AGY queued execution failed:");
+  assert.deepEqual(trace[1],["transition","antigravity:fail","failed",{error:"Error: queue failed"}]);
+});
+test("P4 Antigravity dispatch keeps original queue and runtime ownership in main bridge", async () => {
+  const fs=await import("node:fs/promises");
+  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.ok(src.includes('from "../jobs/antigravity-dispatch.mjs"'));
+  assert.ok(src.includes("dispatchAntigravityAgent({"));
+  assert.ok(src.includes("const agySessionQueue = createSessionQueue("));
+  assert.ok(src.includes("function startAntigravity("));
+  assert.ok(src.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
+  assert.ok(src.includes('const server = http.createServer(async (request, response) => {'));
+  assert.ok(src.includes('agent === "chatgpt-cli"'));
+  assert.ok(src.includes('agent === "chatgpt"'));
 });
