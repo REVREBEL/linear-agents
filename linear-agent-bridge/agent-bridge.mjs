@@ -6,7 +6,7 @@ import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
 import { buildOpenCodeLaunch, runOpenCode, checkOpenCodeReady } from "./agents/chatgpt/scripts/launch.mjs";
 import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "./remote-trae-activity.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "./github-events.mjs";
-import { createGithubTaskMemory } from "./github-task-memory.mjs";
+import { createGithubTaskMemory } from "../memory/github-task-memory.mjs";
 import { createReviewInbox } from "./review-inbox.mjs";
 import { sendInitialReviewMessage } from "./review-message-handoff.mjs";
 import { notifyLinearReview } from "./review-linear-notifier.mjs";
