@@ -1,4 +1,4 @@
-import { syncLinearCredential } from "./linear-credentials.mjs";
+import { syncLinearCredential } from "../integrations/linear-credentials.mjs";
 import { chooseExecutionHost, makeRemoteRoute } from "../routing/host-routing.mjs";
 import { launchMacTrae, cleanupMacTrae } from "./ssh-dispatch.mjs";
 import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";

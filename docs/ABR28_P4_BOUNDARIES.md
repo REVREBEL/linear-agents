@@ -93,3 +93,15 @@ The purpose is only to relocate orchestration source code. No pending reviews, m
 Tests assert canonical/legacy export identity, exact-commit published review evidence, immutable Linear review issue identity and human reviewer role, SSH trusted runner constraints, and original bridge data root.
 
 No review submission, GitHub API call, Linear mutation, deployment or runtime data migration is made by this refactor.
+
+## P4 Linear OAuth agent-credential boundary
+
+- `integrations/linear-credentials.mjs` is the canonical runtime adapter for per-agent Linear app access tokens.
+- `linear-agent-bridge/linear-credentials.mjs` remains a pure compatibility re-export of `LINEAR_AGENT_VARS`, `writeLinearEnv`, and `syncLinearCredential`.
+- The main bridge imports the canonical module directly, without changing its HTTP startup path, trusted Worker completion origin checks, token fetch endpoint, or agent identity mapping.
+- Short-lived access tokens remain isolated by agent environment variable, including separate `CHATGPT_LINEAR_API_KEY` and `CHATGPT_CLI_LINEAR_API_KEY`.
+- The existing per-repository `.env.linear-bridge` location, tracked-file refusal, Git exclusion, atomic permissions and rotation semantics remain unchanged.
+
+No access token or refresh token is added to the repository. This extraction does not change worker credentials, trigger reauthorization, alter deployment configuration, or run production credential synchronization.
+
+The new compatibility regression checks re-export identity, human-review versus CLI variable isolation, token endpoint authentication, disabled persistence and HTTPS completion URL rejection. Existing secret-storage and workspace-exclusion tests continue to run.

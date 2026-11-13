@@ -1,3 +1,5 @@
+import * as linearCredentials from "../integrations/linear-credentials.mjs";
+import * as legacyLinearCredentials from "../linear-agent-bridge/linear-credentials.mjs";
 import * as reviewDelivery from "../bridge/review-delivery.mjs";
 import * as legacyReviewDelivery from "../linear-agent-bridge/review-delivery.mjs";
 import * as messageHandoff from "../bridge/review-message-handoff.mjs";
@@ -353,4 +355,42 @@ test("P4 canonical review modules are used by bridge without relocating review d
     assert.ok(src.includes('from "'+location+'"'));
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/createReviewInbox\(JOBS_DIR\)/);
+});
+
+test("P4 Linear credential adapter preserves legacy exports and independent agent variables", () => {
+  for (const [name, fn] of Object.entries(linearCredentials))
+    assert.equal(legacyLinearCredentials[name], fn, "credential export identity: " + name);
+  assert.equal(linearCredentials.LINEAR_AGENT_VARS.chatgpt, "CHATGPT_LINEAR_API_KEY");
+  assert.equal(linearCredentials.LINEAR_AGENT_VARS["chatgpt-cli"], "CHATGPT_CLI_LINEAR_API_KEY");
+  assert.notEqual(linearCredentials.LINEAR_AGENT_VARS.chatgpt, linearCredentials.LINEAR_AGENT_VARS["chatgpt-cli"]);
+  assert.ok(Object.isFrozen(linearCredentials.LINEAR_AGENT_VARS));
+});
+test("P4 canonical Linear credential handoff retains worker pinning and no-persistence mode", async () => {
+  let requests=0;
+  const opts={
+    agent:"antigravity",repositoryRoot:"/not-used",organizationId:"org-test",
+    completionUrl:"https://linear-antigravity.example.test/complete",sharedSecret:"test-secret",
+    persist:false,
+    fetchImpl:async (url, init)=>{
+      requests++;
+      assert.equal(url.href,"https://linear-antigravity.example.test/bridge/access-token");
+      assert.equal(init.headers.authorization,"Bearer test-secret");
+      assert.equal(JSON.parse(init.body).organizationId,"org-test");
+      return {ok:true,json:async()=>({ok:true,accessToken:"short-lived-test-token",expiresAt:123})};
+    },
+  };
+  const credential=await legacyLinearCredentials.syncLinearCredential(opts);
+  assert.deepEqual(credential,{
+    variable:"ANTIGRAVITY_LINEAR_API_KEY",accessToken:"short-lived-test-token",expiresAt:123
+  });
+  assert.equal(requests,1);
+  await assert.rejects(linearCredentials.syncLinearCredential({...opts,completionUrl:"http://linear-antigravity.example.test/complete"}),/Unexpected worker completion URL/);
+  await assert.rejects(linearCredentials.syncLinearCredential({...opts,completionUrl:"https://other.example.test/complete"}),/Unexpected worker completion URL/);
+  assert.equal(requests,1);
+});
+test("P4 bridge imports canonical credentials without moving its startup entrypoint", async () => {
+  const fs=await import("node:fs/promises");
+  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.match(src,/from "\.\.\/integrations\/linear-credentials\.mjs"/);
+  assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
 });
