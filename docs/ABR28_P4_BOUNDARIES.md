@@ -244,3 +244,14 @@ Regression tests protect argument forwarding, queue-only invocation before task 
 - The seven agent identities, original `linear-jobs/` state path, ChatGPT CLI queue, ChatGPT review inbox, Mac Trae SSH execution, job preflight and actual Antigravity binary invocation remain unchanged.
 
 Regression tests cover project-key serialization, project conversation lookup/persistence, same-session follow-up precedence, disabled/enabled issue recovery, provenance ordering and failed queue recording. No real agent is launched, no production conversations are resumed, and no live data or service configuration is changed.
+
+## P4 ChatGPT human UI/Shortcuts handoff boundary
+
+- `jobs/chatgpt-human-handoff.mjs` now owns the pre-existing human ChatGPT browser/Shortcuts handoff decision tree. It remains independent from the ChatGPT CLI coding agent (`chatgpt-cli`) and the dedicated review inbox (`/reviews/*`).
+- The main `linear-agent-bridge/agent-bridge.mjs` still owns `/jobs` authentication, delivery admission, agent routing, durable task state, the handoff serialization queue, and all other agent implementations; the new module receives those dependencies explicitly.
+- Missing `chatgptProjectUrl` still fails with the original mapping error. Linux retains the task as `awaiting_external` without launching a browser or Apple Shortcut. Existing macOS-only `supervised-playwright` and `shortcuts` modes retain their original opt-in behavior.
+- Prepared handoff files stay beside the original task file with mode `0600`, the same serialized payloads, handoff IDs and single `Linear Bridge Automated Prompt:` marker. Supervised mode only writes the handoff file and a `awaiting_external` ledger transition; it never launches a background UI process.
+- Explicit automatic sending still records the original `awaiting_external` state and queues the same Shortcut/Playwright child arguments. Asynchronous child failures transition the job to `failed` without creating a second HTTP response.
+- Live files, job/session state, credentials, worker endpoints, ChatGPT reviewer authentication and CLI execution queue are unchanged.
+
+Regression tests cover Linux fail-closed behavior, missing project mappings, supervised handoff payloads and file permissions, automatic mode arguments, and independent identity boundaries.
