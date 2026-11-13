@@ -1,3 +1,4 @@
+import { dispatchChatgptCliAgent } from "../jobs/chatgpt-cli-dispatch.mjs";
 import { dispatchMockAgent, dispatchGemmaAgent } from "../jobs/simple-agent-dispatch.mjs";
 import { prepareLocalAgentTask } from "../jobs/local-task-preparation.mjs";
 import { preflightLinearJob } from "../jobs/job-preflight.mjs";
@@ -584,11 +585,10 @@ const server = http.createServer(async (request, response) => {
         await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(console.error);
       });
     } else if (agent === "chatgpt-cli") {
-      void enqueueChatgptHandoff(() => startChatgptOpenCode(routedJob, workspace, jobKey, credential))
-        .catch(async error => {
-          console.error("ChatGPT CLI execution failed:", error.message);
-          await jobStore.transition(jobKey, "failed", { error: String(error) }).catch(console.error);
-        });
+      dispatchChatgptCliAgent({
+        job: routedJob, workspace, jobKey, credential,
+        enqueueChatgptHandoff, startChatgptOpenCode, jobStore,
+      });
     } else if (agent === "chatgpt") {
       if (!route.chatgptProjectUrl) {
         await jobStore.transition(jobKey, "failed", { error: "No chatgpt.projectUrl in Linear project mapping" });
