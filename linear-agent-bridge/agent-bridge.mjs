@@ -1,3 +1,4 @@
+import { dispatchMockAgent, dispatchGemmaAgent } from "../jobs/simple-agent-dispatch.mjs";
 import { prepareLocalAgentTask } from "../jobs/local-task-preparation.mjs";
 import { preflightLinearJob } from "../jobs/job-preflight.mjs";
 import { identifyLinearJobDelivery, linearJobDuplicateResponse } from "../jobs/job-admission.mjs";
@@ -535,8 +536,7 @@ const server = http.createServer(async (request, response) => {
 
     await jobStore.transition(jobKey, "launching", { attempts: 1 });
     if (agent === "mock") {
-      await jobStore.transition(jobKey, "awaiting_external", { note: "Mock Agent queued; use mock-agent CLI to advance status or comment", taskFile: filename });
-      console.log(`Mock Agent queued: ${filename}`);
+      await dispatchMockAgent({ jobStore, jobKey, filename });
     } else if (agent === "antigravity") {
       const sessionId = extractAgentSessionId(routedJob);
       // Shared project conversations must not receive concurrent invocations.
@@ -652,9 +652,8 @@ const server = http.createServer(async (request, response) => {
     } else if (agent === "trae") {
       await startTrae(routedJob, filename, workspace, jobKey, credential, route.repositoryRoot);
     } else if (agent === "gemma") {
-      void startGemma(routedJob, workspace, jobKey, credential).catch(async error => {
-        console.error("Gemma execution failed:", error.message);
-        await jobStore.transition(jobKey, "failed", { error: "Gemma execution failure" }).catch(console.error);
+      dispatchGemmaAgent({
+        job: routedJob, workspace, jobKey, credential, startGemma, jobStore,
       });
     } else if (agent === "gemini") {
       await startGemini(routedJob, filename, workspace, jobKey, credential);
