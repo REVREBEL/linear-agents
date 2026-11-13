@@ -1,3 +1,5 @@
+import { normalizeHost, matchesHost, readBody, sendJson } from "../bridge/http-helpers.mjs";
+import { PassThrough } from "node:stream";
 import * as remoteActivity from "../routing/remote-trae-activity.mjs";
 import * as legacyRemoteActivity from "../linear-agent-bridge/remote-trae-activity.mjs";
 import * as sshDispatch from "../routing/ssh-dispatch.mjs";
@@ -437,4 +439,45 @@ test("P4 bridge imports canonical remote activity and SSH dispatch without movin
   assert.match(source,/from "\.\.\/routing\/remote-trae-activity\.mjs"/);
   assert.match(source,/from "\.\.\/routing\/ssh-dispatch\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+});
+
+test("P4 HTTP host primitives retain exact legacy normalization and subdomain matching", () => {
+  assert.equal(normalizeHost("Linear-Trae.Example.COM:8788"),"linear-trae.example.com");
+  assert.equal(normalizeHost(null),"");
+  assert.equal(matchesHost("linear-trae.example.com","linear-trae.example.com"),true);
+  assert.equal(matchesHost("api.linear-trae.example.com","linear-trae.example.com"),true);
+  assert.equal(matchesHost("evil-linear-trae.example.com","linear-trae.example.com"),false);
+  assert.equal(matchesHost("linear-trae.example.com.evil.org","linear-trae.example.com"),false);
+});
+test("P4 HTTP request reader preserves UTF-8 body and 1 MB size ceiling", async () => {
+  const input=new PassThrough();
+  const body=readBody(input);
+  input.end(Buffer.from('{"msg":"héllo"}',"utf8"));
+  assert.equal(await body,'{"msg":"héllo"}');
+  const oversized=new PassThrough();
+  const rejected=readBody(oversized);
+  oversized.write(Buffer.alloc(1_000_001,0x41));
+  await assert.rejects(rejected,/Body too large/);
+});
+test("P4 HTTP JSON response retains no-store and formatted JSON body", () => {
+  const calls=[];
+  const response={
+    writeHead:(status,headers)=>calls.push({status,headers}),
+    end:body=>calls.push({body}),
+  };
+  sendJson(response,202,{ok:true,reviewQueued:false});
+  assert.deepEqual(calls[0],{status:202,headers:{
+    "content-type":"application/json; charset=utf-8",
+    "cache-control":"no-store",
+  }});
+  assert.equal(calls[1].body,JSON.stringify({ok:true,reviewQueued:false},null,2));
+});
+test("P4 live bridge invokes canonical helpers and retains original HTTP route table", async () => {
+  const fs=await import("node:fs/promises");
+  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.match(source,/from "\.\.\/bridge\/http-helpers\.mjs"/);
+  assert.match(source,/const server = http\.createServer\(async \(request, response\) => \{/);
+  assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+  assert.equal(source.includes("function readBody(request) {"),false);
+  assert.equal(source.includes("function sendJson(response, status, body) {"),false);
 });
