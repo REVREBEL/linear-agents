@@ -115,3 +115,15 @@ The new compatibility regression checks re-export identity, human-review versus 
 - Existing `JOBS_DIR` and `linear-jobs/` records are unchanged; no remote sessions are launched or resumed by this source move.
 
 Regression checks confirm old/new function identity, strict job/session/workspace/token matching, endpoint validation, trusted SSH configuration and unchanged runtime ledger anchoring. Existing isolated bridge fixtures already stage `routing/` and do not need modification.
+
+## P4 HTTP transport primitives
+
+- `bridge/http-helpers.mjs` now exports the exact existing bridge host-header normalization, host matching, request-body reading and JSON response helpers.
+- The entrypoint `linear-agent-bridge/agent-bridge.mjs` imports these stateless helpers; the main `http.createServer` request dispatcher and all HTTP route branches remain in their original locations.
+- The 1,000,000-byte body limit and overflow request destruction remain unchanged. Successful body decoding still uses UTF-8.
+- JSON responses preserve their status codes, indentation, `application/json; charset=utf-8` content type and `cache-control: no-store` header.
+- Hostname comparison semantics, including accepted subdomains, remain identical. No new trust assumptions or route matching behavior are introduced.
+
+Regression tests verify host handling, exact response serialization, oversized-request rejection and the continued presence of the HTTP route table in the existing systemd/LaunchAgent entrypoint. The existing integration tests continue exercising authenticated review and GitHub webhook endpoints.
+
+This PR makes no changes to authentication, side-effecting route handlers, job creation, on-disk paths, HTTP listener binding, deployed worker names, live state or service startup scripts.
