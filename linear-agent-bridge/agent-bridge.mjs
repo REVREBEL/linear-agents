@@ -1,3 +1,4 @@
+import { createIssueCompletionRoute } from "../bridge/issue-completion-route.mjs";
 import { createTraeCallbackRoutes } from "../bridge/trae-callback-routes.mjs";
 import { createGithubWebhookRoutes } from "../bridge/github-webhook-routes.mjs";
 import { createReviewRoutes } from "../bridge/review-routes.mjs";
@@ -335,6 +336,14 @@ const handleTraeCallbackRoute = createTraeCallbackRoutes({
   postTraeActivity,
 });
 
+// Issue cleanup continues using the live bridge ledger and Mac SSH dispatcher.
+const handleIssueCompletionRoute = createIssueCompletionRoute({
+  sharedSecret: SHARED_SECRET,
+  jobStore,
+  cleanupMacTrae,
+  osxProjectsRoot: OSX_PROJECTS_ROOT,
+});
+
 const server = http.createServer(async (request, response) => {
   try {
     const host = normalizeHost(request.headers.host);
@@ -404,41 +413,7 @@ const server = http.createServer(async (request, response) => {
 
     if (await handleTraeCallbackRoute(request, response, { url })) return;
 
-    if (request.method === "POST" && url.pathname === "/issue-completed") {
-      if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
-        return sendJson(response, 401, { ok: false, error: "Unauthorized" });
-      }
-      const body = JSON.parse(await readBody(request));
-      const issueId = body?.issueId;
-      if (typeof issueId !== "string" || !/^[a-f0-9-]{36}$/i.test(issueId)) {
-        return sendJson(response, 400, { ok: false, error: "Invalid issueId" });
-      }
-      const records = await jobStore.findByIssueId(issueId);
-      let cleaned = 0;
-      for (const record of records) {
-        if (record.executionHost === "macos" && record.remoteTask) {
-          if (record.inboxClearedAt) continue;
-          await cleanupMacTrae({ job: {
-            operation: "cleanup", agent: "trae",
-            jobId: record.remoteTask.jobId,
-            repository: record.remoteTask.repository,
-            projectId: record.remoteTask.projectId,
-            projectsRoot: OSX_PROJECTS_ROOT,
-          } });
-          await jobStore.transition(record.key, record.state, { inboxClearedAt: new Date().toISOString() });
-          cleaned++;
-          continue;
-        }
-        const file = record.taskFile;
-        if (typeof file !== "string" || !file.endsWith(".json") ||
-            !file.includes(`${path.sep}.linear-agent${path.sep}projects${path.sep}`) ||
-            !file.includes(`${path.sep}inbox${path.sep}`)) continue;
-        await fs.unlink(file).catch(error => { if (error.code !== "ENOENT") throw error; });
-        await jobStore.transition(record.key, record.state, { inboxClearedAt: new Date().toISOString() });
-        cleaned++;
-      }
-      return sendJson(response, 200, { ok: true, issueId, cleaned });
-    }
+    if (await handleIssueCompletionRoute(request, response, { url })) return;
 
     if (request.method !== "POST" || url.pathname !== "/jobs") {
       return sendJson(response, 404, {

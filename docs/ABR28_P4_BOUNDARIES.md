@@ -171,3 +171,13 @@ No production webhook, review or PR notification is sent by this source-only ext
 New P4 regressions cover capability authorization, progress throttling, invalid terminal states, confirmed completion ledger updates, duplicate completed callbacks and listener/storage anchors.
 
 No real callback, production agent launch, Cloudflare deploy, Ubuntu service restart or persistent-state migration is performed.
+
+## P4 issue completion cleanup route
+
+- `bridge/issue-completion-route.mjs` handles only authenticated POST `/issue-completed`, with dependencies on the existing job store and Mac cleanup dispatcher rather than creating new state ownership.
+- The main `linear-agent-bridge/agent-bridge.mjs` retains the HTTP listener, `/jobs` endpoint, job creation/routing, process lifecycle, original `JOBS_DIR` and active sessions.
+- The route preserves the bridge Bearer token requirement, UUID-shaped issue ID validation, `findByIssueId` lookup, original `200`, `400`, `401` status codes and `{ok,issueId,cleaned}` response.
+- macOS remote cleanup continues through the trusted SSH dispatcher, skips already-cleared inbox records and updates `inboxClearedAt` only after the remote cleanup completes successfully. Local cleanup remains restricted to JSON inbox paths under `.linear-agent/projects/.../inbox/`. A missing local file is still tolerated while other file-system errors propagate.
+- No existing persisted job records are moved or rewritten by the refactor itself; cleanup only occurs on an authenticated runtime request as before.
+
+New tests verify unauthorized/malformed requests have no side effects, non-route fallthrough, macOS ACK-before-transition ordering, exact local inbox path filtering and original job-store ownership.

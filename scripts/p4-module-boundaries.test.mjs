@@ -1,3 +1,4 @@
+import { createIssueCompletionRoute } from "../bridge/issue-completion-route.mjs";
 import { createTraeCallbackRoutes } from "../bridge/trae-callback-routes.mjs";
 import { createGithubWebhookRoutes } from "../bridge/github-webhook-routes.mjs";
 import { createReviewRoutes } from "../bridge/review-routes.mjs";
@@ -820,4 +821,107 @@ test("P4 Trae callback route extraction retains bridge-owned job and activity st
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/const traeActivityState = new Map\(\)/);
   assert.match(src,/createTraeCallbackRoutes\(\{/);
+});
+
+test("P4 issue completion route preserves auth, issue validation, and non-route fallthrough", async () => {
+  const issueId="12345678-1234-1234-1234-123456789abc";
+  let lookedUp=0,transitions=0,macCalls=0;
+  const handle=createIssueCompletionRoute({
+    sharedSecret:"bridge-test-secret",
+    jobStore:{findByIssueId:async()=>{lookedUp++;return [];},transition:async()=>{transitions++;}},
+    cleanupMacTrae:async()=>{macCalls++;},
+    osxProjectsRoot:"/Users/test/projects",
+  });
+  const invoke=async (method,pathname,body,authorization="Bearer bridge-test-secret")=>{
+    const request=new PassThrough();
+    request.method=method;request.headers={authorization};
+    const response={status:null,body:null,writeHead(status){this.status=status;},end(value){this.body=JSON.parse(value);}};
+    const processing=handle(request,response,{url:new URL("http://localhost"+pathname)});
+    request.end(JSON.stringify(body));
+    return {handled:await processing,status:response.status,body:response.body};
+  };
+  assert.equal((await invoke("GET","/issue-completed",{issueId})).handled,false);
+  assert.equal((await invoke("POST","/jobs",{issueId})).handled,false);
+  assert.equal((await invoke("POST","/issue-completed",{issueId},"Bearer invalid")).status,401);
+  assert.equal((await invoke("POST","/issue-completed",{issueId:"invalid"})).status,400);
+  assert.equal(lookedUp,0);
+  assert.equal(transitions,0);
+  assert.equal(macCalls,0);
+  const accepted=await invoke("POST","/issue-completed",{issueId});
+  assert.equal(accepted.status,200);
+  assert.deepEqual(accepted.body,{ok:true,issueId,cleaned:0});
+  assert.equal(lookedUp,1);
+});
+test("P4 issue completion handles Mac cleanup, local inbox removal, and only allowed paths", async () => {
+  const fs=await import("node:fs/promises");
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr28-issue-clean-"));
+  const issueId="12345678-1234-1234-1234-123456789abc";
+  const allowed=path.join(root,".linear-agent","projects","project-a","inbox","assignment.json");
+  const forbidden=path.join(root,"outside","assignment.json");
+  const transitions=[],mac=[];
+  try {
+    await fs.mkdir(path.dirname(allowed),{recursive:true});
+    await fs.mkdir(path.dirname(forbidden),{recursive:true});
+    await fs.writeFile(allowed,"{}");
+    await fs.writeFile(forbidden,"{}");
+    const records=[
+      {key:"trae:one",state:"completed",executionHost:"macos",
+        remoteTask:{jobId:"task-1",repository:"REVREBEL/linear-agents",projectId:"p1"}},
+      {key:"trae:two",state:"completed",executionHost:"macos",
+        inboxClearedAt:"previous",remoteTask:{jobId:"task-2"}},
+      {key:"local:one",state:"completed",executionHost:"linux",taskFile:allowed},
+      {key:"local:wrong",state:"completed",executionHost:"linux",taskFile:forbidden}
+    ];
+    const handle=createIssueCompletionRoute({
+      sharedSecret:"bridge-test-secret",
+      jobStore:{findByIssueId:async id=>{assert.equal(id,issueId);return records;},
+        transition:async (...args)=>{transitions.push(args);}},
+      cleanupMacTrae:async args=>{mac.push(args);},
+      osxProjectsRoot:"/Users/rebel/projects",
+    });
+    const request=new PassThrough();
+    request.method="POST";request.headers={authorization:"Bearer bridge-test-secret"};
+    const response={status:null,body:null,writeHead(v){this.status=v;},end(v){this.body=JSON.parse(v);}};
+    const pending=handle(request,response,{url:new URL("http://localhost/issue-completed")});
+    request.end(JSON.stringify({issueId}));
+    assert.equal(await pending,true);
+    assert.equal(response.status,200);
+    assert.deepEqual(response.body,{ok:true,issueId,cleaned:2});
+    assert.equal(mac.length,1);
+    assert.deepEqual(mac[0].job,{operation:"cleanup",agent:"trae",jobId:"task-1",
+      repository:"REVREBEL/linear-agents",projectId:"p1",projectsRoot:"/Users/rebel/projects"});
+    assert.equal(transitions.length,2);
+    for(const [key,state,patch] of transitions){
+      assert.equal(state,"completed");
+      assert.ok(["trae:one","local:one"].includes(key));
+      assert.ok(patch.inboxClearedAt);
+    }
+    await assert.rejects(fs.stat(allowed),{code:"ENOENT"});
+    assert.equal((await fs.stat(forbidden)).isFile(),true);
+  } finally {await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 issue completion retains cleanup-before-ledger-transition ordering", async () => {
+  let transitioned=false;
+  const issueId="12345678-1234-1234-1234-123456789abc";
+  const handle=createIssueCompletionRoute({
+    sharedSecret:"test",osxProjectsRoot:"/Users/rebel/projects",
+    jobStore:{findByIssueId:async()=>[{key:"trae:one",state:"completed",executionHost:"macos",
+      remoteTask:{jobId:"task-1"}}],transition:async()=>{transitioned=true;}},
+    cleanupMacTrae:async()=>{throw Error("remote cleanup not confirmed");}
+  });
+  const request=new PassThrough();request.method="POST";request.headers={authorization:"Bearer test"};
+  const response={writeHead(){},end(){}};
+  const pending=handle(request,response,{url:new URL("http://localhost/issue-completed")});
+  request.end(JSON.stringify({issueId}));
+  await assert.rejects(pending,/remote cleanup not confirmed/);
+  assert.equal(transitioned,false);
+});
+test("P4 issue completion source retains unchanged main jobs route and job-store identity", async () => {
+  const fs=await import("node:fs/promises");
+  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.ok(src.includes('from "../bridge/issue-completion-route.mjs"'));
+  assert.ok(src.includes('await handleIssueCompletionRoute(request, response, { url })'));
+  assert.ok(src.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
+  assert.ok(src.includes('request.method !== "POST" || url.pathname !== "/jobs"'));
+  assert.ok(src.includes('const server = http.createServer(async (request, response) => {'));
 });
