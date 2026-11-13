@@ -7,7 +7,7 @@ import { buildOpenCodeLaunch, runOpenCode, checkOpenCodeReady } from "./agents/c
 import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "./remote-trae-activity.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, classifyGithubReviewEvent, githubReviewChangeKey } from "../integrations/github-events.mjs";
 import { createGithubTaskMemory } from "../memory/github-task-memory.mjs";
-import { createReviewInbox } from "./review-inbox.mjs";
+import { createReviewInbox } from "../bridge/review-inbox.mjs";
 import { sendInitialReviewMessage } from "./review-message-handoff.mjs";
 import { notifyLinearReview } from "./review-linear-notifier.mjs";
 import { verifyPublishedGithubReview } from "./review-delivery.mjs";

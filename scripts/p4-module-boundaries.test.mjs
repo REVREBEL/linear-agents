@@ -1,3 +1,5 @@
+import { createReviewInbox } from "../bridge/review-inbox.mjs";
+import { createReviewInbox as legacyCreateReviewInbox } from "../linear-agent-bridge/review-inbox.mjs";
 import * as githubIntegration from "../integrations/github-events.mjs";
 import * as legacyGithubIntegration from "../linear-agent-bridge/github-events.mjs";
 import { createGithubTaskMemory } from "../memory/github-task-memory.mjs";
@@ -228,10 +230,68 @@ test("P4 GitHub event journal preserves original path and avoids storing comment
 });
 test("P4 bridge and review inbox reference canonical GitHub event adapter", async () => {
   const fs=await import("node:fs/promises");
-  for(const file of ["agent-bridge.mjs","review-inbox.mjs"]){
-    const content=await fs.readFile(new URL("../linear-agent-bridge/"+file,import.meta.url),"utf8");
+  for(const file of ["../linear-agent-bridge/agent-bridge.mjs","../bridge/review-inbox.mjs"]){
+    const content=await fs.readFile(new URL(file,import.meta.url),"utf8");
     assert.match(content,/from "\.\.\/integrations\/github-events\.mjs"/);
   }
   const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.match(bridge,/recordGithubEvent\(JOBS_DIR, event, source\)/);
+});
+
+test("P4 review inbox canonical and legacy paths preserve persisted queue and claim semantics", async () => {
+  const fs = await import("node:fs/promises");
+  assert.equal(createReviewInbox, legacyCreateReviewInbox);
+  const root = await fs.mkdtemp(path.join(os.tmpdir(),"abr28-review-inbox-"));
+  const event = githubIntegration.sanitizeGithubEvent({
+    event:"pull_request", delivery:"abr28-review-queue-001",
+    payload: { action:"ready_for_review", repository:{full_name:"REVREBEL/linear-agents"},
+      pull_request:{number:125,html_url:"https://github.com/REVREBEL/linear-agents/pull/125",head:{sha:"a".repeat(40)},draft:false} }
+  });
+  const destination={ok:true,projectIds:["project-review"],conversationUrl:"https://chatgpt.com/g/g-p-test/c/review"};
+  try {
+    const fresh = createReviewInbox(root);
+    const created = await fresh.enqueue(event,{source:"chatgpt",destination});
+    assert.equal(created.created,true);
+    assert.equal(created.record.role,"chatgpt-user-review");
+    assert.equal((await legacyCreateReviewInbox(root).enqueue(event,{source:"chatgpt",destination})).created,false);
+    assert.equal((await legacyCreateReviewInbox(root).list()).length,1);
+    assert.equal((await legacyCreateReviewInbox(root).claim(created.record.reviewId,"chatgpt-user")).state,"claimed");
+    await assert.rejects(fresh.claim(created.record.reviewId,"other"),/already claimed/);
+    await assert.rejects(fresh.finish(created.record.reviewId,{status:"reviewed",summary:"verified"}),/Published GitHub review evidence required/);
+    const finished=await fresh.finish(created.record.reviewId,{status:"blocked",summary:"CI check blocked"});
+    assert.equal(finished.state,"blocked");
+    assert.equal((await legacyCreateReviewInbox(root).list({state:"blocked"})).length,1);
+    const target=path.join(root,"github-events","review-inbox",created.record.reviewId+".json");
+    assert.equal((await fs.stat(target)).isFile(),true);
+    assert.equal((await fs.stat(target)).mode & 0o077,0);
+  } finally {await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 review inbox handoff attempt is not replayed after a pending restart", async () => {
+  const fs = await import("node:fs/promises");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(),"abr28-review-handoff-"));
+  const event = githubIntegration.sanitizeGithubEvent({
+    event:"pull_request",delivery:"abr28-review-queue-002",
+    payload:{action:"opened",repository:{full_name:"REVREBEL/linear-agents"},
+      pull_request:{number:126,html_url:"https://github.com/REVREBEL/linear-agents/pull/126",head:{sha:"b".repeat(40)},draft:false}}
+  });
+  const destination={ok:true,projectIds:["project-review"],conversationUrl:"https://chatgpt.com/g/g-p-test/c/review"};
+  try {
+    const inbox=createReviewInbox(root);
+    const {record}=await inbox.enqueue(event,{source:"chatgpt",destination});
+    const attempt=await inbox.beginMessageHandoff(record.reviewId);
+    assert.equal(attempt.started,true);
+    const afterRestart=await legacyCreateReviewInbox(root).beginMessageHandoff(record.reviewId);
+    assert.equal(afterRestart.started,false);
+    assert.equal(afterRestart.record.messageHandoff.state,"attempting");
+    const finalized=await inbox.finishMessageHandoff(record.reviewId,{attempted:false,error:"unknown send outcome"});
+    assert.equal(finalized.messageHandoff.state,"uncertain");
+    assert.equal((await legacyCreateReviewInbox(root).beginMessageHandoff(record.reviewId)).started,false);
+  } finally {await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 bridge imports canonical review inbox while retaining original journal root", async () => {
+  const fs=await import("node:fs/promises");
+  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.match(source,/from "\.\.\/bridge\/review-inbox\.mjs"/);
+  assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+  assert.match(source,/createReviewInbox\(JOBS_DIR\)/);
 });

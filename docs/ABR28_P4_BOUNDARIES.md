@@ -69,3 +69,15 @@ The new regression proves old/new import identity, read/write interoperability f
 Isolated bridge fixtures copy `integrations/` as well as existing domain folders. New regressions prove the old/new exports are the same functions, explicitly configured self-origin identities still suppress matched events (while no implicit identity suppresses unrelated events), and journal records retain their exact path and redaction behavior.
 
 No GitHub App or webhook subscription changes, no deployed Worker changes and no live state migration.
+
+## P4 review inbox and claim boundary
+
+- `bridge/review-inbox.mjs` becomes the canonical reviewer inbox implementation.
+- `linear-agent-bridge/review-inbox.mjs` remains a pure compatibility re-export, preserving the exact function identity.
+- The main bridge imports the canonical implementation and still instantiates `createReviewInbox(JOBS_DIR)`; existing records remain under `linear-agent-bridge/linear-jobs/github-events/review-inbox/`.
+- Distinct ChatGPT user-review role, SHA-derived review identifiers, duplicate suppression, atomic cross-process lock/rename behavior, claim transitions, mandatory published-review verification and idempotent message-handoff attempt tracking remain unchanged.
+- The isolated Linux bridge boot test fixtures stage `bridge/` in addition to the previous canonical folders.
+
+New regression checks old/new import identity, persistent queue interoperability, claim exclusivity, rejection of unverified published-review outcomes, retained permissions, and no automatic replay after an uncertain ChatGPT message handoff.
+
+The purpose is only to relocate orchestration source code. No pending reviews, message submissions or live files are moved or replayed, and no deployment or Ubuntu service changes are authorized.
