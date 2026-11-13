@@ -1,3 +1,4 @@
+import { dispatchMockAgent, dispatchGemmaAgent } from "../jobs/simple-agent-dispatch.mjs";
 import { prepareLocalAgentTask } from "../jobs/local-task-preparation.mjs";
 import { preflightLinearJob } from "../jobs/job-preflight.mjs";
 import { identifyLinearJobDelivery, linearJobDuplicateResponse } from "../jobs/job-admission.mjs";
@@ -1140,4 +1141,81 @@ test("P4 local task preparation preserves bridge-owned launches and runtime job 
   assert.ok(bridge.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
   assert.ok(bridge.includes('await startGemini(routedJob, filename, workspace, jobKey, credential)'));
+});
+
+test("P4 Mock dispatch awaits durable awaiting_external state before logging", async () => {
+  const events=[];
+  await dispatchMockAgent({
+    jobStore:{transition:async(key,state,patch)=>{
+      events.push(["transition",key,state,patch]);
+    }},
+    jobKey:"mock:delivery-12",filename:"/safe/inbox/task.json",
+    logger:{log:line=>events.push(["log",line])}
+  });
+  assert.deepEqual(events,[
+    ["transition","mock:delivery-12","awaiting_external",{
+      note:"Mock Agent queued; use mock-agent CLI to advance status or comment",
+      taskFile:"/safe/inbox/task.json"
+    }],
+    ["log","Mock Agent queued: /safe/inbox/task.json"]
+  ]);
+});
+test("P4 Mock dispatch propagates ledger failures before claiming queued", async () => {
+  let logged=false;
+  await assert.rejects(dispatchMockAgent({
+    jobStore:{transition:async()=>{throw Error("ledger unavailable");}},
+    jobKey:"mock:one",filename:"/safe/job.json",logger:{log:()=>{logged=true;}}
+  }),/ledger unavailable/);
+  assert.equal(logged,false);
+});
+test("P4 Gemma adapter does not await SDK completion or alter successful launch", async () => {
+  const calls=[];
+  let finish;
+  const pending=new Promise(resolve=>{finish=resolve;});
+  const job={task:"run tests"},credential={accessToken:"test"};
+  const value=dispatchGemmaAgent({
+    job,workspace:"/home/rebel/repo",jobKey:"gemma:delivery-1",credential,
+    startGemma:(...args)=>{calls.push(["launch",...args]);return pending;},
+    jobStore:{transition:async()=>{throw Error("should not transition successful launch");}},
+    logger:{error:()=>{throw Error("should not log success as failure");}}
+  });
+  assert.equal(value,undefined);
+  assert.deepEqual(calls,[["launch",job,"/home/rebel/repo","gemma:delivery-1",credential]]);
+  finish();
+  await pending;
+});
+test("P4 Gemma asynchronous launch failure is recorded as failed without a second ACK", async () => {
+  const calls=[];
+  let resolveTransition;
+  const ledgerDone=new Promise(resolve=>{resolveTransition=resolve;});
+  const error=Error("mock sdk unavailable");
+  const result=dispatchGemmaAgent({
+    job:{},workspace:"/repo",jobKey:"gemma:delivery-2",credential:null,
+    startGemma:async()=>{throw error;},
+    jobStore:{transition:async(key,state,patch)=>{
+      calls.push(["transition",key,state,patch]);
+      resolveTransition();
+    }},
+    logger:{error:(...args)=>calls.push(["error",...args])}
+  });
+  assert.equal(result,undefined);
+  await ledgerDone;
+  assert.deepEqual(calls,[
+    ["error","Gemma execution failed:","mock sdk unavailable"],
+    ["transition","gemma:delivery-2","failed",{error:"Gemma execution failure"}]
+  ]);
+});
+test("P4 simple dispatch adapters leave launch state, agent distinctions and HTTP listener in bridge", async () => {
+  const fs=await import("node:fs/promises");
+  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.ok(source.includes('from "../jobs/simple-agent-dispatch.mjs"'));
+  const start=source.indexOf('await jobStore.transition(jobKey, "launching", { attempts: 1 })');
+  const mock=source.indexOf('await dispatchMockAgent({',start);
+  const gemma=source.indexOf('dispatchGemmaAgent({',mock);
+  assert.ok(start>=0 && mock>start && gemma>mock);
+  assert.ok(source.includes('async function startGemma('));
+  assert.ok(source.includes('agent === "chatgpt-cli"'));
+  assert.ok(source.includes('agent === "chatgpt"'));
+  assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
+  assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
 });
