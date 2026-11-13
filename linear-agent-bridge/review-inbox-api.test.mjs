@@ -30,7 +30,7 @@ test("Ubuntu accepts actionable PR into separate ChatGPT user inbox with authent
     });
     // The bridge now imports stateless domain modules from repository-root folders.
     // Mirror those modules into this isolated fixture without copying live state.
-    for (const folder of ["routing", "jobs", "conversations", "memory"]) {
+    for (const folder of ["routing", "jobs", "conversations", "memory", "integrations"]) {
       await cp(path.join(sourceDir, "..", folder), path.join(tmp, folder), { recursive: true });
     }
     const routingFile = path.join(tmp, "routing.json");

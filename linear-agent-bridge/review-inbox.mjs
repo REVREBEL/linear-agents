@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
-import { githubReviewChangeKey, buildGithubReviewPrompt } from "./github-events.mjs";
+import { githubReviewChangeKey, buildGithubReviewPrompt } from "../integrations/github-events.mjs";
 
 // A pending review belongs to the ChatGPT *user* review queue, never the
 // ChatGPT CLI Linear agent session. All storage is local, mode 0600.
