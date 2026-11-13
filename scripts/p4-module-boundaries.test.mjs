@@ -1,3 +1,4 @@
+import { dispatchChatgptCliAgent } from "../jobs/chatgpt-cli-dispatch.mjs";
 import { dispatchMockAgent, dispatchGemmaAgent } from "../jobs/simple-agent-dispatch.mjs";
 import { prepareLocalAgentTask } from "../jobs/local-task-preparation.mjs";
 import { preflightLinearJob } from "../jobs/job-preflight.mjs";
@@ -1216,6 +1217,58 @@ test("P4 simple dispatch adapters leave launch state, agent distinctions and HTT
   assert.ok(source.includes('async function startGemma('));
   assert.ok(source.includes('agent === "chatgpt-cli"'));
   assert.ok(source.includes('agent === "chatgpt"'));
+  assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
+  assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
+});
+
+test("P4 ChatGPT CLI dispatch queues coding execution with original runtime parameters", async () => {
+  const calls=[];
+  const job={issueId:"REV-177"},credential={accessToken:"test-token"};
+  let queuedTask;
+  const result=dispatchChatgptCliAgent({
+    job, workspace:"/home/agent-bridge/projects/repo",jobKey:"chatgpt-cli:delivery-1",credential,
+    enqueueChatgptHandoff:task=>{calls.push("enqueue");queuedTask=task;return Promise.resolve();},
+    startChatgptOpenCode:async(...args)=>{calls.push(["start",...args]);},
+    jobStore:{transition:async()=>{throw Error("successful queue must not be marked failed");}},
+    logger:{error:()=>{throw Error("successful queue must not log errors");}}
+  });
+  assert.equal(result,undefined);
+  assert.deepEqual(calls,["enqueue"]);
+  await queuedTask();
+  assert.deepEqual(calls,["enqueue",["start",job,"/home/agent-bridge/projects/repo","chatgpt-cli:delivery-1",credential]]);
+});
+test("P4 ChatGPT CLI asynchronous queue rejection records job failure without waiting for HTTP ACK", async () => {
+  const calls=[];
+  let finish;
+  const ledgerWritten=new Promise(resolve=>{finish=resolve;});
+  const failure=Error("serialized queue rejected");
+  const result=dispatchChatgptCliAgent({
+    job:{},workspace:"/workspace",jobKey:"chatgpt-cli:delivery-2",credential:null,
+    enqueueChatgptHandoff:()=>Promise.reject(failure),
+    startChatgptOpenCode:async()=>{throw Error("must not execute after queue rejection");},
+    jobStore:{transition:async(key,state,patch)=>{
+      calls.push(["transition",key,state,patch]);finish();
+    }},
+    logger:{error:(...args)=>calls.push(["error",...args])}
+  });
+  assert.equal(result,undefined);
+  await ledgerWritten;
+  assert.deepEqual(calls,[
+    ["error","ChatGPT CLI execution failed:","serialized queue rejected"],
+    ["transition","chatgpt-cli:delivery-2","failed",{error:"Error: serialized queue rejected"}]
+  ]);
+});
+test("P4 ChatGPT CLI dispatch preserves serialized queue and human-review identity separation", async () => {
+  const fs=await import("node:fs/promises");
+  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.ok(source.includes('from "../jobs/chatgpt-cli-dispatch.mjs"'));
+  const cli=source.indexOf('agent === "chatgpt-cli"');
+  const coding=source.indexOf('dispatchChatgptCliAgent({',cli);
+  const human=source.indexOf('agent === "chatgpt"',coding);
+  assert.ok(cli>=0&&coding>cli&&human>coding);
+  assert.ok(source.includes("function enqueueChatgptHandoff(task)"));
+  assert.ok(source.includes("async function startChatgptOpenCode("));
+  assert.ok(source.includes('from "../bridge/review-routes.mjs"'));
   assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
 });
