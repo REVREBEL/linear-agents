@@ -1,3 +1,4 @@
+import { createDiagnosticRoutes } from "../bridge/diagnostic-routes.mjs";
 import { normalizeHost, matchesHost, readBody, sendJson } from "../bridge/http-helpers.mjs";
 import { syncLinearCredential } from "../integrations/linear-credentials.mjs";
 import { chooseExecutionHost, makeRemoteRoute } from "../routing/host-routing.mjs";
@@ -270,59 +271,44 @@ await Promise.all(
 const recovered = await jobStore.reconcile();
 if (recovered) console.warn(`Marked ${recovered} unfinished jobs interrupted; manual reconciliation required.`);
 
+// Keep runtime values anchored to the existing entrypoint; diagnostics only
+// formats these values and authorizes the probe.
+const handleDiagnosticRoute = createDiagnosticRoutes({
+  sharedSecret: SHARED_SECRET,
+  agentForHost,
+  health: {
+    port: PORT,
+    antigravityHost: ANTIGRAVITY_HOST,
+    chatgptHost: CHATGPT_HOST,
+    mockHost: MOCK_HOST,
+    traeHost: TRAE_HOST,
+    geminiHost: GEMINI_HOST,
+    gemmaHost: GEMMA_HOST,
+    python: PYTHON_BIN,
+    antigravityWorkspace: ANTIGRAVITY_WORKSPACE,
+    antigravityMode: process.env.ANTIGRAVITY_MODE || "cli",
+    chatgptWorkspace: CHATGPT_WORKSPACE,
+    traeBin: TRAE_BIN || null,
+    traeWorkspace: TRAE_WORKSPACE,
+    geminiBin: GEMINI_BIN || null,
+    geminiWorkspace: GEMINI_WORKSPACE,
+    projectsRoot: PROJECTS_ROOT,
+    linuxProjectsRoot: PROJECTS_ROOT,
+    macProjectsRootConfigured: Boolean(OSX_PROJECTS_ROOT),
+    macSshConfigured: Boolean(process.env.MAC_SSH_HOST),
+    jobsDir: JOBS_DIR,
+    hasBridgeSharedSecret: Boolean(SHARED_SECRET),
+    hasLinearApiKey: Boolean(LINEAR_API_KEY),
+    hasLinearAccessToken: Boolean(LINEAR_ACCESS_TOKEN),
+  },
+});
+
 const server = http.createServer(async (request, response) => {
   try {
     const host = normalizeHost(request.headers.host);
     const url = new URL(request.url || "/", `http://${host || "localhost"}`);
 
-    if (request.method === "GET" && url.pathname === "/health") {
-      return sendJson(response, 200, {
-        ok: true,
-        service: "local-linear-agent-router",
-        host,
-        port: PORT,
-        antigravityHost: ANTIGRAVITY_HOST,
-        chatgptHost: CHATGPT_HOST,
-        mockHost: MOCK_HOST,
-        traeHost: TRAE_HOST,
-        geminiHost: GEMINI_HOST,
-        gemmaHost: GEMMA_HOST,
-        python: PYTHON_BIN,
-        antigravityWorkspace: ANTIGRAVITY_WORKSPACE,
-        antigravityMode: process.env.ANTIGRAVITY_MODE || "cli",
-        chatgptWorkspace: CHATGPT_WORKSPACE,
-        traeBin: TRAE_BIN || null,
-        traeWorkspace: TRAE_WORKSPACE,
-        geminiBin: GEMINI_BIN || null,
-        geminiWorkspace: GEMINI_WORKSPACE,
-        projectsRoot: PROJECTS_ROOT,
-        linuxProjectsRoot: PROJECTS_ROOT,
-        macProjectsRootConfigured: Boolean(OSX_PROJECTS_ROOT),
-        macSshConfigured: Boolean(process.env.MAC_SSH_HOST),
-        jobsDir: JOBS_DIR,
-        hasBridgeSharedSecret: Boolean(SHARED_SECRET),
-        hasLinearApiKey: Boolean(LINEAR_API_KEY),
-        hasLinearAccessToken: Boolean(LINEAR_ACCESS_TOKEN),
-      });
-    }
-
-    // Probe is authenticated and side-effect free: no job IDs, ledger entries,
-    // workspace writes, or agent process launches.
-    if (request.method === "POST" && url.pathname === "/diagnostics/probe") {
-      if (!SHARED_SECRET || request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
-        return sendJson(response, 401, { ok: false, error: "Unauthorized" });
-      }
-      const probeId = request.headers["x-bridge-probe-id"];
-      if (typeof probeId !== "string" || !/^[a-f0-9-]{36}$/i.test(probeId)) {
-        return sendJson(response, 400, { ok: false, error: "Invalid probe ID" });
-      }
-      return sendJson(response, 200, {
-        ok: true,
-        probeId,
-        service: "local-linear-agent-router",
-        agent: agentForHost(host),
-      });
-    }
+    if (handleDiagnosticRoute(request, response, { host, url })) return;
 
     // Shortcuts may construct a URL with &handoffid= before the ?result suffix.
     // Accept that legacy format as well as normal URL query parameters.
