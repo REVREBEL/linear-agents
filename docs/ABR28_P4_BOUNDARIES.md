@@ -127,3 +127,13 @@ Regression checks confirm old/new function identity, strict job/session/workspac
 Regression tests verify host handling, exact response serialization, oversized-request rejection and the continued presence of the HTTP route table in the existing systemd/LaunchAgent entrypoint. The existing integration tests continue exercising authenticated review and GitHub webhook endpoints.
 
 This PR makes no changes to authentication, side-effecting route handlers, job creation, on-disk paths, HTTP listener binding, deployed worker names, live state or service startup scripts.
+
+## P4 isolated HTTP diagnostics route handling
+
+- `bridge/diagnostic-routes.mjs` now owns only the GET `/health` and POST `/diagnostics/probe` HTTP route handlers. It uses the existing shared JSON serialization helper and returns a boolean indicating whether a request was handled.
+- The main bridge still creates the HTTP listener, normalizes the host header, parses the URL and retains the entire job and webhook request dispatch table in the original entrypoint.
+- Health payload field names, values, `local-linear-agent-router` service name, JSON response headers and status are unchanged. Configuration values remain sourced by the original runtime entrypoint, not relative to the new module.
+- The probe continues to enforce the configured `BRIDGE_SHARED_SECRET` Bearer header, existing UUID-shaped probe-ID validation and the existing `agentForHost` selection. Unauthenticated or malformed probe requests are rejected without job operations.
+- Non-diagnostic routes continue through exactly the same handler code. Review inbox, credentials, jobs, memory and journal storage paths, service host binding and all provider callbacks are untouched.
+
+The new regression covers the full health shape, correct 401 and 400 responses, successful probe metadata, a missing secret, non-diagnostic fall-through, unexpected HTTP methods and the continued original HTTP server/job-route location. No production probe, service restart or deployed Worker change is performed.
