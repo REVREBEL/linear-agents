@@ -1,3 +1,4 @@
+import { createGithubWebhookRoutes } from "../bridge/github-webhook-routes.mjs";
 import { createReviewRoutes } from "../bridge/review-routes.mjs";
 import { createDiagnosticRoutes } from "../bridge/diagnostic-routes.mjs";
 import { normalizeHost, matchesHost, readBody, sendJson } from "../bridge/http-helpers.mjs";
@@ -251,7 +252,9 @@ test("P4 bridge and review inbox reference canonical GitHub event adapter", asyn
     assert.match(content,/from "\.\.\/integrations\/github-events\.mjs"/);
   }
   const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(bridge,/recordGithubEvent\(JOBS_DIR, event, source\)/);
+  const handler=await fs.readFile(new URL("../bridge/github-webhook-routes.mjs",import.meta.url),"utf8");
+  assert.match(bridge,/createGithubWebhookRoutes\(/);
+  assert.match(handler,/recordGithubEvent\(JOBS_DIR, event, source\)/);
 });
 
 test("P4 review inbox canonical and legacy paths preserve persisted queue and claim semantics", async () => {
@@ -611,4 +614,130 @@ test("P4 review route extraction keeps original job dispatcher and path anchors"
   assert.match(source,/const server = http\.createServer\(async \(request, response\) => \{/);
   assert.match(source,/createReviewInbox\(JOBS_DIR\)/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+});
+
+test("P4 GitHub ingress preserves authorization, agent validation and side-effect-free preflights", async () => {
+  const fs = await import("node:fs/promises");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(),"abr28-webhook-preflight-"));
+  const event = {event:"pull_request",delivery:"abr28-webhook-001",payload:{
+    action:"ready_for_review",repository:{full_name:"REVREBEL/linear-agents"},
+    pull_request:{number:132,html_url:"https://github.com/REVREBEL/linear-agents/pull/132",
+      head:{sha:"a".repeat(40)},draft:false},
+  }};
+  const activity=[];
+  const deps={
+    sharedSecret:"bridge-secret",jobsDir:root,linearApiKey:"",selfIdentity:{ids:[],logins:[]},
+    githubTaskMemory:{update:async()=>activity.push("memory")},
+    claimGithubReviewDispatch:async()=>{activity.push("claim");return null;},
+    launchGithubShortcutHandoff:()=>activity.push("launch"),
+    platform:"linux",env:{CHATGPT_REVIEW_MODE:"inbox",CHATGPT_REVIEW_INBOX_TOKEN:"i".repeat(40)},
+    logger:{log:()=>{}},
+  };
+  const run=async (patch={},payload=event,method="POST",pathname="/github/events")=>{
+    const request=new PassThrough();
+    request.method=method;
+    request.headers={authorization:"Bearer bridge-secret","x-github-agent":"chatgpt",...patch};
+    const response={status:null,body:null,writeHead(status){this.status=status;},
+      end(body){this.body=JSON.parse(body);}};
+    const promise=createGithubWebhookRoutes(deps)(request,response,{url:new URL("http://localhost"+pathname)});
+    request.end(JSON.stringify(payload));
+    const handled=await promise;
+    return {handled,...response};
+  };
+  try{
+    assert.equal((await run({},event,"GET")).handled,false);
+    assert.equal((await run({},event,"POST","/jobs")).handled,false);
+    assert.equal((await run({authorization:"Bearer wrong"})).status,401);
+    assert.equal((await run({"x-github-agent":"other"})).status,400);
+    assert.equal((await run({},{"invalid":"payload"})).status,400);
+    assert.deepEqual(activity,[]);
+    assert.equal((await fs.readdir(root)).length,0);
+    const requiresInbox=createGithubWebhookRoutes({...deps,env:{CHATGPT_REVIEW_MODE:"inbox",CHATGPT_REVIEW_INBOX_TOKEN:"short"}});
+    const request=new PassThrough();request.method="POST";request.headers={authorization:"Bearer bridge-secret","x-github-agent":"chatgpt"};
+    const response={status:null,writeHead(code){this.status=code;},end(){}};
+    const pending=requiresInbox(request,response,{url:new URL("http://localhost/github/events")});
+    request.end(JSON.stringify(event));
+    assert.equal(await pending,true);
+    assert.equal(response.status,503);
+    assert.deepEqual(activity,[]);
+  } finally { await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 GitHub ingress preserves delivery dedupe, semantic recovery and journal state", async () => {
+  const fs = await import("node:fs/promises");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(),"abr28-webhook-dedupe-"));
+  const event={event:"pull_request",delivery:"abr28-webhook-002",payload:{
+    action:"ready_for_review",repository:{full_name:"REVREBEL/linear-agents"},
+    pull_request:{number:132,html_url:"https://github.com/REVREBEL/linear-agents/pull/132",
+      head:{sha:"b".repeat(40)},draft:false},
+  }};
+  const calls={claims:0,launches:0,patches:[]};
+  const handle=createGithubWebhookRoutes({
+    sharedSecret:"bridge-secret",jobsDir:root,linearApiKey:"",
+    selfIdentity:{ids:[],logins:[]},
+    githubTaskMemory:{update:async(_event,patch)=>calls.patches.push(patch)},
+    claimGithubReviewDispatch:async()=>{
+      calls.claims++;
+      return calls.claims===1?{reviewQueued:true,reviewId:"r".repeat(64),handoffId:"r".repeat(64),reviewNotified:false}: {duplicate:true};
+    },
+    launchGithubShortcutHandoff:()=>{calls.launches++;},
+    platform:"linux",env:{CHATGPT_REVIEW_MODE:"inbox",CHATGPT_REVIEW_INBOX_TOKEN:"i".repeat(40)},
+    logger:{log:()=>{}},
+  });
+  const requestOnce=async()=>{
+    const request=new PassThrough();request.method="POST";
+    request.headers={authorization:"Bearer bridge-secret","x-github-agent":"chatgpt"};
+    const response={status:null,body:null,writeHead(code){this.status=code;},end(body){this.body=JSON.parse(body);}};
+    const promise=handle(request,response,{url:new URL("http://localhost/github/events")});
+    request.end(JSON.stringify(event));
+    assert.equal(await promise,true);
+    return response;
+  };
+  try {
+    const accepted=await requestOnce();
+    assert.equal(accepted.status,202);
+    assert.equal(accepted.body.accepted,true);
+    assert.equal(accepted.body.reviewQueued,true);
+    assert.equal(calls.claims,1);
+    assert.equal(calls.launches,1);
+    assert.equal(calls.patches.length,1);
+    assert.equal(calls.patches[0].lastReviewChange!==undefined,true);
+    const journal=await fs.readFile(path.join(root,"github-events","events.jsonl"),"utf8");
+    assert.equal(journal.trim().split("\n").length,1);
+    const duplicate=await requestOnce();
+    assert.equal(duplicate.status,202);
+    assert.equal(duplicate.body.duplicate,true);
+    assert.equal(calls.claims,2);
+    assert.equal(calls.launches,1);
+    assert.equal(calls.patches.length,1);
+    assert.equal((await fs.readFile(path.join(root,"github-events","events.jsonl"),"utf8")).trim().split("\n").length,1);
+  } finally {await fs.rm(root,{recursive:true,force:true});}
+});
+test("P4 GitHub webhook failure releases delivery claim for retry", async () => {
+  const fs=await import("node:fs/promises");
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr28-webhook-failure-"));
+  const event={event:"pull_request",delivery:"abr28-webhook-003",payload:{
+    action:"ready_for_review",repository:{full_name:"REVREBEL/linear-agents"},
+    pull_request:{number:132,html_url:"https://github.com/REVREBEL/linear-agents/pull/132",
+      head:{sha:"c".repeat(40)},draft:false},
+  }};
+  const handler=createGithubWebhookRoutes({
+    sharedSecret:"bridge-secret",jobsDir:root,linearApiKey:"",
+    selfIdentity:{ids:[],logins:[]},
+    githubTaskMemory:{update:async()=>{}},
+    claimGithubReviewDispatch:async()=>{throw Error("transient dispatch failure");},
+    launchGithubShortcutHandoff:()=>{},
+    platform:"linux",env:{CHATGPT_REVIEW_MODE:"inbox",CHATGPT_REVIEW_INBOX_TOKEN:"i".repeat(40)},
+    logger:{log:()=>{}},
+  });
+  try {
+    const request=new PassThrough();request.method="POST";
+    request.headers={authorization:"Bearer bridge-secret","x-github-agent":"chatgpt"};
+    const response={status:null,body:null,writeHead(status){this.status=status;},end(data){this.body=JSON.parse(data);}};
+    const promise=handler(request,response,{url:new URL("http://localhost/github/events")});
+    request.end(JSON.stringify(event));
+    assert.equal(await promise,true);
+    assert.equal(response.status,503);
+    assert.equal(response.body.error,"transient dispatch failure");
+    await assert.rejects(fs.stat(path.join(root,"github-events","chatgpt-abr28-webhook-003.claim")),{code:"ENOENT"});
+  } finally {await fs.rm(root,{recursive:true,force:true});}
 });
