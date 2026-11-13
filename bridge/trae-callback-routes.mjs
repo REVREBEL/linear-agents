@@ -25,8 +25,8 @@ export function createTraeCallbackRoutes({
         }
         context = { agentSessionId: record.agentSessionId, completionUrl: record.remoteCompletionUrl };
       } else {
-        const projectsRoot = path.resolve(projectsRoot);
-        if (!workspace || (workspace !== projectsRoot && !workspace.startsWith(projectsRoot + path.sep))) {
+        const resolvedProjectsRoot = path.resolve(projectsRoot);
+        if (!workspace || (workspace !== resolvedProjectsRoot && !workspace.startsWith(resolvedProjectsRoot + path.sep))) {
           return sendJson(response, 400, { ok: false, error: "Invalid Trae workspace" });
         }
         context = await readTraeActivityContext(workspace);
@@ -38,15 +38,15 @@ export function createTraeCallbackRoutes({
       }
       const body = sanitizeTraeActivityBody(activity.body);
       if (!body) return sendJson(response, 400, { ok: false, error: "Invalid Trae activity body" });
-      const now = now();
+      const timestamp = now();
       const previous = traeActivityState.get(context.agentSessionId);
-      if (previous && (now - previous.at < 10_000 ||
-          (previous.body === body && now - previous.at < 60_000))) {
+      if (previous && (timestamp - previous.at < 10_000 ||
+          (previous.body === body && timestamp - previous.at < 60_000))) {
         return sendJson(response, 202, { ok: true, accepted: true, throttled: true });
       }
       const posted = await postTraeActivity(context, body, "thought");
       if (!posted) return sendJson(response, 502, { ok: false, error: "Unable to publish Trae activity" });
-      traeActivityState.set(context.agentSessionId, { at: now, body });
+      traeActivityState.set(context.agentSessionId, { at: timestamp, body });
       return sendJson(response, 202, { ok: true, accepted: true });
   }
   async function handleCompletion(request, response) {
