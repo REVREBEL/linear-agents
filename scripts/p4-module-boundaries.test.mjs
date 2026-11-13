@@ -1,3 +1,7 @@
+import { recordResumedConversation } from "../conversations/agy-conversation-state.mjs";
+import { recordResumedConversation as legacyRecordResumedConversation } from "../linear-agent-bridge/agy-conversation-state.mjs";
+import { createSessionQueue } from "../conversations/agy-session-queue.mjs";
+import { createSessionQueue as legacyCreateSessionQueue } from "../linear-agent-bridge/agy-session-queue.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chooseExecutionHost, configuredProjectRoots, makeRemoteRoute, validateSshSettings } from "../routing/host-routing.mjs";
@@ -59,4 +63,45 @@ test("P4 canonical ledger preserves legacy function identity and persisted recor
   } finally {
     await fs.rm(root,{ recursive:true,force:true });
   }
+});
+
+test("P4 conversation resume updates the existing ledger with unchanged metadata", async () => {
+  const fs = await import("node:fs/promises");
+  assert.equal(recordResumedConversation, legacyRecordResumedConversation);
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-resume-"));
+  try {
+    const ledger = createJobStore(root);
+    await ledger.claim("linear:session:1", { issueId:"ABR-28", conversationVerifiedAt:"2026-11-12T00:00:00.000Z" });
+    const updated = await legacyRecordResumedConversation(ledger,"linear:session:1","agy-session-xyz");
+    assert.equal(updated.state,"launching");
+    assert.equal(updated.conversationId,"agy-session-xyz");
+    assert.equal(updated.resumedConversationId,"agy-session-xyz");
+    assert.equal(updated.conversationSource,"follow_up");
+    assert.equal(updated.conversationVerifiedAt,"2026-11-12T00:00:00.000Z");
+    assert.ok(!Number.isNaN(Date.parse(updated.resumeRequestedAt)));
+    const persisted = (await createJobStore(root).findByIssueId("ABR-28"))[0];
+    assert.deepEqual(persisted,updated);
+    assert.equal(await recordResumedConversation(ledger,"linear:session:1",""),null);
+  } finally { await fs.rm(root,{recursive:true,force:true}); }
+});
+test("P4 session queue keeps same-session order while allowing distinct sessions", async () => {
+  assert.equal(createSessionQueue,legacyCreateSessionQueue);
+  const queue=createSessionQueue(),events=[];
+  let unlock;
+  const gate=new Promise(resolve => { unlock=resolve; });
+  const first=queue.enqueue("linear:one",async () => { events.push("one-start");await gate;events.push("one-end"); });
+  const second=queue.enqueue("linear:one",async () => { events.push("one-second"); });
+  const other=queue.enqueue("linear:two",async () => { events.push("two");unlock(); });
+  await Promise.all([first,second,other]);
+  assert.deepEqual(events,["one-start","two","one-end","one-second"]);
+  await assert.rejects(queue.enqueue("",async () => {}),/Missing Linear Agent Session ID/);
+  await assert.rejects(queue.enqueue("linear:failed",async () => {throw Error("interrupted");}),/interrupted/);
+  assert.equal(await queue.enqueue("linear:failed",async () => "resumed"),"resumed");
+});
+test("P4 bridge uses canonical conversation modules without changing state location", async () => {
+  const fs=await import("node:fs/promises");
+  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.match(src,/from "\.\.\/conversations\/agy-conversation-state\.mjs"/);
+  assert.match(src,/from "\.\.\/conversations\/agy-session-queue\.mjs"/);
+  assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
 });

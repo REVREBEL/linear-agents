@@ -24,3 +24,15 @@ The legacy `linear-agent-bridge/job-store.mjs` is likewise a pure `createJobStor
 The `scripts/p4-module-boundaries.test.mjs` regression suite verifies function identity across old and new imports, host-routing behavior, ordered queue failure recovery and the unchanged job ledger location. Both `bridge:test` and `test:reliability` include these checks; existing host-routing, SSH, and ordered-progress tests remain unchanged.
 
 This is the first low-risk P4 boundary. Migrate other domains in separate small PRs, with their original entrypoints intact until validated. Do not move the active job store and live state merely because its source modules are reorganized.
+
+## P4 conversation/session boundary
+
+- `conversations/agy-conversation-state.mjs` is now the canonical source of the Antigravity conversation-resume ledger transition.
+- `conversations/agy-session-queue.mjs` is now the canonical per-Linear-session in-process serialization queue.
+- The original `linear-agent-bridge/agy-conversation-state.mjs` and `linear-agent-bridge/agy-session-queue.mjs` paths remain pure re-exports. The bridge imports canonical modules directly.
+- The original `JOBS_DIR` and `job-state` records remain the only persisted session/recovery source. Conversation verification timestamps, source metadata, session IDs and concurrent dispatch behavior retain their previous semantics.
+- Isolated GitHub dispatch/review-inbox integration fixtures now copy the canonical `conversations/` modules along with `routing/` and `jobs/`.
+
+Regression tests cover function identity, actual persisted resume transitions through the legacy entrypoint, preservation of original verification metadata, concurrent session isolation, same-session ordering, and recovery after a failed queued task.
+
+This PR does not introduce new persisted session directories, relocate existing records, change agent runner CLI flags, alter provider conversation identities or restart the bridge.
