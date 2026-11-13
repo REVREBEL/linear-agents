@@ -105,3 +105,13 @@ No review submission, GitHub API call, Linear mutation, deployment or runtime da
 No access token or refresh token is added to the repository. This extraction does not change worker credentials, trigger reauthorization, alter deployment configuration, or run production credential synchronization.
 
 The new compatibility regression checks re-export identity, human-review versus CLI variable isolation, token endpoint authentication, disabled persistence and HTTPS completion URL rejection. Existing secret-storage and workspace-exclusion tests continue to run.
+
+## P4 remote Trae callback and SSH dispatch boundaries
+
+- `routing/remote-trae-activity.mjs` is the canonical implementation for per-job remote activity token hashing, callback authentication and HTTPS Trae endpoint validation.
+- `routing/ssh-dispatch.mjs` is the canonical implementation for trusted macOS SSH launcher arguments, explicit runner acknowledgement, completion reconciliation and remote cleanup.
+- Both old `linear-agent-bridge/` paths remain pure compatibility re-exports. `agent-bridge.mjs` imports canonical routing implementations directly.
+- The canonical SSH adapter imports the already-canonical `routing/host-routing.mjs` sibling. No trusted host defaults, command quoting, callback path, per-job capability token, session matching, SSH handshake or durable completion-state behavior changes.
+- Existing `JOBS_DIR` and `linear-jobs/` records are unchanged; no remote sessions are launched or resumed by this source move.
+
+Regression checks confirm old/new function identity, strict job/session/workspace/token matching, endpoint validation, trusted SSH configuration and unchanged runtime ledger anchoring. Existing isolated bridge fixtures already stage `routing/` and do not need modification.
