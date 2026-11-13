@@ -1,3 +1,4 @@
+import { preflightLinearJob } from "../jobs/job-preflight.mjs";
 import { identifyLinearJobDelivery, linearJobDuplicateResponse } from "../jobs/job-admission.mjs";
 import { createIssueCompletionRoute } from "../bridge/issue-completion-route.mjs";
 import { createTraeCallbackRoutes } from "../bridge/trae-callback-routes.mjs";
@@ -976,17 +977,79 @@ test("P4 accepted duplicate preserves 202 status and original job ID", () => {
     });
   }
 });
-test("P4 /jobs route continues to authenticate and synchronize credentials before claiming", async () => {
+test("P4 /jobs keeps authentication and preflight before durable delivery claim", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   const auth=src.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
   const identity=src.indexOf("identifyLinearJobDelivery({");
-  const route=src.indexOf("const route = await resolveJobRoute(job);",identity);
-  const credential=src.indexOf("const credential = route.ok ? await syncLinearCredential(",route);
-  const claim=src.indexOf("const claimed = await jobStore.claim(",credential);
-  assert.ok(auth>=0 && auth<identity && identity<route && route<credential && credential<claim);
+  const preflight=src.indexOf("await preflightLinearJob({",identity);
+  const claim=src.indexOf("const claimed = await jobStore.claim(",preflight);
+  assert.ok(auth>=0 && auth<identity && identity<preflight && preflight<claim);
+  const preflightSource=await fs.readFile(new URL("../jobs/job-preflight.mjs",import.meta.url),"utf8");
+  const route=preflightSource.indexOf("const route = await resolveJobRoute(job)");
+  const credentials=preflightSource.indexOf("const credential = route.ok ? await syncLinearCredential(",route);
+  const readiness=preflightSource.indexOf('if (agent === "chatgpt-cli")',credentials);
+  assert.ok(route>=0 && route<credentials && credentials<readiness);
   assert.match(src,/from "\.\.\/jobs\/job-admission\.mjs"/);
+  assert.match(src,/from "\.\.\/jobs\/job-preflight\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
   assert.match(src,/await jobStore\.transition\(jobKey, "queued"/);
+});
+
+test("P4 preflight preserves per-agent token synchronization and Mac non-persistence", async () => {
+  const job={organizationId:"organization-1",completionUrl:"https://linear-trae.example/complete"};
+  const trace=[];
+  const inputs={job,agent:"trae",sharedSecret:"bridge-test",
+    resolveJobRoute:async()=>{trace.push("route");return {ok:true,repositoryRoot:"/repo",executionHost:"macos"};},
+    syncLinearCredential:async args=>{trace.push("credentials");assert.deepEqual(args,{
+      agent:"trae",repositoryRoot:"/repo",organizationId:"organization-1",
+      completionUrl:"https://linear-trae.example/complete",sharedSecret:"bridge-test",persist:false
+    });return {accessToken:"mock-token"};},
+    checkOpenCodeReady:async()=>{throw Error("must not check unrelated CLI");},
+  };
+  const result=await preflightLinearJob(inputs);
+  assert.deepEqual(trace,["route","credentials"]);
+  assert.equal(result.rejection,null);
+  assert.equal(result.credential.accessToken,"mock-token");
+  assert.equal(result.route.executionHost,"macos");
+});
+test("P4 preflight leaves failed token fetches retryable before durable claim", async () => {
+  const trace=[];
+  const args={job:{organizationId:"organization-2",completionUrl:"https://linear-ag.example/complete"},
+    agent:"antigravity",sharedSecret:"secret",
+    resolveJobRoute:async()=>{trace.push("route");return {ok:true,repositoryRoot:"/repo",executionHost:"linux"};},
+    syncLinearCredential:async opts=>{trace.push("credentials");assert.equal(opts.persist,true);throw Error("token service offline");},
+    checkOpenCodeReady:async()=>{trace.push("runtime");}
+  };
+  await assert.rejects(preflightLinearJob(args),/token service offline/);
+  assert.deepEqual(trace,["route","credentials"]);
+});
+test("P4 preflight checks ChatGPT CLI runtime and rejects without durable claim", async () => {
+  const trace=[];
+  const args={job:{organizationId:"organization-3",payload:{data:{completionUrl:"https://linear-cli.example/complete"}}},
+    agent:"chatgpt-cli",sharedSecret:"secret",
+    resolveJobRoute:async()=>{trace.push("route");return {ok:true,repositoryRoot:"/repo",executionHost:"linux"};},
+    syncLinearCredential:async opts=>{trace.push("credentials");assert.equal(opts.agent,"chatgpt-cli");return {accessToken:"test"};},
+    checkOpenCodeReady:async()=>{trace.push("runtime");throw Error("not ready");}
+  };
+  const result=await preflightLinearJob(args);
+  assert.deepEqual(trace,["route","credentials","runtime"]);
+  assert.deepEqual(result.rejection,{status:503,body:{
+    ok:false,accepted:false,error:"OpenCode ChatGPT runtime not ready: not ready"
+  }});
+});
+test("P4 preflight keeps unrouted jobs eligible for ledger classification", async () => {
+  let tokenCalls=0,readyCalls=0;
+  const response=await preflightLinearJob({
+    job:{organizationId:"test"},agent:"chatgpt-cli",sharedSecret:"secret",
+    resolveJobRoute:async()=>({ok:false,error:"No project mapping"}),
+    syncLinearCredential:async()=>{tokenCalls++;},
+    checkOpenCodeReady:async()=>{readyCalls++;}
+  });
+  assert.equal(tokenCalls,0);
+  assert.equal(readyCalls,1);
+  assert.equal(response.route.ok,false);
+  assert.equal(response.credential,null);
+  assert.equal(response.rejection,null);
 });
