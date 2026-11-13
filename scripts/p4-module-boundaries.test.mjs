@@ -1,3 +1,4 @@
+import { createTraeCallbackRoutes } from "../bridge/trae-callback-routes.mjs";
 import { createGithubWebhookRoutes } from "../bridge/github-webhook-routes.mjs";
 import { createReviewRoutes } from "../bridge/review-routes.mjs";
 import { createDiagnosticRoutes } from "../bridge/diagnostic-routes.mjs";
@@ -740,4 +741,83 @@ test("P4 GitHub webhook failure releases delivery claim for retry", async () => 
     assert.equal(response.body.error,"transient dispatch failure");
     await assert.rejects(fs.stat(path.join(root,"github-events","chatgpt-abr28-webhook-003.claim")),{code:"ENOENT"});
   } finally {await fs.rm(root,{recursive:true,force:true});}
+});
+
+test("P4 Trae callbacks preserve remote activity auth, throttling, and completion confirmation", async () => {
+  const token="a".repeat(64);
+  const job={key:"trae:delivery-17",agent:"trae",executionHost:"macos",state:"running",
+    agentSessionId:"session-17",workspace:"/Users/test/workspace",
+    remoteCompletionUrl:"https://linear-trae.example.com/complete",
+    remoteActivityTokenHash:remoteActivity.hashRemoteToken(token)};
+  const event={jobKey:job.key,agentSessionId:job.agentSessionId,workspace:job.workspace,token,body:"Milestone reached"};
+  const updates=[],posts=[],throttles=new Map();
+  const handler=createTraeCallbackRoutes({
+    jobStore:{get:async()=>job,transition:async(...args)=>updates.push(args)},
+    projectsRoot:"/Users/test",traeActivityState:throttles,
+    readTraeActivityContext:async()=>null,safeTokenEqual:(a,b)=>a===b,
+    sanitizeTraeActivityBody:value=>value,
+    postTraeActivity:async(...args)=>{posts.push(args);return true;},
+    now:()=>100000,
+  });
+  const call=async(pathname,payload,method="POST")=>{
+    const request=new PassThrough();request.method=method;
+    const response={status:null,body:null,writeHead(status){this.status=status;},end(data){this.body=JSON.parse(data);}};
+    const running=handler(request,response,{url:new URL("http://localhost"+pathname)});
+    request.end(JSON.stringify(payload));
+    return {handled:await running,...response};
+  };
+  assert.equal((await call("/jobs",event)).handled,false);
+  const first=await call("/trae-activity",event);
+  assert.equal(first.status,202);
+  assert.equal(first.body.throttled,undefined);
+  assert.equal(posts.length,1);
+  const second=await call("/trae-activity",event);
+  assert.equal(second.status,202);
+  assert.equal(second.body.throttled,true);
+  assert.equal(posts.length,1);
+  assert.equal((await call("/trae-activity",{...event,token:"b".repeat(64)})).status,401);
+  assert.equal((await call("/trae-complete",{...event,status:"invalid"})).status,422);
+  assert.equal(updates.length,0);
+  const completion=await call("/trae-complete",{...event,status:"completed"});
+  assert.equal(completion.status,202);
+  assert.equal(completion.body.status,"completed");
+  assert.equal(updates.length,1);
+  assert.equal(updates[0][0],job.key);
+  assert.equal(updates[0][1],"completed");
+  assert.equal(updates[0][2].remoteCompletionStatus,"completed");
+  assert.ok(updates[0][2].remoteCompletionConfirmedAt);
+});
+test("P4 Trae completion retries remain idempotent and do not downgrade terminal jobs", async () => {
+  const token="b".repeat(64);
+  const job={key:"trae:delivery-18",agent:"trae",executionHost:"macos",state:"completed",
+    agentSessionId:"session-18",workspace:"/Users/test/workspace",
+    remoteCompletionUrl:"https://linear-trae.example.com/complete",
+    remoteActivityTokenHash:remoteActivity.hashRemoteToken(token)};
+  let transitions=0,posts=0;
+  const handler=createTraeCallbackRoutes({
+    jobStore:{get:async()=>job,transition:async()=>{transitions++;}},
+    projectsRoot:"/Users/test",traeActivityState:new Map(),
+    readTraeActivityContext:async()=>null,safeTokenEqual:(a,b)=>a===b,
+    sanitizeTraeActivityBody:v=>v,
+    postTraeActivity:async()=>{posts++;return true;},
+  });
+  const request=new PassThrough();request.method="POST";
+  const response={status:null,body:null,writeHead(v){this.status=v;},end(v){this.body=JSON.parse(v);}};
+  const task=handler(request,response,{url:new URL("http://localhost/trae-complete")});
+  request.end(JSON.stringify({jobKey:job.key,agentSessionId:job.agentSessionId,
+    workspace:job.workspace,token,body:"Already done",status:"completed"}));
+  assert.equal(await task,true);
+  assert.equal(response.status,202);
+  assert.equal(response.body.duplicate,true);
+  assert.equal(transitions,0);
+  assert.equal(posts,0);
+});
+test("P4 Trae callback route extraction retains bridge-owned job and activity state", async () => {
+  const fs=await import("node:fs/promises");
+  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  assert.match(src,/from "\.\.\/bridge\/trae-callback-routes\.mjs"/);
+  assert.match(src,/await handleTraeCallbackRoute\(request, response, \{ url \}\)/);
+  assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+  assert.match(src,/const traeActivityState = new Map\(\)/);
+  assert.match(src,/createTraeCallbackRoutes\(\{/);
 });
