@@ -1,6 +1,286 @@
-## macOS LaunchAgent
 
-For a login-started local bridge, use the [macOS LaunchAgent setup guide](docs/MACOS_LAUNCHAGENT.md) and [validated plist template](scripts/macos/agent-bridge.plist.example). Run `bash scripts/macos/install-launchagent.sh` after configuring the root `.env`. This installs the plist without restarting the running bridge.
+
+### AGENT BRIDGE
+
+This comprehensive knowledge base synthesizes the architecture, operational runbooks, and milestone evolutions of the **REVREBEL Agent Bridge** (`I-4`), consolidating the findings across technical design documents, system audits, conversational developments, and the 44 tracked Linear issues.
+
+---
+
+### 1. Executive System Architecture & Topology
+
+The **Linear Agent Bridge** serves as an autonomous software delivery control plane, turning Linear issues, comments, review cycles, and webhook events into a closed-loop engineering workflow. It coordinates multi-agent coding and review pipelines across a three-tier hosting topology:
+
+```text
+                                  LINEAR PLATFORM
+                    (Issue Lifecycle, Agent Sessions, Team Delegation)
+                                         │
+                         Signed Webhook (HMAC-SHA256)
+                                         ▼
+                      CLOUDFLARE EDGE WORKERS & SECURITY
+               linear-<agent>.revrebel.io (WAF: 15-IP Whitelist, KV, DO)
+                                         │
+                    Encrypted Cloudflare Tunnel (/jobs)
+                                         ▼
+                      UBUNTU BRIDGE DISPATCHER & RUNNER
+             agent-bridge.service (systemd, port 8788, bridge user)
+               ├── Core Job Durability Ledger (linear-jobs/job-state/)
+               ├── Active Task Checkpoints (active-task-memory.mjs)
+               ├── Headless CLI Runtimes (OpenCode, Antigravity agy, Gemini)
+               └── Host Router (Local Execution vs. SSH to macOS)
+                     │                                    │
+       SSH (Agent Location: Macos)          Database Route (postgres.revrebel.io)
+                     ▼                                    ▼
+              macOS RUNTIME HOST                  POSTGRESQL 17 + memU
+         (Desktop Trae, UI Testing)        (agent_memory DB, pgvector, nomic)
+```
+
+#### Core Architectural Boundaries
+* **Model \\(\neq\\) Agent Runtime:** Models provide probabilistic text and structured tool-call requests; the local host (Ubuntu or macOS) acts as the runtime environment executing approved commands within bounded Git worktrees.
+* **Model \\(\neq\\) Bridge Authority:** Models never hold GitHub App private keys, Linear OAuth tokens, or authority to transition issue states directly. Issue state transitions, PR publication, and session completions belong exclusively to the bridge.
+* **Memory Retrieval \\(\neq\\) Memory Storage:** Deterministic active task checkpoints track immediate execution state; semantic storage (`memU` on PostgreSQL 17 + `pgvector`) manages long-term recall across sessions without modifying active runtime ledgers.
+* **Control Surfaces:** **Linear** holds visible issue state; **GitHub** holds authoritative code state; **PostgreSQL 17** holds durable memory; **Agent Bridge** orchestrates the event lifecycle.
+
+---
+
+### 2. Ingress & Edge Security Architecture (Cloudflare Workers)
+
+Inbound webhooks from Linear terminate at dedicated Cloudflare Worker applications deployed per agent identity:
+
+| Agent Identity | Public Worker Custom Domain | Cloudflare Tunnel Hostname | Dispatch Path |
+| :--- | :--- | :--- | :--- |
+| **Antigravity** | `linear-antigravity.revrebel.io` | `antigravity-agent.revrebel.io` | `[suspicious link removed]` |
+| **Trae** | `linear-trae.revrebel.io` | `trae-agent.revrebel.io` | `[suspicious link removed]` |
+| **Gemini CLI** | `linear-gemini.revrebel.io` | `gemini-agent.revrebel.io` | `[suspicious link removed]` |
+| **ChatGPT** | `linear-chatgpt.revrebel.io` | `chatgpt-agent.revrebel.io` | `[suspicious link removed]` |
+| **Mock Agent** | `linear-mock.revrebel.io` | `mock-agent.revrebel.io` | `[suspicious link removed]` |
+
+#### Edge Security & Ingress Hardening
+1. **Cloudflare WAF Custom Rule:** Rejects all non-POST traffic or requests from unverified source IPs targeting `/webhook` across all `linear-*.revrebel.io` domains. The rule references the official 15-CIDR Linear webhook IP list (`linear_webhooks`) synchronized via scheduled worker (**ABR-30**):
+   ```text
+   (http.host in {"linear-antigravity.revrebel.io" "linear-trae.revrebel.io" "linear-gemini.revrebel.io" "linear-chatgpt.revrebel.io" "linear-mock.revrebel.io"})
+   and http.request.uri.path eq "/webhook"
+   and (http.request.method ne "POST" or not ip.src in $linear_webhooks)
+   --> Action: Block
+   ```
+2. **Durable Ingress Coordination:** Each Worker instantiates a SQLite-backed Durable Object (`DeliveryCoordinator`) keyed by `SERVICE_NAME:organizationId`. It serializes webhook deliveries, persists incoming requests as `pending:<id>`, schedules retries using exponential backoff alarms (1 minute up to 2 hours), and prevents concurrent OAuth token refresh race conditions.
+3. **Payload Pruning & Direct Task Prompting:** Webhooks originally duplicated the entire task prompt across three properties (exceeding 13.3 KB). The pipeline strips `payload.original` and `payload.data.originalPromptContext`, retaining only direct-task `payload.data.promptContext`. Embedded shell/curl completion commands were removed from prompt text and isolated into reusable skills (`.agents/skills/linear-session-completion/SKILL.md`).
+4. **Resolved GraphQL Routing Regressions:**
+   * **PR #80 / PR #92 / PR #97 / PR #99 / PR #103:** Closed regressions where workers forwarded incomplete routing metadata or failed on Linear's `initiativeToProjects` GraphQL query. Workers now fail closed when routing metadata is missing, categorize errors safely by stage (`issue_lookup` vs. `initiative_associations`), and gracefully fall back to verified project IDs if initiative associations are restricted (**ABR-43**, **ABR-45**, **ABR-46**, **ABR-48**).
+
+---
+
+### 3. Bridge Dispatcher & Local Host Orchestration
+
+Originally hosted on macOS via LaunchAgent (`io.revrebel.agent-bridge`), the central bridge listener was migrated to Ubuntu Server under `systemd` (`agent-bridge.service`) to run persistently under the dedicated `bridge` service user (**ABR-42**, **ABR-49**).
+
+#### Environment-Aware Host Routing (ABR-1, ABR-21)
+The bridge routes assignments dynamically across physical environments using Linear's **Agent Location** label group:
+* **`Agent Location: Bridge Server` (or unassigned):** Executes locally on Ubuntu under `LINUX_PROJECTS_ROOT` (`/home/rebel/linear-agents`).
+* **`Agent Location: Macos`:** The Ubuntu dispatcher resolves `OSX_PROJECTS_ROOT` (`/Users/.../linear-agents`) and dispatches the job over SSH to macOS without requiring an inbound public tunnel or secondary daemon on the laptop.
+* **Cross-Host Progress & Completion:** Remote macOS Trae runners stream progress back to Ubuntu via authenticated HTTPS endpoints (`/trae-activity` and `/trae-complete`) using single-use capability tokens rather than sharing global secrets.
+
+#### Durable Job Ledger & Quota Recovery (JOB_DURABILITY.md)
+The bridge tracks every task lifecycle inside a filesystem-backed state machine keyed by `sha256(agent:delivery-id)`:
+```text
+received ──> queued ──> launching ──> running ──> completed
+   │            │           │            │
+   └── unrouted └── (crash) ┴────────────┴──> interrupted
+                                         │
+                                   (rate limit)
+                                         ▼
+                                   waiting_quota
+                                (2-hr backoff timer)
+                                         │
+                                         └──> agy -p "..." --conversation <id>
+```
+* **Crash Reconciliation:** On startup, the bridge converts any unconfirmed `received`, `queued`, `launching`, or `running` state to `interrupted` to prevent duplicate unverified side effects.
+* **Antigravity Quota Resilience:** Upon encountering `RESOURCE_EXHAUSTED` or `Individual quota reached`, the runner captures the native AGY conversation ID, sets a 2-hour backoff timer (`AGY_RETRY_DELAY_MS=7200000`), transitions the ledger to `waiting_quota`, and automatically resumes via `--conversation <id>` (capped at 3 retries).
+* **Credential Stripping:** When spawning child processes (`run_agent.py`), the bridge purges `BRIDGE_SHARED_SECRET`, `LINEAR_API_KEY`, and `LINEAR_ACCESS_TOKEN` from the child environment.
+
+---
+
+### 4. Agent Registry & Multi-Model Inference Architecture
+
+The project has established a unified **Agent Registry v2** specification (`agent-registry.schema.json` and `agent-registry.yaml`), organizing 14 model profiles into distinct operational tiers:
+
+```text
+                               AGENT REGISTRY v2 CATALOG
+   ┌───────────────────────────────────────┬──────────────────────────────────────┐
+   ▼                                       ▼                                      ▼
+AUTONOMOUS CODING AGENTS         LOCAL AIR-GAPPED CODERS          SPECIALIZED ADAPTERS
+(Headless Ubuntu OpenCode)         (On-Premises Ollama)          (Direct API / Memory)
+- North Mini Code (30B MoE)      - CodeGeeX4 (9B / 128K)         - Codestral FIM (Infill)
+- Recursive Flint (40B MoE)      - Code Llama (Offline Syntax)   - Mistral Moderation 2603
+- Gemma 4 31B (Multimodal)                                       - Liquid LFM3 1.7B (Control)
+- Reflection Beam (501B MoE)                                     - Parallel Decisions Fast
+- ERNIE 5.5 Flash (280B MoE)                                     - NVIDIA Nemotron Rerank VL
+- Inkling 2 Small (594B MoE)                                     - Stealth Crouton (1M doc)
+```
+
+#### Operational Classification Matrix
+| Model ID | Provider | Kind | Transport | Autonomy | Intended Role |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`north-mini-code:free`** | Cohere | `cli_agent` | `headless_cli` | `Executor` | Git worktree inspection, unit test repair, CI failure fixes. |
+| **`flint-v1.0:free`** | Recursive | `cli_agent` | `headless_cli` | `Executor` | Multi-turn terminal commands, deep debugging, complex refactoring. |
+| **`gemma-4-31b-it:free`** | Google | `cli_agent` | `headless_cli` | `Executor` | Multimodal UI/Storybook review, architectural design, PR verification. |
+| **`beam`** | Reflection AI | `cli_agent` | `headless_cli` | `Executor` | 501B frontier open-weight coding, long-horizon repository refactoring. |
+| **`ernie-5-5-flash:free`** | Baidu | `cli_agent` | `headless_cli` | `Executor` | 1M context rapid repository scanning and script generation. |
+| **`inkling-2-small:free`** | Thinking Machines | `cli_agent` | `headless_cli` | `Executor` | Elite multimodal reasoning and hard SWE-bench defect resolution. |
+| **`codegeex4:9b`** | THUDM / Ollama | `cli_agent` | `headless_cli` | `Supervised` | Air-gapped repo Q&A and localized script edits (128K context). |
+| **`codellama`** | Meta / Ollama | `cli_agent` | `headless_cli` | `Supervised` | Offline syntax and unit test authoring with zero outbound data transfer. |
+| **`codestral-latest`** | Mistral | `llm` | `direct_api` | `Recommender` | Fill-in-the-middle surgical method insertion and automated lint patches. |
+| **`mistral-moderation`** | Mistral | `llm` | `direct_api` | `Read-only` | Webhook inspection, issue policy classification, and prompt injection defense. |
+| **`liquid-lfm3:free`** | LiquidAI | `llm` | `direct_api` | `Recommender` | Webhook event triage, metadata extraction, and checkpoint summarization. |
+| **`decisions-fast:free`** | Parallel | `llm` | `direct_api` | `Read-only` | Typed web-grounded decision scoring (`noul`, `choice`, `score`) with citations. |
+| **`nemotron-rerank-vl`** | NVIDIA | `llm` | `direct_api` | `Read-only` | Multimodal cross-encoder reranking for PostgreSQL/pgvector memory queries. |
+| **`crouton-alpha`** | Stealth | `llm` | `direct_api` | `Recommender` | 1M-token public document and specification synthesis. |
+
+---
+
+### 5. Memory, Context & Session Recovery Architecture
+
+The bridge implements a **Three-Tier Memory Architecture** to overcome LLM context-compaction amnesia (discovered during OpenCode / Qwen evaluations on `rebel-server`, where models lost track of active tasks after compaction):
+
+#### Tier 1: Active Task Memory (Short-Term Operational Truth)
+* **Storage:** Filesystem ledger (`job-state/`) mirrored to local database checkpoints via `active-task-memory.mjs` (**ABR-8**, **ABR-9**).
+* **Contract:** Keyed strictly by Linear `agentSessionId` and workspace. Persists current task objective, active Git branch, base commit SHA, modified files, test exit codes, and recent milestones (up to 20 steps with recursive token redaction).
+* **Compaction Recovery:** Checkpoints are injected into prompts upon session resume or model compaction, ensuring agents do not discard work already written to disk.
+
+#### Tier 2: Factory Brain (Curated Workspace Memory)
+* **Storage:** Private PostgreSQL table / local repository file (`.linear-agent/factory-brain.md` excluded via `.git/info/exclude`).
+* **Contract:** Bounded 40,000-character Markdown document defining architectural invariants, coding rules, and library conventions. Writes are approval-gated; agents cannot save unverified claims or transient debug logs into the brain.
+
+#### Tier 3: Long-Term Semantic Memory (`memU` + PostgreSQL 17)
+* **Storage:** Dedicated `agent_memory` database on `rebel-server.revrebel.io` running PostgreSQL 17.11 + `pgvector` (**ABR-5**).
+* **Contract:** Embeds episodic task learnings using local Ollama (`nomic-embed-text`). Promotion into semantic memory occurs **only after** code passes tests, PR review is approved, and the Submission Coordinator verifies the matching commit SHA.
+
+#### Upstream Session Intelligence Evaluation (ABR-11, ABR-12, ABR-13)
+* **Brain Hub:** Read-only session transcript parsing is being adapted into an isolated service to inspect historical Antigravity transcripts; raw, unredacted transcripts are blocked from storage to prevent secret leakage.
+* **Antigravity Sync:** Synchronizing native internal state files directly across OS boundaries was **rejected** due to path divergence (Mac `/Users/...` vs. Ubuntu `/home/...`) and race conditions violating Linear session isolation.
+
+---
+
+### 6. Automated Software Engineering & Review Loop
+
+The central operational objective of the bridge is closing the autonomous development lifecycle without manual intervention:
+
+\\[\text{Issue Assigned} \longrightarrow \text{Coding Agent} \longrightarrow \text{Git PR} \longrightarrow \text{CI Check} \longrightarrow \text{ChatGPT Review} \longrightarrow \text{Revision} \longrightarrow \text{Same PR} \longrightarrow \text{Merge}\\]
+
+#### Past Delivered Milestones
+* **Identity Separation:** The bridge strictly decouples the **ChatGPT CLI coding agent** (OpenCode runner) from the **ChatGPT User reviewer** (assigned via review inbox/issue notifications), eliminating loop feedback collisions (**ABR-7**, **ABR-44**).
+* **PR Review Loop Checkpointing (ABR-6, PR #30):** Actionable GitHub PR comments and revisions trigger deterministic re-reviews, preserving per-PR review checkpoints across bridge restarts.
+* **Self-Origin Loop Suppression (ABR-7):** Configured filters (`GITHUB_CHATGPT_SELF_IDS`) suppress review triggers caused by ChatGPT's own comments or commits.
+
+#### Planned Forward Control Plane Modules
+* **Submission Coordinator (ABR-17):** Provides a single bridge-owned command (`submit-work <issue-id> <summary>`) for coding agents. The coordinator verifies the local branch, mints short-lived GitHub App tokens, creates or updates the existing PR (same ID), posts verified test evidence, transitions the Linear issue to `In Review`, and closes the agent session via authenticated Worker `/complete`.
+* **EventIntelligence Agent (ABR-18):** Semantic triage service for no-`promptContext` webhooks (e.g. Jules optimization comments, Renovate updates, CI check completions). Evaluated using `google/gemma-4-26b-a4b-it:free` in shadow mode to classify whether an event represents an actionable code review or routine noise.
+
+---
+
+### 7. Comprehensive Linear Issue & Project Delivery Ledger
+
+A review across all **44 tracked Linear issues** in the Agent Bridge workspace establishes the current operational delivery status:
+
+```text
+   COMPLETED (30 Issues)       IN REVIEW / IN PROGRESS (3 Issues)        BACKLOG ROADMAP (11 Issues)
+   ├── Edge WAF & Sync (ABR-30)  ├── Memory Coord (ABR-3 - In Review)      ├── Env Dispatch (ABR-1)
+   ├── Postgres/pgvector (ABR-5) ├── Checkpoint Schema (ABR-9 - In Review) ├── Session Intelligence (ABR-12-16)
+   ├── Router & Layout (ABR-28)  └── OpenRouter/Gemma (ABR-29 - In Prog)   ├── Submission Coord (ABR-17)
+   ├── SSH Host Dispatch (ABR-21)                                          ├── EventIntelligence (ABR-18)
+   └── Route Hardening (ABR-42-50)                                         └── Monorepo Refactor (ABR-26-27, 34)
+```
+
+| Issue ID | Workstream / Project | Status | Title & Operational Scope |
+| :--- | :--- | :--- | :--- |
+| **`ABR-1`** | Core | Backlog | Verified environment-aware agent dispatch registry (Linear UUID \\(\rightarrow\\) host/workspace mapping). |
+| **`ABR-2`** | Core | **Done** | Fixed Storybook typecheck regressions (unused React import & duplicate keys). |
+| **`ABR-3`** | PostgreSQL & memU | **In Review** | Agent memory coordinator: session checkpoints + memU durable recall. |
+| **`ABR-4`** | macOS Runtime | **Done** | Integrated optional Antigravity Desktop mode with progress and blocked-tool errors. |
+| **`ABR-5`** | PostgreSQL & memU | **Done** | Provisioned PostgreSQL 17 + pgvector on `rebel-server.revrebel.io` (`agent_memory` database). |
+| **`ABR-6`** | Core | **Done** | Persisted GitHub PR review loop checkpoints across restarts. |
+| **`ABR-7`** | Core | **Done** | Added self-origin filter to suppress ChatGPT self-authored GitHub review loops. |
+| **`ABR-8`** | PostgreSQL & memU | **Done** | Incremental task checkpoints and guarded memU recall/promotion adapters (PR #31). |
+| **`ABR-9`** | PostgreSQL & memU | **In Review** | Checkpoint schema extension with versioning, expiration, and recursive token redaction (PR #36). |
+| **`ABR-10`** | PostgreSQL & memU | **Done** | Architecture specification for durable short- and long-term agent memory. |
+| **`ABR-11`** | Session Recovery | **Done** | Documented Brain Hub and Antigravity Sync source architecture at pinned commits (PR #46). |
+| **`ABR-12`** | Session Recovery | Backlog | Analyzed Antigravity session portability, workspace absolute paths, and secret leakage. |
+| **`ABR-13`** | Session Recovery | Backlog | Selected upstream components and designed read-only session/archive adapter. |
+| **`ABR-14`** | Session Recovery | Backlog | Staged implementation plan, host ownership, acceptance tests, and rollback boundaries. |
+| **`ABR-15`** | Session Recovery | Backlog | Read-only native session inventory, transcript parser, and checkpoint linkage implementation. |
+| **`ABR-16`** | Session Recovery | Backlog | Sanitized archive and gated canary with cross-machine recovery tests. |
+| **`ABR-17`** | Core | Backlog | Bridge-owned Submission Coordinator (`submit-work <issue-id> <summary>`). |
+| **`ABR-18`** | Core | Backlog | EventIntelligence agent: semantic GitHub/Linear webhook triage and review dispatch. |
+| **`ABR-19`** | Core | **Done** | Deferred unsupported Linux ChatGPT handoffs, returning 503 instead of failing claims. |
+| **`ABR-20`** | Core | **Done** | Corrected Clerk Client Hub authentication routing to top-level `/sign-in` mount. |
+| **`ABR-21`** | Core | **Done** | Routed Linear jobs to Ubuntu or macOS via SSH based on `Agent Location` label. |
+| **`ABR-24`** | Core | **Done** | Marked shared Clerk provider and Webflow surfaces as `"use client"` components. |
+| **`ABR-25`** | Core | **Done** | Disabled SSR for Clerk Webflow authentication components. |
+| **`ABR-26`** | Core | Backlog | Standardized A–Z onboarding checklist for new LinearBridge agents. |
+| **`ABR-27`** | Core | Backlog | Monorepo refactor plan with external `skills-library` consumption boundary. |
+| **`ABR-28`** | Core | **Done** | Implemented agent-centric LinearBridge v2 layout with colocated Workers. |
+| **`ABR-29`** | Core | **In Progress** | Shared `@openrouter/agent` runtime and isolated Gemma coding profile. |
+| **`ABR-30`** | Cloudflare Edge | **Done** | Scheduled read-only Cloudflare IP feed synchronization for WAF allowlists. |
+| **`ABR-32`** | Ubuntu Dev | **Done** | Scoped Gemma provider credentials via 1Password minimal environment loader. |
+| **`ABR-33`** | Core | **Done** | Fixed unstyled Clerk auth components inside Webflow Code Component Shadow DOM. |
+| **`ABR-34`** | Core | Backlog | Antigravity: validate Ubuntu Google Cloud CLI and live progress streaming telemetry. |
+| **`ABR-35`** | Core | **Done** | Added root commands to bundle and import Clerk Webflow devlink components. |
+| **`ABR-36`** | Ubuntu Dev | **Done** | Fixed Gemma LiteLLM credential handling assumptions using dedicated client keys. |
+| **`ABR-37`** | Core | **Done** | Surfaced bridge pre-launch rejections (422/503) as error activities in Linear sessions. |
+| **`ABR-39`** | Core | **Done** | Updated Worker CI assertions to match active bridge rejection messages. |
+| **`ABR-42`** | Core | **Done** | Fixed Linux bridge restart sudoers mismatch for `systemctl restart agent-bridge`. |
+| **`ABR-43`** | Core | **Done** | Enforced fail-closed behavior when Linear routing metadata is incomplete. |
+| **`ABR-44`** | Core | **Done** | Reused ChatGPT Linear app credentials for ChatGPT CLI worker. |
+| **`ABR-45`** | Core | **Done** | Rejected Antigravity dispatches lacking verified Linear routing. |
+| **`ABR-46`** | Core | **Done** | Sanitized Linear GraphQL failure logs by stage without leaking query bodies. |
+| **`ABR-47`** | Core | **Done** | Added `initiative:read` OAuth scope to Antigravity routing configuration. |
+| **`ABR-48`** | Core | **Done** | Restored Antigravity dispatch when initiative association lookup is forbidden. |
+| **`ABR-49`** | Core | **Done** | Enforced production Linux agent CLIs run under the unified `bridge` user. |
+| **`ABR-50`** | Core | **Done** | Sanitized npm `allow-scripts` environment for dry-run lockfile validation. |
+
+---
+
+### 8. Planned Forward Roadmap & Execution Sequence
+
+Based on current operational dependencies, forward execution follows a gated four-phase path:
+
+#### Phase 1: In-Flight Runtime & Telemetry Validation (Immediate P0)
+1. **Complete ABR-29 (@openrouter/agent Runtime & Gemma Profile):**
+   * Finalize `@openrouter/agent` SDK integration, locking version dependencies in the root lockfile.
+   * Register `google/gemma-4-31b-it:free` execution profile with bounded repository scope and iteration limits.
+2. **Resolve ABR-34 (Ubuntu Antigravity Progress Streaming):**
+   * Validate that `linear-agent-bridge/run_agent.py` extracts structured `step_update` telemetry (file reads, edits, MCP calls) at 15-second throttle intervals on Ubuntu.
+   * Confirm that initial start, progress thoughts, and terminal responses publish visibly in the Linear agent session before attempting further directory reorganization.
+3. **Merge Memory Checkpoint Locking (ABR-3, ABR-9):**
+   * Resolve pending code review on PR #36 to merge versioned checkpoint schemas, expiration headers, and recursive token redaction into `active-task-memory.mjs`.
+
+#### Phase 2: Lifecycle Autonomy & Handoff Coordination (Near Term P1)
+1. **Build Submission Coordinator (ABR-17):**
+   * Deploy local `submit-work <issue-id> <summary>` command.
+   * Automate GitHub App JWT-to-installation token exchange, update existing PRs with verified commit SHAs, transition Linear issues to `In Review`, and close sessions cleanly.
+2. **Deploy EventIntelligence in Shadow Mode (ABR-18):**
+   * Deploy webhook context enrichment for no-`promptContext` events (evaluating incoming PR comments, Jules suggestions, and bot activity).
+   * Run in shadow mode (`EVENT_INTELLIGENCE_MODE=shadow`) using `gemma-4-26b-a4b-it:free` to benchmark precision/recall against human review decisions before enforcing dispatch.
+
+#### Phase 3: Monorepo Architecture & External Boundaries (P2)
+1. **Execute Modular Monorepo Layout (ABR-28 / ABR-27):**
+   * Complete domain moves into `integrations/`, `routing/`, `jobs/`, `memory/`, and `conversations/`.
+   * Colocate each agent's Worker inside `agents/coding/<id>/worker/` while preserving distinct Cloudflare Worker custom domains and KV namespaces.
+   * Maintain the **external boundary to `REVREBEL/skills-library`**: the bridge must consume pinned, published skills via `integrations/skills-library/` without creating a duplicate skills catalog or publication workflow.
+2. **Formalize Agent Onboarding Checklist (ABR-26):**
+   * Operationalize the A–Z onboarding manifest covering Worker DNS, OAuth registration, KV provisioning, Tunnel routing, and health verification.
+
+#### Phase 4: Session Intelligence & Deep Memory Promotion (P3)
+1. **Implement Read-Only Session Recovery (ABR-12 \\(\rightarrow\\) ABR-16):**
+   * Deploy read-only native session parsers to discover crashed AGY and OpenCode session states without mutating provider-owned files.
+   * Link parsed native transcripts to active task checkpoints for seamless recovery across container restarts and quota exhaustion.
+2. **Activate PostgreSQL + memU Semantic Promotion:**
+   * Wire the Submission Coordinator's completion hook to format verified task summaries and commit them into `agent_memory` on `rebel-server.revrebel.io` using Ollama embeddings and NVIDIA Nemotron cross-encoder reranking.
+
+---
+
+📊 Would you like me to generate a Gantt milestone roadmap or a tracking script to monitor the transition of the remaining Backlog issues into In Progress?
+
+
 
 ## Node.js dependencies and npm workspaces
 
