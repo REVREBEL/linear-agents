@@ -1,3 +1,5 @@
+import { createGithubTaskMemory } from "../memory/github-task-memory.mjs";
+import { createGithubTaskMemory as legacyGithubTaskMemory } from "../linear-agent-bridge/github-task-memory.mjs";
 import { createActiveTaskMemory, sanitizeCheckpoint, sanitizeCheckpointText, isCheckpointExpired } from "../memory/active-task-memory.mjs";
 import * as legacyActiveMemory from "../linear-agent-bridge/active-task-memory.mjs";
 import { compactRecall, retrieveMemuMemory } from "../memory/memu-memory.mjs";
@@ -150,4 +152,38 @@ test("P4 bridge uses canonical memory modules but keeps storage roots unchanged"
   assert.match(source,/from "\.\.\/memory\/memu-memory\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(source,/createActiveTaskMemory\(JOBS_DIR\)/);
+});
+
+test("P4 GitHub PR task memory shares implementation and persists review metadata across old/new imports", async () => {
+  const fs = await import("node:fs/promises");
+  assert.equal(createGithubTaskMemory, legacyGithubTaskMemory);
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-github-task-"));
+  const event = { repository: "REVREBEL/linear-agents", number: 123 };
+  try {
+    const canonical = createGithubTaskMemory(root);
+    assert.equal(await canonical.read(event), null);
+    const saved = await canonical.update(event, {
+      lastReviewChange: "review:sha123", lastHeadSha: "a".repeat(40),
+      lastDecision: "review_requested", status: "active"
+    });
+    assert.equal(saved.version,1);
+    const old = legacyGithubTaskMemory(root);
+    assert.deepEqual(await old.read(event), saved);
+    const revised = await old.update(event, { lastDecision: "completed", status: "reviewed" });
+    assert.equal(revised.lastReviewChange,"review:sha123");
+    assert.equal(revised.lastHeadSha,"a".repeat(40));
+    assert.deepEqual(await canonical.read(event), revised);
+    const fileDir = path.join(root, "github-events", "task-memory");
+    const entries = await fs.readdir(fileDir);
+    assert.equal(entries.length,1);
+    assert.match(entries[0],/^[a-f0-9]{64}\.json$/);
+    assert.equal((await fs.stat(path.join(fileDir,entries[0]))).isFile(),true);
+  } finally { await fs.rm(root,{recursive:true,force:true}); }
+});
+test("P4 GitHub task memory remains anchored to original bridge journal root", async () => {
+  const fs = await import("node:fs/promises");
+  const source = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url), "utf8");
+  assert.match(source,/from "\.\.\/memory\/github-task-memory\.mjs"/);
+  assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+  assert.match(source,/createGithubTaskMemory\(JOBS_DIR\)/);
 });

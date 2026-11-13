@@ -48,3 +48,13 @@ This PR does not introduce new persisted session directories, relocate existing 
 Both isolated bridge integration fixtures stage `memory/` alongside `routing/`, `jobs/`, and `conversations/`. Added tests validate one shared module identity, persisted checkpoint reads/writes through both import paths, revision checks, sensitive text redaction, and memU fail-open behavior.
 
 No database change, checkpoint migration, external memU setup, runtime data movement, Worker deployment, or Ubuntu restart is included.
+
+## P4 GitHub PR task-memory boundary
+
+- `memory/github-task-memory.mjs` is the canonical per-PR short-term review/deduplication memory implementation.
+- `linear-agent-bridge/github-task-memory.mjs` remains a compatibility re-export with the same function identity.
+- The bridge imports the canonical module and still calls `createGithubTaskMemory(JOBS_DIR)`.
+- Runtime files remain under `linear-agent-bridge/linear-jobs/github-events/task-memory/`; the SHA-256 per-PR filename mapping, record schema and atomic replacement semantics are unchanged.
+- Review state, previous head SHA, decision, and processed change markers continue to be read from the existing journal directory. No checkpoint or event journal files are moved.
+
+The new regression proves old/new import identity, read/write interoperability for a single PR, persistence of previous review markers, and preservation of the hashed filenames in the original folder. No change to GitHub webhooks, ChatGPT review inbox routing, duplicate suppression policy, or runtime job orchestration occurs in this extraction.
