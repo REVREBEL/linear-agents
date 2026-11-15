@@ -1010,7 +1010,7 @@ test("P4 /jobs authenticates before coordinator, which preflights before durable
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
   const preparation=await fs.readFile(new URL("../jobs/local-task-preparation.mjs",import.meta.url),"utf8");
   assert.ok(preparation.includes('await jobStore.transition(jobKey, "queued"'));
-  assert.ok(src.includes("await prepareLocalAgentTask({"));
+  assert.ok(src.includes("await coordinateLocalExecution({"));
 });
 
 test("P4 preflight preserves per-agent token synchronization and Mac non-persistence", async () => {
@@ -1146,13 +1146,14 @@ test("P4 local task preparation fails before queued transition on write or memor
 test("P4 local task preparation preserves bridge-owned launches and runtime job root", async () => {
   const fs=await import("node:fs/promises");
   const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const from=bridge.indexOf("await prepareLocalAgentTask({");
-  const launched=bridge.indexOf('await jobStore.transition(jobKey, "launching"',from);
+  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  const from=execution.indexOf("await prepareTask({");
+  const launched=execution.indexOf('await jobStore.transition(jobKey, "launching"',from);
   assert.ok(from>=0&&launched>from);
-  assert.ok(bridge.includes('from "../jobs/local-task-preparation.mjs"'));
+  assert.ok(execution.includes('from "./local-task-preparation.mjs"'));
   assert.ok(bridge.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
-  assert.ok(bridge.includes('await dispatchGeminiAgent({'));
+  assert.ok(execution.includes('await dispatchers.gemini({'));
 });
 
 test("P4 Mock dispatch awaits durable awaiting_external state before logging", async () => {
@@ -1220,14 +1221,15 @@ test("P4 Gemma asynchronous launch failure is recorded as failed without a secon
 test("P4 simple dispatch adapters leave launch state, agent distinctions and HTTP listener in bridge", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.ok(source.includes('from "../jobs/simple-agent-dispatch.mjs"'));
-  const start=source.indexOf('await jobStore.transition(jobKey, "launching", { attempts: 1 })');
-  const mock=source.indexOf('await dispatchMockAgent({',start);
-  const gemma=source.indexOf('dispatchGemmaAgent({',mock);
+  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  assert.ok(execution.includes('from "./simple-agent-dispatch.mjs"'));
+  const start=execution.indexOf('await jobStore.transition(jobKey, "launching", { attempts: 1 })');
+  const mock=execution.indexOf('await dispatchers.mock({',start);
+  const gemma=execution.indexOf('dispatchers.gemma({',mock);
   assert.ok(start>=0 && mock>start && gemma>mock);
   assert.ok(source.includes('async function startGemma('));
-  assert.ok(source.includes('agent === "chatgpt-cli"'));
-  assert.ok(source.includes('agent === "chatgpt"'));
+  assert.ok(execution.includes('agent === "chatgpt-cli"'));
+  assert.ok(execution.includes('agent === "chatgpt"'));
   assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
 });
@@ -1272,10 +1274,11 @@ test("P4 ChatGPT CLI asynchronous queue rejection records job failure without wa
 test("P4 ChatGPT CLI dispatch preserves serialized queue and human-review identity separation", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.ok(source.includes('from "../jobs/chatgpt-cli-dispatch.mjs"'));
-  const cli=source.indexOf('agent === "chatgpt-cli"');
-  const coding=source.indexOf('dispatchChatgptCliAgent({',cli);
-  const human=source.indexOf('agent === "chatgpt"',coding);
+  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  assert.ok(execution.includes('from "./chatgpt-cli-dispatch.mjs"'));
+  const cli=execution.indexOf('agent === "chatgpt-cli"');
+  const coding=execution.indexOf('dispatchers.chatgptCli({',cli);
+  const human=execution.indexOf('agent === "chatgpt"',coding);
   assert.ok(cli>=0&&coding>cli&&human>coding);
   assert.ok(source.includes("function enqueueChatgptHandoff(task)"));
   assert.ok(source.includes("async function startChatgptOpenCode("));
@@ -1403,14 +1406,15 @@ test("P4 Antigravity queue failures asynchronously record failed ledger state", 
 test("P4 Antigravity dispatch keeps original queue and runtime ownership in main bridge", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.ok(src.includes('from "../jobs/antigravity-dispatch.mjs"'));
-  assert.ok(src.includes("dispatchAntigravityAgent({"));
+  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  assert.ok(execution.includes('from "./antigravity-dispatch.mjs"'));
+  assert.ok(execution.includes("dispatchers.antigravity({"));
   assert.ok(src.includes("const agySessionQueue = createSessionQueue("));
   assert.ok(src.includes("function startAntigravity("));
   assert.ok(src.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(src.includes('const server = http.createServer(async (request, response) => {'));
-  assert.ok(src.includes('agent === "chatgpt-cli"'));
-  assert.ok(src.includes('agent === "chatgpt"'));
+  assert.ok(execution.includes('agent === "chatgpt-cli"'));
+  assert.ok(execution.includes('agent === "chatgpt"'));
 });
 
 test("P4 human ChatGPT handoff never starts desktop UI on Linux", async () => {
@@ -1513,9 +1517,10 @@ test("P4 human ChatGPT auto-send queues one Playwright child and records asynchr
 test("P4 human ChatGPT handoff remains distinct from CLI dispatch and review routes", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.ok(source.includes('from "../jobs/chatgpt-human-handoff.mjs"'));
-  assert.ok(source.includes('await dispatchChatgptHumanHandoff({'));
-  assert.ok(source.includes('dispatchChatgptCliAgent({'));
+  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  assert.ok(execution.includes('from "./chatgpt-human-handoff.mjs"'));
+  assert.ok(execution.includes('await dispatchers.chatgptHuman({'));
+  assert.ok(execution.includes('dispatchers.chatgptCli({'));
   assert.ok(source.includes('from "../bridge/review-routes.mjs"'));
   assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
@@ -1601,9 +1606,10 @@ test("P4 Gemini headless launch forwards original options and attaches process l
 test("P4 Gemini execution stays within original bridge state and Warp implementation", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
   const handler=await fs.readFile(new URL("../jobs/gemini-dispatch.mjs",import.meta.url),"utf8");
-  assert.ok(src.includes('from "../jobs/gemini-dispatch.mjs"'));
-  assert.ok(src.includes('await dispatchGeminiAgent({'));
+  assert.ok(execution.includes('from "./gemini-dispatch.mjs"'));
+  assert.ok(execution.includes('await dispatchers.gemini({'));
   assert.ok(src.includes('async function startGeminiInWarp('));
   assert.ok(src.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(src.includes('const server = http.createServer(async (request, response) => {'));
@@ -1726,9 +1732,10 @@ test("P4 local Trae does not spawn when capability ledger transition fails", asy
 test("P4 Trae local dispatch retains original bridge state and remote SSH lifecycle", async () => {
   const fs=await import("node:fs/promises");
   const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
   const local=await fs.readFile(new URL("../jobs/trae-local-dispatch.mjs",import.meta.url),"utf8");
-  assert.ok(bridge.includes('from "../jobs/trae-local-dispatch.mjs"'));
-  assert.ok(bridge.includes("await dispatchLocalTraeAgent({"));
+  assert.ok(execution.includes('from "./trae-local-dispatch.mjs"'));
+  assert.ok(execution.includes("await dispatchers.trae({"));
   assert.ok(bridge.includes("launchMacTrae({ job: message, jobKey, jobStore })"));
   assert.ok(bridge.includes("function safeTokenEqual(actual, expected)"));
   assert.ok(bridge.includes("function sanitizeTraeActivityBody(value)"));
@@ -1736,7 +1743,7 @@ test("P4 Trae local dispatch retains original bridge state and remote SSH lifecy
   assert.ok(bridge.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
   assert.ok(local.includes('path.join(repositoryRoot, ".linear-agent")'));
-  assert.ok(bridge.includes('if (agent !== "trae") await jobStore.transition(jobKey, "launching"'));
+  assert.ok(execution.includes('if (agent !== "trae") await jobStore.transition(jobKey, "launching"'));
   assert.match(bridge,/if \(route\.executionHost === "macos"\) \{[\s\S]*?await launchMacTrae\(\{ job: message, jobKey, jobStore \}\)/);
   assert.ok(local.includes('attachProcessLogs(traeProcess, "Trae", jobKey)'));
 });

@@ -107,7 +107,10 @@ test("Linux handoff source does not claim an unsupported automatic GitHub review
   const bridge = readFileSync(path.join(root, "linear-agent-bridge/agent-bridge.mjs"), "utf8");
   const humanHandoff = readFileSync(path.join(root, "jobs/chatgpt-human-handoff.mjs"), "utf8");
   assert.ok(humanHandoff.includes("Linux ChatGPT browser/Shortcuts handoff unsupported"));
-  assert.ok(bridge.includes("await dispatchChatgptHumanHandoff({"));
+  const localExecution = readFileSync(path.join(root, "jobs/local-execution-coordinator.mjs"), "utf8");
+  assert.ok(bridge.includes("await coordinateLocalExecution({"));
+  assert.ok(localExecution.includes("await dispatchers.chatgptHuman({"));
+  assert.ok(localExecution.includes('from "./chatgpt-human-handoff.mjs"'));
   assert.ok(bridge.includes("createGithubWebhookRoutes("));
 });
 
