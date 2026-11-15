@@ -1,3 +1,4 @@
+import { persistUnroutedJob } from "../jobs/unrouted-delivery.mjs";
 import { createAgyProjectConversationStore } from "../conversations/agy-project-conversations.mjs";
 import { createAgentHostResolver } from "../bridge/agent-host-resolver.mjs";
 import { createProcessLifecycleReporter } from "../jobs/process-lifecycle.mjs";
@@ -438,11 +439,11 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, duplicateResponse.status, duplicateResponse.body);
     }
     if (!route.ok) {
-      const pendingFile = path.join(AGENT_JOB_DIRS[agent], `${safeJobId}.unrouted.json`);
-      await fs.writeFile(pendingFile, JSON.stringify({ reason: route.error, job }, null, 2), { mode: 0o600 });
-      await jobStore.transition(jobKey, "unrouted", { error: route.error, taskFile: pendingFile });
-      console.error(`Routing failed: ${route.error}; saved pending job to ${pendingFile}`);
-      return sendJson(response, 422, { ok: false, accepted: false, error: route.error });
+      const unrouted = await persistUnroutedJob({
+        agent, safeJobId, jobKey, job, route,
+        agentJobDirs: AGENT_JOB_DIRS, jobStore,
+      });
+      return sendJson(response, unrouted.status, unrouted.body);
     }
 
     if (route.executionHost === "macos") {
