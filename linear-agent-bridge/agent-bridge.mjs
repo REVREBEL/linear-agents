@@ -17,7 +17,6 @@ import { cleanupMacTrae } from "../routing/ssh-dispatch.mjs";
 import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";
 import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
 import { buildOpenCodeLaunch, runOpenCode, checkOpenCodeReady } from "./agents/chatgpt/scripts/launch.mjs";
-import { validateRemoteTraeActivity } from "../routing/remote-trae-activity.mjs";
 import { resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, githubReviewChangeKey } from "../integrations/github-events.mjs";
 import { createGithubTaskMemory } from "../memory/github-task-memory.mjs";
 import { createReviewInbox } from "../bridge/review-inbox.mjs";
