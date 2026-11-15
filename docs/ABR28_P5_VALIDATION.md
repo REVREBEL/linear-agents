@@ -35,3 +35,20 @@ Temporary test servers bind to `127.0.0.1` on an OS-assigned port; temporary led
 - **P5.5**: verify Cloudflare webhook and Linear response acknowledgment for valid, rejected, duplicate, delayed, and resumed deliveries. Include operational rollback conditions and evidence log.
 
 Passing P5.1 is **not** permission to restart the live bridge, move persisted job roots, or mark the end-to-end agent loop production-verified.
+
+## Repository folder consolidation (P5 structural checkpoint)
+
+The canonical bridge implementations are now physically located in these folders:
+
+| Canonical file | Previous import path (compatible re-export) |
+| --- | --- |
+| `bridge/server/http-route-composition.mjs` | `bridge/http-route-composition.mjs` |
+| `bridge/handlers/diagnostic-routes.mjs` | `bridge/diagnostic-routes.mjs` |
+| `bridge/config/agent-host-resolver.mjs` | `bridge/agent-host-resolver.mjs` |
+| `bridge/orchestration/job-admission-coordinator.mjs` | `jobs/job-admission-coordinator.mjs` |
+
+The service entrypoint imports the canonical paths, while old imports preserve exact module function identity. Individual folders include README guidance, and CI checks both source ownership and shim interoperability.
+
+**Important scope boundary:** This checkpoint establishes the physical folder topology and relocates four ownership modules. It does **not** claim all handlers, adapters, configuration, and runtime files are already under their final subdirectories. Follow-up migrations should move those components incrementally, each with contract tests and old-path shims until their consumers are updated.
+
+The Ubuntu systemd entrypoint remains `linear-agent-bridge/agent-bridge.mjs`; `PROJECT_DIR`, `JOBS_DIR`, `linear-jobs/`, local state, token stores and Mac SSH runner paths are unchanged. A runtime-state move to `/var/lib/agent-bridge/` still requires a separate supervised migration, rollback procedure, and restart window.
