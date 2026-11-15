@@ -14,6 +14,19 @@ async function readInput() {
 }
 
 async function findContext(start) {
+  // The child process inherits its own immutable per-job capability path.
+  const explicit = process.env.TRAE_ACTIVITY_CONTEXT_FILE;
+  if (explicit) {
+    const workspace = path.resolve(start || process.cwd());
+    const candidate = path.resolve(explicit);
+    const boundary = path.join(".linear-agent", "trae-sessions") + path.sep;
+    if (!candidate.includes(boundary) ||
+        (workspace !== path.dirname(path.dirname(path.dirname(candidate))) &&
+         !workspace.startsWith(path.dirname(path.dirname(path.dirname(candidate))) + path.sep))) {
+      throw Error("Invalid Trae per-job activity context path");
+    }
+    return { candidate, context: JSON.parse(await fs.readFile(candidate, "utf8")) };
+  }
   let current = path.resolve(start || process.cwd());
   for (;;) {
     const candidate = path.join(current, ".linear-agent", "trae-active-session.json");

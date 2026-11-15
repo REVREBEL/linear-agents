@@ -265,3 +265,15 @@ Regression tests cover Linux fail-closed behavior, missing project mappings, sup
 - ChatGPT human and CLI dispatch, Antigravity conversation recovery, Mac Trae, Mock/Gemma, job admission, memory and persisted job paths remain untouched.
 
 New P4 tests cover missing executable, missing prompt, Linux Warp rejection, macOS Warp helper delegation, exact headless launcher argument forwarding and bridge state ownership. No production Gemini runner is invoked, no user data is migrated and no service is deployed.
+
+## P4 local Trae CLI dispatch and activity capability
+
+- `jobs/trae-local-dispatch.mjs` now contains the existing locally executed Trae CLI prechecks, canonical argument rendering, GitHub App bot author/committer identity, repository-scoped activity capability creation, durable `launching` checkpoint, process spawn and log attachment.
+- The main bridge retains the HTTP listener, durable ledger, agent preflight, host routing, process lifecycle handlers and the distinct macOS remote Trae SSH dispatch. Only the local `startTrae` implementation is extracted; remote callback validation in `bridge/trae-callback-routes.mjs` remains unchanged.
+- A missing `TRAE_BIN` or prompt still records a failed job asynchronously and logs the original diagnostic. Missing session or completion URL still records the same failed state before writing any local activity capability or spawning.
+- Local Trae now uses per-job `.linear-agent/trae-sessions/<sha256(jobKey)>.json` capability files (0600) below private 0700 directories, with the same token and session payload fields. The subprocess and its hook inherit `TRAE_ACTIVITY_CONTEXT_FILE`; the callback route authenticates against the job-specific ledger path. Legacy `.linear-agent/trae-active-session.json` remains the backward-compatible lookup for older integrations and Mac SSH jobs.
+- The bridge keeps the local job queued until the capability is created and the dispatcher can durably record `launching`; a failed prelaunch ledger transition revokes the newly created token, records a failed/reconciliation-required state if possible, and never spawns. This is not an automatic replay mechanism; operators must reconcile failures before replay.
+- The Trae subprocess continues to receive its dedicated Linear App token and GitHub App bot identity. Generic `LINEAR_API_KEY` and `LINEAR_ACCESS_TOKEN` variables remain cleared in its environment; CLI arguments, current working directory, stdio and activity lifecycle are preserved.
+- No live file locations, tokens, credentials, processes or sessions are changed by merging this code; no agent or Worker is deployed.
+
+P4 regression tests cover negative prechecks, per-job capability file permissions and payloads, launch-before-ledger prevention, credential isolation, bot identity, process logging, local callback authentication, and the preserved remote SSH dispatch path. A complete live Mac SSH and local Trae smoke test remains a P5 cutover check.

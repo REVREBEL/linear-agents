@@ -1,3 +1,4 @@
+import { dispatchLocalTraeAgent } from "../jobs/trae-local-dispatch.mjs";
 import { dispatchGeminiAgent } from "../jobs/gemini-dispatch.mjs";
 import { dispatchChatgptHumanHandoff } from "../jobs/chatgpt-human-handoff.mjs";
 import { dispatchAntigravityAgent } from "../jobs/antigravity-dispatch.mjs";
@@ -538,7 +539,8 @@ const server = http.createServer(async (request, response) => {
     console.log(`Resolved workspace: ${workspace}`);
     console.log(`Project scope: ${route.projectScope}`);
 
-    await jobStore.transition(jobKey, "launching", { attempts: 1 });
+    // Local Trae publishes its capability and launching transition atomically before spawn.
+    if (agent !== "trae") await jobStore.transition(jobKey, "launching", { attempts: 1 });
     if (agent === "mock") {
       await dispatchMockAgent({ jobStore, jobKey, filename });
     } else if (agent === "antigravity") {
@@ -560,7 +562,13 @@ const server = http.createServer(async (request, response) => {
         projectDir: PROJECT_DIR,
       });
     } else if (agent === "trae") {
-      await startTrae(routedJob, filename, workspace, jobKey, credential, route.repositoryRoot);
+      await dispatchLocalTraeAgent({
+        job: routedJob, filename, workspace, jobKey, credential,
+        repositoryRoot: route.repositoryRoot, traeBin: TRAE_BIN,
+        traeArgsTemplate: TRAE_ARGS_TEMPLATE, jobStore,
+        extractPromptContext, extractAgentSessionId,
+        buildGenericArgs, maskArg, attachProcessLogs,
+      });
     } else if (agent === "gemma") {
       dispatchGemmaAgent({
         job: routedJob, workspace, jobKey, credential, startGemma, jobStore,
@@ -817,75 +825,6 @@ function startChatGPT(job, filename) {
   console.log(`ChatGPT job file: ${filename}`);
 }
 
-async function startTrae(job, filename, workspace, jobKey, credential, repositoryRoot) {
-  if (!TRAE_BIN) {
-    void jobStore.transition(jobKey, "failed", { error: "TRAE_BIN not configured" }).catch(console.error);
-    console.error("TRAE_BIN is not configured. Job saved but Trae was not started.");
-    return;
-  }
-
-  const promptContext = extractPromptContext(job);
-  if (!promptContext) {
-    void jobStore.transition(jobKey, "failed", { error: "Missing Trae promptContext" }).catch(console.error);
-    console.error("Trae skipped. No promptContext found.");
-    return;
-  }
-
-  const args = buildGenericArgs(
-    TRAE_ARGS_TEMPLATE,
-    promptContext,
-    filename,
-    workspace,
-  );
-
-  console.log("Trae job accepted. Spawning Trae...");
-  console.log(`Trae binary: ${TRAE_BIN}`);
-  console.log(`Trae workspace: ${workspace}`);
-  console.log(`Trae args: ${args.map(maskArg).join(" ")}`);
-  console.log("Trae prompt transport: positional chat prompt");
-
-  const traeGithubAppName = process.env.TRAE_GITHUB_APP_NAME || "revrebel-trae";
-  const traeGithubAppId = process.env.TRAE_GITHUB_APP_ID || "5660644";
-  const traeGitName = `${traeGithubAppName}[bot]`;
-  const traeGitEmail = `${traeGithubAppId}+${traeGithubAppName}[bot]@users.noreply.github.com`;
-
-  const sessionId = extractAgentSessionId(job);
-  const completionUrl = job.completionUrl || job.payload?.data?.completionUrl;
-  if (!sessionId || !completionUrl) {
-    await jobStore.transition(jobKey, "failed", { error: "Missing Trae activity session context" });
-    console.error("Trae skipped. Missing Agent Session ID or completion URL.");
-    return;
-  }
-  const activityDir = path.join(repositoryRoot, ".linear-agent");
-  const activityContextFile = path.join(activityDir, "trae-active-session.json");
-  await fs.mkdir(activityDir, { recursive: true, mode: 0o700 });
-  await fs.writeFile(activityContextFile, JSON.stringify({
-    token: crypto.randomBytes(32).toString("hex"),
-    agentSessionId: sessionId,
-    completionUrl,
-    workspace,
-    jobKey,
-    updatedAt: new Date().toISOString(),
-  }, null, 2), { mode: 0o600 });
-  await jobStore.transition(jobKey, "launching", { activityContextFile });
-
-  const traeProcess = spawn(TRAE_BIN, args, {
-    cwd: workspace,
-    env: {
-      ...process.env,
-      LINEAR_API_KEY: "", LINEAR_ACCESS_TOKEN: "",
-      [credential.variable]: credential.accessToken,
-      GIT_AUTHOR_NAME: traeGitName,
-      GIT_AUTHOR_EMAIL: traeGitEmail,
-      GIT_COMMITTER_NAME: traeGitName,
-      GIT_COMMITTER_EMAIL: traeGitEmail,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  attachProcessLogs(traeProcess, "Trae", jobKey);
-}
-
 function safeTokenEqual(actual, expected) {
   if (typeof actual !== "string" || typeof expected !== "string") return false;
   const left = Buffer.from(actual);
@@ -903,8 +842,22 @@ function sanitizeTraeActivityBody(value) {
   return body;
 }
 
-async function readTraeActivityContext(workspace) {
+async function readTraeActivityContext(workspace, explicitFile = null) {
   const projectsRoot = path.resolve(PROJECTS_ROOT);
+  if (explicitFile) {
+    const resolved = path.resolve(explicitFile);
+    const dir = path.dirname(resolved);
+    if (!resolved.startsWith(projectsRoot + path.sep) ||
+        path.basename(dir) !== "trae-sessions" ||
+        path.basename(path.dirname(dir)) !== ".linear-agent") {
+      throw Error("Trae callback context outside trusted project scope");
+    }
+    try { return JSON.parse(await fs.readFile(resolved, "utf8")); }
+    catch (error) {
+      if (error.code === "ENOENT" || error instanceof SyntaxError) return null;
+      throw error;
+    }
+  }
   let current = path.resolve(workspace);
   while (current === projectsRoot || current.startsWith(projectsRoot + path.sep)) {
     const contextFile = path.join(current, ".linear-agent", "trae-active-session.json");

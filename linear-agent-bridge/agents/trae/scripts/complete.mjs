@@ -5,6 +5,18 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 export async function findTraeContext(start = process.cwd(), fsApi = fs) {
+  const explicit = process.env.TRAE_ACTIVITY_CONTEXT_FILE;
+  if (explicit) {
+    const file = path.resolve(explicit);
+    const workspace = path.resolve(start);
+    const root = path.dirname(path.dirname(path.dirname(file)));
+    if (path.basename(path.dirname(file)) !== "trae-sessions" ||
+        path.basename(path.dirname(path.dirname(file))) !== ".linear-agent" ||
+        (workspace !== root && !workspace.startsWith(root + path.sep))) {
+      throw Error("Invalid Trae completion context path");
+    }
+    return JSON.parse(await fsApi.readFile(file, "utf8"));
+  }
   let folder = path.resolve(start);
   for (;;) {
     try {

@@ -20,10 +20,32 @@ export function createTraeCallbackRoutes({
       let context;
       if (typeof activity.jobKey === "string" && activity.jobKey.startsWith("trae:")) {
         const record = await jobStore.get(activity.jobKey).catch(() => null);
-        if (!validateRemoteTraeActivity(activity, record)) {
-          return sendJson(response, 401, { ok: false, error: "Invalid remote Trae activity context" });
+        if (record?.remoteActivityTokenHash) {
+          if (!validateRemoteTraeActivity(activity, record)) {
+            return sendJson(response, 401, { ok: false, error: "Invalid remote Trae activity context" });
+          }
+          context = { agentSessionId: record.agentSessionId, completionUrl: record.remoteCompletionUrl };
+        } else {
+          const root = path.resolve(projectsRoot);
+          const file = typeof record?.activityContextFile === "string"
+            ? path.resolve(record.activityContextFile) : "";
+          const directory = file ? path.dirname(file) : "";
+          if (!record || !["launching", "running", "awaiting_external"].includes(record.state) ||
+              !workspace || (workspace !== root && !workspace.startsWith(root + path.sep)) ||
+              record.workspace !== activity.workspace ||
+              !file.startsWith(root + path.sep) ||
+              path.basename(directory) !== "trae-sessions" ||
+              path.basename(path.dirname(directory)) !== ".linear-agent") {
+            return sendJson(response, 401, { ok: false, error: "Invalid local Trae activity context" });
+          }
+          context = await readTraeActivityContext(workspace, file);
+          if (!context || context.jobKey !== activity.jobKey ||
+              typeof activity.token !== "string" ||
+              !safeTokenEqual(activity.token, context.token) ||
+              activity.agentSessionId !== context.agentSessionId) {
+            return sendJson(response, 401, { ok: false, error: "Invalid local Trae activity context" });
+          }
         }
-        context = { agentSessionId: record.agentSessionId, completionUrl: record.remoteCompletionUrl };
       } else {
         const resolvedProjectsRoot = path.resolve(projectsRoot);
         if (!workspace || (workspace !== resolvedProjectsRoot && !workspace.startsWith(resolvedProjectsRoot + path.sep))) {
