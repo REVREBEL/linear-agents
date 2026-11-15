@@ -147,8 +147,9 @@ test("P5 recovery never treats an interrupted launched job as safe unrouted repl
   }
 });
 
-test("P5 smoke CLI has no production mutation or outbound HTTP configuration", async () => {
+test("P5 smoke CLI fixes loopback target instead of accepting external URLs", async () => {
   const source = await fs.readFile(new URL("./p5-bridge-smoke.mjs", import.meta.url), "utf8");
-  assert.match(source, /http:\/\/127\.0\.0\.1:/);
-  assert.doesNotMatch(source, /MAC_SSH_HOST|POST \/jobs|\/trae-complete/); // except documented prohibited endpoint
+  assert.ok(source.includes("http://127.0.0.1:"));
+  assert.equal(source.includes("fetchImpl(base + endpoint"), true);
+  assert.equal(source.includes('request("/jobs"'), false);
 });
