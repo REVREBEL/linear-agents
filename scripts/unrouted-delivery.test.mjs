@@ -75,15 +75,17 @@ test("unrouted delivery cannot claim success when task write fails", async () =>
   }
 });
 
-test("bridge retains authentication/preflight and claim before unrouted handling", async () => {
+test("bridge retains authentication before coordinator, with unrouted persistence after claim", async () => {
   const src = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs", import.meta.url), "utf8");
+  const coordinator = await fs.readFile(new URL("../jobs/job-admission-coordinator.mjs", import.meta.url), "utf8");
   const auth = src.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
-  const preflight = src.indexOf("await preflightLinearJob({", auth);
-  const claim = src.indexOf("const claimed = await jobStore.claim(", preflight);
-  const unrouted = src.indexOf("await handleUnroutedDelivery({", claim);
-  const remote = src.indexOf('if (route.executionHost === "macos")', unrouted);
-  assert.ok(auth >= 0 && auth < preflight && preflight < claim && claim < unrouted && unrouted < remote);
-  assert.match(src, /if \(unrouted\) return sendJson\(response, unrouted\.status, unrouted\.body\)/);
+  const delegate = src.indexOf("await coordinateJobAdmission({", auth);
+  const remote = src.indexOf('if (route.executionHost === "macos")', delegate);
+  const claim = coordinator.indexOf("const claimed = await jobStore.claim(");
+  const unrouted = coordinator.indexOf("await handleUnrouted({", claim);
+  assert.ok(auth >= 0 && auth < delegate && delegate < remote);
+  assert.ok(claim >= 0 && claim < unrouted);
+  assert.match(src, /return sendJson\(response, admission\.response\.status, admission\.response\.body\)/);
   assert.match(src, /const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
 });
 

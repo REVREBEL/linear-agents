@@ -1,4 +1,4 @@
-import { handleUnroutedDelivery, canRecoverUnroutedDelivery } from "../jobs/unrouted-delivery.mjs";
+import { coordinateJobAdmission } from "../jobs/job-admission-coordinator.mjs";
 import { createAgyProjectConversationStore } from "../conversations/agy-project-conversations.mjs";
 import { createAgentHostResolver } from "../bridge/agent-host-resolver.mjs";
 import { createProcessLifecycleReporter } from "../jobs/process-lifecycle.mjs";
@@ -10,8 +10,6 @@ import { dispatchAntigravityAgent } from "../jobs/antigravity-dispatch.mjs";
 import { dispatchChatgptCliAgent } from "../jobs/chatgpt-cli-dispatch.mjs";
 import { dispatchMockAgent, dispatchGemmaAgent } from "../jobs/simple-agent-dispatch.mjs";
 import { prepareLocalAgentTask } from "../jobs/local-task-preparation.mjs";
-import { preflightLinearJob } from "../jobs/job-preflight.mjs";
-import { identifyLinearJobDelivery, linearJobDuplicateResponse } from "../jobs/job-admission.mjs";
 import { createIssueCompletionRoute } from "../bridge/issue-completion-route.mjs";
 import { createTraeCallbackRoutes } from "../bridge/trae-callback-routes.mjs";
 import { createGithubWebhookRoutes } from "../bridge/github-webhook-routes.mjs";
@@ -424,30 +422,16 @@ const server = http.createServer(async (request, response) => {
     const job = JSON.parse(rawBody);
 
     const agent = agentForHost(host);
-    const { safeJobId, deliveryId, jobKey } = identifyLinearJobDelivery({
-      headers: request.headers, rawBody, agent,
-    });
-    // Resolve, synchronize and verify runtime availability before claiming.
-    const { route, credential, rejection } = await preflightLinearJob({
-      job, agent, sharedSecret: SHARED_SECRET, resolveJobRoute,
+    const admission = await coordinateJobAdmission({
+      headers: request.headers, rawBody, job, host, agent,
+      sharedSecret: SHARED_SECRET, resolveJobRoute,
       syncLinearCredential, checkOpenCodeReady,
+      jobStore, agentJobDirs: AGENT_JOB_DIRS,
     });
-    if (rejection) return sendJson(response, rejection.status, rejection.body);
-    const claimed = await jobStore.claim(jobKey, { agent, deliveryId: String(deliveryId), jobId: safeJobId });
-    // Only pre-launch "received" claims may recover an interrupted unrouted
-    // persistence. Never replay an agent that could already have run.
-    const recoveringUnrouted = canRecoverUnroutedDelivery({ claimed, route, jobKey, agent });
-    if (!recoveringUnrouted) {
-      const duplicateResponse = linearJobDuplicateResponse(claimed, safeJobId, host);
-      if (duplicateResponse) {
-        return sendJson(response, duplicateResponse.status, duplicateResponse.body);
-      }
+    if (admission.response) {
+      return sendJson(response, admission.response.status, admission.response.body);
     }
-    const unrouted = await handleUnroutedDelivery({
-      agent, safeJobId, jobKey, job, route,
-      agentJobDirs: AGENT_JOB_DIRS, jobStore,
-    });
-    if (unrouted) return sendJson(response, unrouted.status, unrouted.body);
+    const { safeJobId, jobKey, route, credential } = admission.delivery;
 
     if (route.executionHost === "macos") {
       // Ubuntu owns the ledger, while the Mac validates its own filesystem.

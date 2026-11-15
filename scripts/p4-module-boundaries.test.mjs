@@ -984,21 +984,28 @@ test("P4 accepted duplicate preserves 202 status and original job ID", () => {
     });
   }
 });
-test("P4 /jobs keeps authentication and preflight before durable delivery claim", async () => {
+test("P4 /jobs authenticates before coordinator, which preflights before durable claim", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const coordinator=await fs.readFile(new URL("../jobs/job-admission-coordinator.mjs",import.meta.url),"utf8");
   const auth=src.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
-  const identity=src.indexOf("identifyLinearJobDelivery({");
-  const preflight=src.indexOf("await preflightLinearJob({",identity);
-  const claim=src.indexOf("const claimed = await jobStore.claim(",preflight);
-  assert.ok(auth>=0 && auth<identity && identity<preflight && preflight<claim);
+  const delegate=src.indexOf("await coordinateJobAdmission({",auth);
+  const launch=src.indexOf('if (route.executionHost === "macos")',delegate);
+  assert.ok(auth>=0 && auth<delegate && delegate<launch);
+  const identity=coordinator.indexOf("identifyDelivery({");
+  const preflight=coordinator.indexOf("await preflight({",identity);
+  const claim=coordinator.indexOf("const claimed = await jobStore.claim(",preflight);
+  const duplicate=coordinator.indexOf("duplicateResponseFor(",claim);
+  const unrouted=coordinator.indexOf("await handleUnrouted({",duplicate);
+  assert.ok(identity>=0 && identity<preflight && preflight<claim && claim<duplicate && duplicate<unrouted);
   const preflightSource=await fs.readFile(new URL("../jobs/job-preflight.mjs",import.meta.url),"utf8");
   const route=preflightSource.indexOf("const route = await resolveJobRoute(job)");
   const credentials=preflightSource.indexOf("const credential = route.ok ? await syncLinearCredential(",route);
   const readiness=preflightSource.indexOf('if (agent === "chatgpt-cli")',credentials);
   assert.ok(route>=0 && route<credentials && credentials<readiness);
-  assert.match(src,/from "\.\.\/jobs\/job-admission\.mjs"/);
-  assert.match(src,/from "\.\.\/jobs\/job-preflight\.mjs"/);
+  assert.match(coordinator,/from "\.\/job-admission\.mjs"/);
+  assert.match(coordinator,/from "\.\/job-preflight\.mjs"/);
+  assert.match(src,/from "\.\.\/jobs\/job-admission-coordinator\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
   const preparation=await fs.readFile(new URL("../jobs/local-task-preparation.mjs",import.meta.url),"utf8");
