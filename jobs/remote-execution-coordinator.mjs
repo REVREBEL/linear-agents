@@ -51,15 +51,19 @@ export async function coordinateRemoteExecution({
     env.MAC_TRAE_ACTIVITY_URL || `https://${activityHost}/trae-activity`,
     activityHost,
   );
+  // The exact-host HTTPS activity endpoint is already validated. Derive the
+  // separate completion callback from its origin, not by rewriting a path.
+  const completionEndpoint = validateActivityEndpoint(
+    new URL("/trae-complete", activityEndpoint).toString(),
+    activityHost, "/trae-complete",
+  );
   const message = {
     agent: "trae", jobId: safeJobId,
     projectId: route.scopeKey, repository: route.repository,
     projectsRoot: osxProjectsRoot,
     projectScope: route.projectScope, launchFromScope: route.launchFromScope,
     prompt: promptContext, agentSessionId: sessionId,
-    activityEndpoint, completionEndpoint: validateActivityEndpoint(
-      activityEndpoint.replace("/trae-activity", "/trae-complete"), activityHost, "/trae-complete",
-    ), activityToken: remoteActivityToken, jobKey,
+    activityEndpoint, completionEndpoint, activityToken: remoteActivityToken, jobKey,
     accessToken: credential.accessToken,
     traeBin: env.MAC_TRAE_BIN || "trae",
     githubAppName: env.TRAE_GITHUB_APP_NAME || "revrebel-trae",
