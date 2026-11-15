@@ -24,7 +24,12 @@ export function identifyLinearJobDelivery({ headers, rawBody, agent, now = Date.
 export function linearJobDuplicateResponse(claimed, safeJobId, host) {
   if (claimed.created) return null;
   const state = claimed.record?.state || "claimed";
-  if (["claimed", "received", "unrouted", "failed", "interrupted"].includes(state)) {
+  // A prepared local Trae job is not accepted until its per-job callback
+  // capability has been durably recorded. A ledger failure before that point
+  // must never be acknowledged as an already-running duplicate.
+  const traeWithoutCapability = state === "queued" &&
+    claimed.record?.agent === "trae" && !claimed.record?.activityContextFile;
+  if (traeWithoutCapability || ["claimed", "received", "unrouted", "failed", "interrupted"].includes(state)) {
     return {
       status: 503,
       body: {
