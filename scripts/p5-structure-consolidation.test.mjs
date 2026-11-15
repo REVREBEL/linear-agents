@@ -102,3 +102,12 @@ test("P5.2: production entrypoint imports canonical code and retains live job ro
   assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
   assert.ok(bridge.includes('server.listen(PORT, HOST,'));
 });
+
+test("P5.2: legacy bridge entrypoint is an import-only loader for canonical server runtime", async () => {
+  const loader = await fs.readFile(path.join(root, "linear-agent-bridge/agent-bridge.mjs"), "utf8");
+  const runtime = await fs.readFile(path.join(root, "bridge/server/agent-bridge-runtime.mjs"), "utf8");
+  assert.match(loader, /^\/\/[^\n]*\nimport "\.\.\/bridge\/server\/agent-bridge-runtime\.mjs";\n$/);
+  assert.equal(loader.includes("server.listen("), false);
+  assert.ok(runtime.includes('new URL("../../linear-agent-bridge/agent-bridge.mjs", import.meta.url)'));
+  assert.ok(runtime.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
+});

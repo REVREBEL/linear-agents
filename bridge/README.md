@@ -1,8 +1,8 @@
-# Bridge source architecture
+# Canonical bridge architecture
 
-- `server/`: HTTP protocol helpers and route composition
-- `handlers/`: authenticated and public ingress handlers
+- `server/`: production runtime, HTTP helper primitives, route composition
+- `handlers/`: diagnostic, review, GitHub, Trae and issue-completion routes
 - `config/`: host-to-agent resolution
-- `orchestration/`: job admission, agent execution, prompt parsing, review lifecycle
+- `orchestration/`: admission, local/remote execution, prompt parsing, review state/handoff
 
-`linear-agent-bridge/agent-bridge.mjs` remains the compatible operational entrypoint and owns live runtime root `linear-jobs/`. Never move it or `linear-jobs/` as part of source-only refactors. Flat `bridge/*.mjs` paths are backward-compatibility re-exports; import canonical modules in new code. See `docs/ABR28_P5_VALIDATION.md`.
+`linear-agent-bridge/agent-bridge.mjs` is the stable **thin runtime loader** for systemd, LaunchAgent and CLI. The real implementation is `server/agent-bridge-runtime.mjs`, which pins `PROJECT_DIR` to the loader's original location. Flat legacy `bridge/*.mjs` files are import-only compatibility shims; new code should use the canonical modules. See `docs/ABR28_P5_VALIDATION.md`.
