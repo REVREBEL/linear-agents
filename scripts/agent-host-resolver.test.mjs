@@ -57,7 +57,10 @@ test("bridge calls the extracted resolver without moving its listener or runtime
   const src = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs", import.meta.url), "utf8");
   assert.match(src, /from "\.\.\/bridge\/agent-host-resolver\.mjs"/);
   assert.match(src, /const agentForHost = createAgentHostResolver\(\{/);
-  assert.match(src, /agentForHost:?[ ,\n]/);
+  // Verify the resolver is actually consumed by both diagnostics and job routing.
+  assert.match(src, /const handleDiagnosticRoute = createDiagnosticRoutes\\(\\{\\s*sharedSecret: SHARED_SECRET,\\s*agentForHost,/);
+  assert.match(src, /const agent = agentForHost\\(host\\);/);
   assert.match(src, /const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src, /const server = http\.createServer\(/);
+  assert.match(src, /server\.listen\(PORT, HOST, \(\) => \{/);
 });
