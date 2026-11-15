@@ -1,3 +1,3 @@
 # Bridge orchestration
 
-The canonical authenticated post-parse job admission coordinator is here. Job ledger, provider-specific launch modules, and runtime data remain under their existing owners and paths. The legacy `jobs/job-admission-coordinator.mjs` re-exports the same implementation.
+Canonical modules: `job-admission-coordinator.mjs`, `local-execution-coordinator.mjs`, `remote-execution-coordinator.mjs`, `prompt-arguments.mjs`, `review-inbox.mjs`, `review-delivery.mjs`, `review-message-handoff.mjs`. Ubuntu owns durable state. Coordinators do not create listeners or move state. Job adapters live under `../../jobs/`; transport remains under `../../routing/`.

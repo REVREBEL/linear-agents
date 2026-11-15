@@ -1,3 +1,3 @@
-# HTTP handlers
+# Ingress handler owners
 
-Stateless HTTP route handlers belong here. The diagnostic handler is canonical at `diagnostic-routes.mjs`; the legacy `bridge/diagnostic-routes.mjs` is an identity-preserving re-export. Other handlers remain at their existing paths until separately migrated and regression-tested.
+Canonical modules: `diagnostic-routes.mjs`, `review-routes.mjs`, `github-webhook-routes.mjs`, `trae-callback-routes.mjs`, `issue-completion-route.mjs`. Every handler keeps its existing authentication and callback contract. Compose them through `../server/http-route-composition.mjs`, never create an additional server or duplicate dispatch state.
