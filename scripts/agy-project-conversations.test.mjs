@@ -77,3 +77,39 @@ test("bridge uses shared AGY store while anchoring data at its original JOBS_DIR
   assert.match(source, /readAgyProjectConversation,/);
   assert.match(source, /saveAgyProjectConversation,/);
 });
+
+test("unsafe project IDs fail closed before any filesystem access", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-agy-project-path-"));
+  try {
+    const store = createAgyProjectConversationStore(dir);
+    for (const projectId of [
+      "../outside", "../../private", "team/project", "team\\\\project",
+      ".", "..", "", "spaces here", "project.json/../outside", "a".repeat(129)
+    ]) {
+      await assert.rejects(store.readAgyProjectConversation(projectId, "/repo"), /Invalid AGY project ID/);
+      await assert.rejects(store.saveAgyProjectConversation(projectId, "/repo", "conversation_12345"), /Invalid AGY project ID/);
+    }
+    await assert.rejects(fs.access(path.join(dir, "project-conversations")), { code: "ENOENT" });
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("project identity must match stored record even when workspace and conversation ID are valid", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-agy-project-swap-"));
+  try {
+    const store = createAgyProjectConversationStore(dir);
+    await store.saveAgyProjectConversation("project-a", "/shared/repo", "conversation_aaa123");
+    await store.saveAgyProjectConversation("project-b", "/shared/repo", "conversation_bbb123");
+    const fileA = path.join(dir, "project-conversations", "project-a.json");
+    const fileB = path.join(dir, "project-conversations", "project-b.json");
+    const bytesA = await fs.readFile(fileA);
+    const bytesB = await fs.readFile(fileB);
+    await fs.writeFile(fileA, bytesB);
+    await fs.writeFile(fileB, bytesA);
+    assert.equal(await store.readAgyProjectConversation("project-a", "/shared/repo"), null);
+    assert.equal(await store.readAgyProjectConversation("project-b", "/shared/repo"), null);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
