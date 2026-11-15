@@ -61,7 +61,8 @@
     "sharp@0.34.5": true,
     "fsevents@2.3.3": true,
     "esbuild@0.28.2": true,
-    "workerd@1.20261023.1": true
+    "@openrouter/sdk@0.13.67": true,
+    "workerd@1.20261109.1": true
   },
   "volta": {
     "node": "26.13.0"
