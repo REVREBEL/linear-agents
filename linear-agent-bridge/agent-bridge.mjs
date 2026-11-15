@@ -1,3 +1,4 @@
+import { createProcessLifecycleReporter } from "../jobs/process-lifecycle.mjs";
 import { extractAgentSessionId, extractDirectTask, extractPromptContext, buildGenericArgs, shellQuote, maskArg } from "../bridge/prompt-arguments.mjs";
 import { dispatchLocalTraeAgent } from "../jobs/trae-local-dispatch.mjs";
 import { dispatchGeminiAgent } from "../jobs/gemini-dispatch.mjs";
@@ -1288,31 +1289,7 @@ async function resolveJobRoute(job) {
     agyConversationId: agyConfig?.conversationMode === "reuse-existing" ? agyConfig.conversationId : null };
 }
 
-function attachProcessLogs(child, label, jobKey, external = false) {
-  let launchError = false;
-  child.on("spawn", () => { void jobStore.transition(jobKey, "running", { pid: child.pid }).catch(console.error); });
-  child.stdout.on("data", (data) => {
-    console.log(`[${label}-Out]: ${data.toString().trim()}`);
-  });
-
-  child.stderr.on("data", (data) => {
-    console.error(`[${label}-Err]: ${data.toString().trim()}`);
-  });
-
-  child.on("error", (error) => {
-    launchError = true;
-    void jobStore.transition(jobKey, "failed", { error: error.message }).catch(console.error);
-    console.error(`[${label}-Spawn-Error]: ${error.message}`);
-  });
-
-  child.on("close", (code, signal) => {
-    if (!launchError) {
-      const state = code === 0 ? (external ? "awaiting_external" : "completed") : "failed";
-      void jobStore.transition(jobKey, state, { exitCode: code, signal }).catch(console.error);
-    }
-    console.log(`[${label}-Exit]: code=${code ?? "null"} signal=${signal ?? "none"}`);
-  });
-}
+const attachProcessLogs = createProcessLifecycleReporter({ jobStore });
 
 function agentForHost(host) {
   if (matchesHost(host, MOCK_HOST)) return "mock";
