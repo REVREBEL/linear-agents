@@ -31,8 +31,8 @@ export function createAgyProjectConversationStore(jobsDir) {
     if (!/^[a-zA-Z0-9_-]{8,128}$/.test(conversationId)) {
       throw new Error("Cannot persist invalid AGY conversation ID");
     }
-    await fs.mkdir(AGY_PROJECT_CONVERSATIONS_DIR, { recursive: true, mode: 0o700 });
     const file = projectConversationFile(projectId);
+    await fs.mkdir(AGY_PROJECT_CONVERSATIONS_DIR, { recursive: true, mode: 0o700 });
     const temporary = file + "." + process.pid + ".tmp";
     try {
       await fs.writeFile(temporary, JSON.stringify({
