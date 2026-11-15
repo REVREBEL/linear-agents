@@ -1,3 +1,4 @@
+import { createAgyProjectConversationStore } from "../conversations/agy-project-conversations.mjs";
 import { createAgentHostResolver } from "../bridge/agent-host-resolver.mjs";
 import { createProcessLifecycleReporter } from "../jobs/process-lifecycle.mjs";
 import { extractAgentSessionId, extractDirectTask, extractPromptContext, buildGenericArgs, shellQuote, maskArg } from "../bridge/prompt-arguments.mjs";
@@ -195,35 +196,7 @@ function launchGithubShortcutHandoff(handoff) {
 }
 
 const ROUTING_CONFIG_FILE = process.env.ROUTING_CONFIG_FILE || path.join(PROJECT_DIR, "routing.json");
-const AGY_PROJECT_CONVERSATIONS_DIR = path.join(JOBS_DIR, "project-conversations");
-async function readAgyProjectConversation(projectId, workspace) {
-  const file = path.join(AGY_PROJECT_CONVERSATIONS_DIR, projectId + ".json");
-  try {
-    const record = JSON.parse(await fs.readFile(file, "utf8"));
-    return record.workspace === workspace &&
-      typeof record.conversationId === "string" &&
-      /^[a-zA-Z0-9_-]{8,128}$/.test(record.conversationId) ? record.conversationId : null;
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-}
-async function saveAgyProjectConversation(projectId, workspace, conversationId) {
-  if (!/^[a-zA-Z0-9_-]{8,128}$/.test(conversationId)) {
-    throw new Error("Cannot persist invalid AGY conversation ID");
-  }
-  await fs.mkdir(AGY_PROJECT_CONVERSATIONS_DIR, { recursive: true, mode: 0o700 });
-  const file = path.join(AGY_PROJECT_CONVERSATIONS_DIR, projectId + ".json");
-  const temporary = file + "." + process.pid + ".tmp";
-  try {
-    await fs.writeFile(temporary, JSON.stringify({
-      projectId, workspace, conversationId, updatedAt: new Date().toISOString()
-    }, null, 2), { mode: 0o600 });
-    await fs.rename(temporary, file);
-  } finally {
-    await fs.rm(temporary, { force: true }).catch(() => {});
-  }
-}
+const { readAgyProjectConversation, saveAgyProjectConversation } = createAgyProjectConversationStore(JOBS_DIR);
 
 const AGENT_JOB_DIRS = {
   antigravity: path.join(JOBS_DIR, "antigravity"),
