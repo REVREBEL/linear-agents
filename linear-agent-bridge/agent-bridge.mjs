@@ -539,7 +539,8 @@ const server = http.createServer(async (request, response) => {
     console.log(`Resolved workspace: ${workspace}`);
     console.log(`Project scope: ${route.projectScope}`);
 
-    await jobStore.transition(jobKey, "launching", { attempts: 1 });
+    // Local Trae publishes its capability and launching transition atomically before spawn.
+    if (agent !== "trae") await jobStore.transition(jobKey, "launching", { attempts: 1 });
     if (agent === "mock") {
       await dispatchMockAgent({ jobStore, jobKey, filename });
     } else if (agent === "antigravity") {
@@ -841,8 +842,22 @@ function sanitizeTraeActivityBody(value) {
   return body;
 }
 
-async function readTraeActivityContext(workspace) {
+async function readTraeActivityContext(workspace, explicitFile = null) {
   const projectsRoot = path.resolve(PROJECTS_ROOT);
+  if (explicitFile) {
+    const resolved = path.resolve(explicitFile);
+    const dir = path.dirname(resolved);
+    if (!resolved.startsWith(projectsRoot + path.sep) ||
+        path.basename(dir) !== "trae-sessions" ||
+        path.basename(path.dirname(dir)) !== ".linear-agent") {
+      throw Error("Trae callback context outside trusted project scope");
+    }
+    try { return JSON.parse(await fs.readFile(resolved, "utf8")); }
+    catch (error) {
+      if (error.code === "ENOENT" || error instanceof SyntaxError) return null;
+      throw error;
+    }
+  }
   let current = path.resolve(workspace);
   while (current === projectsRoot || current.startsWith(projectsRoot + path.sep)) {
     const contextFile = path.join(current, ".linear-agent", "trae-active-session.json");
