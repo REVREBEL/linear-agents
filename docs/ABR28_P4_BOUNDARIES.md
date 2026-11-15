@@ -312,3 +312,16 @@ P4 regression tests cover negative prechecks, per-job capability file permission
 - AGY conversation records now require a safe single-segment project identifier before file access and a matching `record.projectId` when read. Untrusted project IDs cannot traverse the project-conversations directory or reassign a saved conversation to another project with a shared workspace.
 - New regressions explicitly reject traversal inputs and swapped records. Valid legacy records that contain matching project IDs remain readable at the existing runtime data path.
 - The existing `scripts/agent-host-resolver.test.mjs` assertions introduced with merged PR #148 now verify actual use of `agentForHost` in the diagnostic route and POST `/jobs`, plus the HTTP listener's `server.listen(PORT, HOST)` binding. This closes two historical test-coverage review findings from #148 without changing production routing.
+
+## P4 claimed-but-unrouted delivery persistence
+
+- `jobs/unrouted-delivery.mjs` now owns writing the existing `<agentJobDir>/<safeJobId>.unrouted.json` record and persisting the `unrouted` job ledger transition. It returns the original HTTP 422 status/body without sending the response itself.
+- The main bridge still verifies the shared secret, identifies the delivery, preflights its project and credentials, claims the durable delivery ID, and checks duplicate dispatch **before** calling this handler. Remote Mac and local agent launches remain unchanged.
+- The pending task file retains its original JSON shape, `0600` creation mode, directory anchoring and failure log. File write or ledger failure rejects without reporting that a delivery was accepted. No live data directory, Worker, entrypoint, credential or callback protocol change.
+- `scripts/unrouted-delivery.test.mjs` verifies task persistence before ledger update, status/body equivalence, file permissions, failure paths and the original HTTP ordering. Included in both bridge and reliability CI test suites.
+
+## P4 review hardening: unrouted replay and pending-file identity
+
+- The unrouted task filename now adds a SHA-256 digest of the full ledger `jobKey`, preventing two differently encoded upstream delivery IDs from overwriting the same sanitized filename. A task is staged in a unique 0600 temporary file and published with an exclusive hard link; no existing task is overwritten. A duplicate with identical content may safely complete a missing ledger transition, while different content fails closed for manual reconciliation.
+- `canRecoverUnroutedDelivery` permits replay only for an authenticated, matching job claim that is still `received` or was marked `interrupted` from `received` during startup reconciliation. Claims that might have launched an agent remain in the existing duplicate-delivery rejection path. The HTTP handler keeps its original preflight/claim ordering.
+- `handleUnroutedDelivery` is a tested, route-aware adapter: successfully resolved routes return `null` and never persist a pending file; unresolved routes persist before HTTP 422. Tests cover branch selection, collision isolation, persisted replay, failed state updates and mismatched task payloads.

@@ -1,3 +1,4 @@
+import { handleUnroutedDelivery, canRecoverUnroutedDelivery } from "../jobs/unrouted-delivery.mjs";
 import { createAgyProjectConversationStore } from "../conversations/agy-project-conversations.mjs";
 import { createAgentHostResolver } from "../bridge/agent-host-resolver.mjs";
 import { createProcessLifecycleReporter } from "../jobs/process-lifecycle.mjs";
@@ -433,17 +434,20 @@ const server = http.createServer(async (request, response) => {
     });
     if (rejection) return sendJson(response, rejection.status, rejection.body);
     const claimed = await jobStore.claim(jobKey, { agent, deliveryId: String(deliveryId), jobId: safeJobId });
-    const duplicateResponse = linearJobDuplicateResponse(claimed, safeJobId, host);
-    if (duplicateResponse) {
-      return sendJson(response, duplicateResponse.status, duplicateResponse.body);
+    // Only pre-launch "received" claims may recover an interrupted unrouted
+    // persistence. Never replay an agent that could already have run.
+    const recoveringUnrouted = canRecoverUnroutedDelivery({ claimed, route, jobKey, agent });
+    if (!recoveringUnrouted) {
+      const duplicateResponse = linearJobDuplicateResponse(claimed, safeJobId, host);
+      if (duplicateResponse) {
+        return sendJson(response, duplicateResponse.status, duplicateResponse.body);
+      }
     }
-    if (!route.ok) {
-      const pendingFile = path.join(AGENT_JOB_DIRS[agent], `${safeJobId}.unrouted.json`);
-      await fs.writeFile(pendingFile, JSON.stringify({ reason: route.error, job }, null, 2), { mode: 0o600 });
-      await jobStore.transition(jobKey, "unrouted", { error: route.error, taskFile: pendingFile });
-      console.error(`Routing failed: ${route.error}; saved pending job to ${pendingFile}`);
-      return sendJson(response, 422, { ok: false, accepted: false, error: route.error });
-    }
+    const unrouted = await handleUnroutedDelivery({
+      agent, safeJobId, jobKey, job, route,
+      agentJobDirs: AGENT_JOB_DIRS, jobStore,
+    });
+    if (unrouted) return sendJson(response, unrouted.status, unrouted.body);
 
     if (route.executionHost === "macos") {
       // Ubuntu owns the ledger, while the Mac validates its own filesystem.
