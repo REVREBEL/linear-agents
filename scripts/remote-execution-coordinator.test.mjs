@@ -152,7 +152,7 @@ test("completion URL uses validated activity origin without a string path replac
   const source = await fs.readFile(
     new URL("../jobs/remote-execution-coordinator.mjs", import.meta.url), "utf8",
   );
-  assert.doesNotMatch(source, /activityEndpoint\\.replace\\(/);
+  assert.equal(source.includes("activityEndpoint.replace("), false);
 });
 
 test("failed launching ledger write prevents SSH dispatch", async () => {
