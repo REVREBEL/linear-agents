@@ -2,11 +2,14 @@
 
 ## Project: REVREBEL Linear Agents
 
-This repository bridges Linear app agents to local project-specific automation on a Mac through Cloudflare Workers, Cloudflare Tunnel and a Node.js job router. Read this file before modifying any agent, webhook, route or runner.
+This repository bridges Linear app agents to local project-specific automation on Ubuntu and macOS through Cloudflare Workers, Cloudflare Tunnel and a Node.js job router. Read this file before modifying any agent, webhook, route or runner.
 
 ## Source of truth
-- `linear-agent-bridge/agent-bridge.mjs`: hostname-based local HTTP bridge, default `127.0.0.1:8788`.
-- `linear-agent-bridge/job-store.mjs`: persistent filesystem job lifecycle and deduplication ledger.
+- `bridge/server/agent-bridge-runtime.mjs`: canonical hostname-based HTTP bridge implementation, default `127.0.0.1:8788`.
+- `linear-agent-bridge/agent-bridge.mjs`: stable systemd/LaunchAgent entrypoint, import-only loader. Do not move the legacy runtime root.
+- `bridge/handlers/`, `bridge/config/`, `bridge/orchestration/`: canonical HTTP handler, host configuration and job/review coordination modules.
+- `jobs/persistence/job-store.mjs`: canonical filesystem job ledger; `jobs/admission/`, `jobs/dispatch/`, `jobs/preparation/` and `jobs/lifecycle/` contain their domain implementations.
+- `routing/hosts/` and `routing/ssh/`: canonical execution-host and Mac transport modules.
 - `linear-agent-bridge/run_agent.py`: Antigravity (AGY) runner, Linear Agent Activity and quota-exhaustion signal.
 - `linear-agent-bridge/ROUTING.md` and local ignored `linear-agent-bridge/routing.json`: project/initiative to repository and workspace routing.
 - `linear-{antigravity,chatgpt,gemini,trae,mock}-worker/`: five independently deployed Linear OAuth/webhook Workers.
@@ -42,13 +45,14 @@ npm ci
 npm run bridge:test
 npm run types
 node --check linear-agent-bridge/agent-bridge.mjs
-node --check linear-agent-bridge/job-store.mjs
+node --check bridge/server/agent-bridge-runtime.mjs
+node --check jobs/persistence/job-store.mjs
 python3 -m py_compile linear-agent-bridge/run_agent.py
 npm run bridge:status
 npm run bridge:restart
 ```
 
-Use `npm run deploy -- <agent>` for a Worker and the `scripts/with-env.sh` wrapper when root `.env` injection/secrets are needed. Code commits do not automatically deploy Workers or restart the local macOS bridge. Do not claim checks passed unless actually executed.
+Use `npm run deploy -- <agent>` for a Worker and the `scripts/with-env.sh` wrapper when root `.env` injection/secrets are needed. Code commits do not automatically deploy Workers or restart the Ubuntu or macOS bridge. Do not claim checks passed unless actually executed.
 
 ## Documentation and change discipline
 1. Inspect current implementation and routing before editing; historical docs may describe superseded paths and behaviors.

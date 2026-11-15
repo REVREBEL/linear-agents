@@ -13,7 +13,7 @@
 **REVREBEL's Linear-to-local-agent integration.** Four independently installed Linear app agents each use a Cloudflare Worker for OAuth, authenticated webhooks, initial Agent Session activity and completion callbacks. Workers forward jobs over Cloudflare Tunnel to a local machine. This comprehensive knowledge base synthesizes the architecture, operational runbooks, and milestone evolutions of the **REVREBEL Agent Bridge** (`I-4`), consolidating the findings across technical design documents, system audits, conversational developments, and the 44 tracked Linear issues.
 
 
-> **Repository status:** The canonical hostname router is now checked in at [`linear-agent-bridge/agent-bridge.mjs`](linear-agent-bridge/agent-bridge.mjs). The older `chatgpt-bridge.mjs` and `bridge_daemon.py` receivers have been retired. The Antigravity Python runner `run_agent.py` remains in `linear-agent-bridge/` and may still need to be referenced via `RUN_AGENT_PATH` on the deployed Mac.
+> **Repository status:** The canonical hostname router implementation is [`bridge/server/agent-bridge-runtime.mjs`](bridge/server/agent-bridge-runtime.mjs). [`linear-agent-bridge/agent-bridge.mjs`](linear-agent-bridge/agent-bridge.mjs) remains an import-only compatibility loader for systemd, LaunchAgent and CLI scripts. The older `chatgpt-bridge.mjs` and `bridge_daemon.py` receivers have been retired. The Antigravity Python runner `run_agent.py` remains in `linear-agent-bridge/` and may still need to be referenced via `RUN_AGENT_PATH` on the deployed Mac.
 
 See [AGENTS.md](AGENTS.md) for the current architecture, local file paths, safety invariants and agent development checklist. Historical review notes under `docs/` may describe older implementations.
 
@@ -356,17 +356,37 @@ All local credentials and Cloudflare resource IDs are configured through one roo
 ## Repository
 
 ```text
-README.md
-docs/
-  AGENT_BRIDGE_ARCHITECTURE_AND_OPERATIONS.md
-linear-antigravity-worker/
-linear-trae-worker/
-linear-gemini-worker/
-linear-chatgpt-worker/
+agents/                     # Coding providers and reviewer agents
+  coding/
+  bridge/reviewer/worker/
+bridge/
+  server/                   # Canonical HTTP runtime, route composer and helpers
+    agent-bridge-runtime.mjs
+    http-route-composition.mjs
+    http-helpers.mjs
+  handlers/                 # Diagnostics, GitHub, review and Trae callbacks
+  config/                   # Host-to-agent resolution
+  orchestration/            # Admission, execution, review and prompt parsing
+jobs/
+  admission/                # Identity, preflight and unrouted recovery
+  dispatch/                 # Provider-specific launch adapters
+  preparation/              # Task payload preparation
+  lifecycle/                # Process state and ordered progress
+  persistence/              # Durable job ledger
+routing/
+  hosts/                    # Trusted execution-host mapping
+  ssh/                      # Mac transport and callback capabilities
+conversations/              # Session queue and recovery
+memory/                     # Task checkpointing and optional memU
+integrations/               # Linear, GitHub and model runtimes
+shared/                     # Cross-worker common contracts
+scripts/                    # Setup, deployment and isolated tests
+docs/                       # Architecture and operations
 linear-agent-bridge/
-  agent-bridge.mjs      # canonical multi-agent local router
-  .trae/               # Trae session-start integration
-linear-agent-bridge/run_agent.py # Antigravity CLI runner
+  agent-bridge.mjs           # Stable systemd / LaunchAgent compatibility loader
+  linear-jobs/               # Existing runtime state (not source controlled)
+  agents/                   # Path-sensitive CLI runner integrations
+  run_agent.py               # Antigravity Python runner
 ```
 
 Each Worker retains its own `wrangler.jsonc`, `src/index.ts`, and workspace `package.json`, while npm dependencies and the lockfile are shared at the root. The shared source is duplicated between Worker folders, so a fix in one does **not** automatically reach the others.
@@ -426,7 +446,7 @@ See [Linear Webhook Traffic Protection](docs/LINEAR_WEBHOOK_TRAFFIC_PROTECTION.m
 
 ## Local service
 
-The canonical local router is [`linear-agent-bridge/agent-bridge.mjs`](linear-agent-bridge/agent-bridge.mjs). It listens on `127.0.0.1:8788` and routes by Tunnel `Host` header. Antigravity launches `RUN_AGENT_PATH` with Python, Trae launches its configured CLI, Gemini supports headless mode or a Warp interactive launch, and ChatGPT can prepare or automatically launch an existing-conversation handoff through Playwright or a native [Apple Shortcut](docs/CHATGPT_SHORTCUTS_HANDOFF.md). Configure `RUN_AGENT_PATH` to point to the actual deployed `run_agent.py` location; the repository keeps that Python file at its root.
+The canonical router implementation is [`bridge/server/agent-bridge-runtime.mjs`](bridge/server/agent-bridge-runtime.mjs), loaded by the unchanged operational entrypoint [`linear-agent-bridge/agent-bridge.mjs`](linear-agent-bridge/agent-bridge.mjs). Its `PROJECT_DIR` remains pinned to the original entrypoint directory, preserving `linear-jobs/` and runner paths. It listens on `127.0.0.1:8788` and routes by Tunnel `Host` header. Antigravity launches `RUN_AGENT_PATH` with Python, Trae launches its configured CLI, Gemini supports headless mode or a Warp interactive launch, and ChatGPT can prepare or automatically launch an existing-conversation handoff through Playwright or a native [Apple Shortcut](docs/CHATGPT_SHORTCUTS_HANDOFF.md). Configure `RUN_AGENT_PATH` to point to the actual deployed `run_agent.py` location; the repository keeps that Python file at its root.
 
 ## Documentation
 
