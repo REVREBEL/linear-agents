@@ -1,6 +1,48 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
-  ]
+  "extends": ["config:recommended"],
+  "dependencyDashboard": true,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "ignoreTests": false,
+  "rebaseWhen": "behind-base-branch",
+  "prCreation": "not-pending",
+  "internalChecksFilter": "strict",
+  "packageRules": [
+    {
+      "description": "Automerge stable patch updates after a 14-day release age",
+      "matchUpdateTypes": ["patch"],
+      "matchCurrentVersion": "!/^0/",
+      "minimumReleaseAge": "14 days",
+      "automerge": true
+    },
+    {
+      "description": "Automerge stable minor devDependency updates after a 14-day release age",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor"],
+      "matchCurrentVersion": "!/^0/",
+      "minimumReleaseAge": "14 days",
+      "automerge": true
+    },
+    {
+      "description": "Automerge pin and digest updates after a 14-day release age",
+      "matchUpdateTypes": ["pin", "digest"],
+      "minimumReleaseAge": "14 days",
+      "automerge": true
+    },
+    {
+      "description": "Never automerge pre-1.0 dependencies",
+      "matchCurrentVersion": "/^0/",
+      "automerge": false
+    },
+    {
+      "description": "Never automerge major updates",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  }
 }
