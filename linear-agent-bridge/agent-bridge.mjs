@@ -1,3 +1,4 @@
+import { coordinateRemoteExecution } from "../jobs/remote-execution-coordinator.mjs";
 import { coordinateLocalExecution } from "../jobs/local-execution-coordinator.mjs";
 import { coordinateJobAdmission } from "../jobs/job-admission-coordinator.mjs";
 import { createAgyProjectConversationStore } from "../conversations/agy-project-conversations.mjs";
@@ -12,11 +13,11 @@ import { createDiagnosticRoutes } from "../bridge/diagnostic-routes.mjs";
 import { normalizeHost, matchesHost, readBody, sendJson } from "../bridge/http-helpers.mjs";
 import { syncLinearCredential } from "../integrations/linear-credentials.mjs";
 import { chooseExecutionHost, makeRemoteRoute } from "../routing/host-routing.mjs";
-import { launchMacTrae, cleanupMacTrae } from "../routing/ssh-dispatch.mjs";
+import { cleanupMacTrae } from "../routing/ssh-dispatch.mjs";
 import { buildAntigravityLaunch } from "./agents/antigravity/scripts/launch.mjs";
 import { buildGeminiLaunch } from "./agents/gemini/scripts/launch.mjs";
 import { buildOpenCodeLaunch, runOpenCode, checkOpenCodeReady } from "./agents/chatgpt/scripts/launch.mjs";
-import { hashRemoteToken, validateRemoteTraeActivity, validateActivityEndpoint, validateTraeCompletionUrl } from "../routing/remote-trae-activity.mjs";
+import { validateRemoteTraeActivity } from "../routing/remote-trae-activity.mjs";
 import { resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, githubReviewChangeKey } from "../integrations/github-events.mjs";
 import { createGithubTaskMemory } from "../memory/github-task-memory.mjs";
 import { createReviewInbox } from "../bridge/review-inbox.mjs";
@@ -428,68 +429,12 @@ const server = http.createServer(async (request, response) => {
     const { safeJobId, jobKey, route, credential } = admission.delivery;
 
     if (route.executionHost === "macos") {
-      // Ubuntu owns the ledger, while the Mac validates its own filesystem.
-      if (agent !== "trae") {
-        await jobStore.transition(jobKey, "unrouted", { error: "Mac SSH runner currently supports Trae only" });
-        return sendJson(response, 422, { ok: false, accepted: false, error: "Mac SSH runner currently supports Trae only" });
-      }
-      const promptContext = extractDirectTask(extractPromptContext(job));
-      if (!promptContext || !credential?.accessToken) {
-        await jobStore.transition(jobKey, "failed", { error: "Missing Mac Trae prompt or app credential" });
-        return sendJson(response, 422, { ok: false, accepted: false, error: "Missing remote prompt or credential" });
-      }
-      const sessionId = extractAgentSessionId(job);
-      const remoteActivityToken = crypto.randomBytes(32).toString("hex");
-      const completionHost = process.env.TRAE_WORKER_HOST || `linear-${process.env.TRAE_PREFIX || "trae"}.${process.env.DOMAIN || "revrebel.io"}`;
-      const rawCompletionUrl = job.completionUrl || job.payload?.data?.completionUrl;
-      const remoteCompletionUrl = rawCompletionUrl
-        ? validateTraeCompletionUrl(rawCompletionUrl, completionHost) : null;
-      if (!sessionId || !remoteCompletionUrl) {
-        await jobStore.transition(jobKey, "failed", { error: "Missing Mac Trae session or completion URL" });
-        return sendJson(response, 422, { ok: false, accepted: false, error: "Missing Mac Trae callback context" });
-      }
-      const activityHost = process.env.TRAE_HOST || "trae-agent.revrebel.io";
-      const activityEndpoint = validateActivityEndpoint(
-        process.env.MAC_TRAE_ACTIVITY_URL || `https://${activityHost}/trae-activity`, activityHost
-      );
-      const message = {
-        agent: "trae", jobId: safeJobId,
-        projectId: route.scopeKey, repository: route.repository,
-        projectsRoot: OSX_PROJECTS_ROOT,
-        projectScope: route.projectScope, launchFromScope: route.launchFromScope,
-        prompt: promptContext, agentSessionId: sessionId,
-        activityEndpoint, completionEndpoint: validateActivityEndpoint(
-          activityEndpoint.replace("/trae-activity", "/trae-complete"), activityHost, "/trae-complete"
-        ), activityToken: remoteActivityToken, jobKey,
-        accessToken: credential.accessToken,
-        traeBin: process.env.MAC_TRAE_BIN || "trae",
-        githubAppName: process.env.TRAE_GITHUB_APP_NAME || "revrebel-trae",
-        githubAppId: process.env.TRAE_GITHUB_APP_ID || "5660644",
-        job: {
-          routing: job.routing, issueId: job.issueId || job.issueMetadata?.id,
-          issueMetadata: job.issueMetadata, source: job.source,
-          sessionAction: job.sessionAction, agentSessionId: sessionId,
-          completionUrl: job.completionUrl,
-          payload: { data: { promptContext, agentSessionId: sessionId, completionUrl: job.completionUrl } },
-        },
-      };
-      await jobStore.transition(jobKey, "launching", {
-        executionHost: "macos", repository: route.repository,
-        workspace: route.launchDirectory, agentSessionId: sessionId,
-        issueId: message.job.issueId || null, attempts: 1,
-        remoteTask: { jobId: safeJobId, repository: route.repository, projectId: route.scopeKey },
-        remoteActivityTokenHash: hashRemoteToken(remoteActivityToken),
-        remoteCompletionUrl,
+      const remote = await coordinateRemoteExecution({
+        agent, job, jobKey, safeJobId, credential, host, route,
+        jobStore, osxProjectsRoot: OSX_PROJECTS_ROOT,
+        extractPromptContext, extractDirectTask, extractAgentSessionId,
       });
-      try {
-        await launchMacTrae({ job: message, jobKey, jobStore });
-      } catch (error) {
-        await jobStore.transition(jobKey, "failed", { error: String(error), executionHost: "macos" });
-        return sendJson(response, 503, { ok: false, accepted: false,
-          error: "Mac Trae dispatch failed; reconcile remote job state before retry" });
-      }
-      return sendJson(response, 202, { ok: true, accepted: true,
-        jobId: safeJobId, executionHost: "macos", host });
+      return sendJson(response, remote.status, remote.body);
     }
 
     const execution = await coordinateLocalExecution({
