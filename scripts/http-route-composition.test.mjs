@@ -144,7 +144,7 @@ test("shortcut POST enforces method, payload shape and original error redaction"
 });
 
 test("bridge owns HTTP listener, final 404, and /jobs authorization after composed routes", async () => {
-  const source = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs", import.meta.url), "utf8");
+  const source = await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs", import.meta.url), "utf8");
   const compose = source.indexOf("await handleComposedRoutes(request, response, { host, url })");
   const notFound = source.indexOf('if (request.method !== "POST" || url.pathname !== "/jobs")', compose);
   const auth = source.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)', notFound);

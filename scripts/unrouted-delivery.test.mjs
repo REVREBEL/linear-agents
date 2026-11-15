@@ -76,7 +76,7 @@ test("unrouted delivery cannot claim success when task write fails", async () =>
 });
 
 test("bridge retains authentication before coordinator, with unrouted persistence after claim", async () => {
-  const src = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs", import.meta.url), "utf8");
+  const src = await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs", import.meta.url), "utf8");
   const coordinator = await fs.readFile(new URL("../bridge/orchestration/job-admission-coordinator.mjs", import.meta.url), "utf8");
   const auth = src.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
   const delegate = src.indexOf("await coordinateJobAdmission({", auth);

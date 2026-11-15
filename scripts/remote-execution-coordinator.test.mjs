@@ -197,7 +197,7 @@ test("SSH acknowledgment must complete before success response", async () => {
 });
 
 test("bridge delegates Mac SSH execution after admission but retains HTTP responses and local execution", async () => {
-  const source = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs", import.meta.url), "utf8");
+  const source = await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs", import.meta.url), "utf8");
   const auth = source.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
   const admission = source.indexOf("await coordinateJobAdmission({", auth);
   const remoteBranch = source.indexOf('if (route.executionHost === "macos")', admission);
