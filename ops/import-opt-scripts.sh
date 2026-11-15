@@ -44,7 +44,7 @@ conflicts=0
 while IFS= read -r -d '' file; do
   rel="${file#"$source_dir"/}"
   case "/$rel" in
-    */.*|*/.*/ * ) ((skipped+=1)); continue ;;
+    */.* ) ((skipped+=1)); continue ;;
   esac
   # Exclude obvious sensitive/runtime paths, without claiming to detect secrets in content.
   lower="${rel,,}"
