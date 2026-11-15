@@ -36,19 +36,26 @@ Temporary test servers bind to `127.0.0.1` on an OS-assigned port; temporary led
 
 Passing P5.1 is **not** permission to restart the live bridge, move persisted job roots, or mark the end-to-end agent loop production-verified.
 
-## Repository folder consolidation (P5 structural checkpoint)
 
-The canonical bridge implementations are now physically located in these folders:
+## P5.2: Repository consolidation acceptance map
 
-| Canonical file | Previous import path (compatible re-export) |
-| --- | --- |
-| `bridge/server/http-route-composition.mjs` | `bridge/http-route-composition.mjs` |
-| `bridge/handlers/diagnostic-routes.mjs` | `bridge/diagnostic-routes.mjs` |
-| `bridge/config/agent-host-resolver.mjs` | `bridge/agent-host-resolver.mjs` |
-| `bridge/orchestration/job-admission-coordinator.mjs` | `jobs/job-admission-coordinator.mjs` |
+Canonical owners are now located in the directories below. The old import paths remain **thin, import-only re-exports**, not parallel implementations; `scripts/p5-structure-consolidation.test.mjs` is the executable full 31-module inventory and verifies each export's reference identity.
 
-The service entrypoint imports the canonical paths, while old imports preserve exact module function identity. Individual folders include README guidance, and CI checks both source ownership and shim interoperability.
+| Area | Canonical implementation directory | Responsibility |
+| --- | --- | --- |
+| HTTP | `bridge/server/` | Shared HTTP helpers and non-job route composition |
+| Ingress | `bridge/handlers/` | Diagnostics, GitHub, review, Trae callbacks, issue completion |
+| Configuration | `bridge/config/` | Agent host resolver |
+| Orchestration | `bridge/orchestration/` | Admission, local/SSH execution, prompt parsing, reviewer state and handoff |
+| Job admission | `jobs/admission/` | Delivery identity, validation, preflight and unrouted recovery |
+| Dispatch | `jobs/dispatch/` | Antigravity, Gemini, Trae, ChatGPT CLI, human handoff, simple agents |
+| Preparation | `jobs/preparation/` | Canonical task writing and recovery context preparation |
+| Lifecycle | `jobs/lifecycle/` | Process reporting and ordered progress |
+| Persistence | `jobs/persistence/` | Durable job ledger |
+| Host routing | `routing/hosts/` | Trusted host mapping |
+| Remote transport | `routing/ssh/` | SSH dispatch and remote activity authentication |
+| Existing owners | `agents/`, `conversations/`, `memory/`, `integrations/`, `shared/` | No additional relocation needed in this PR |
 
-**Important scope boundary:** This checkpoint establishes the physical folder topology and relocates four ownership modules. It does **not** claim all handlers, adapters, configuration, and runtime files are already under their final subdirectories. Follow-up migrations should move those components incrementally, each with contract tests and old-path shims until their consumers are updated.
+**Safety boundary:** The executable Ubuntu systemd entrypoint `linear-agent-bridge/agent-bridge.mjs` and the provider runner paths under `linear-agent-bridge/agents/` remain in their existing runtime positions. Moving those files or rewriting `PROJECT_DIR` would alter the location of `linear-jobs/` or the SSH runner contract, so a separate explicitly approved deployment/migration is required. The entrypoint imports canonical module owners directly, not their compatibility shims.
 
-The Ubuntu systemd entrypoint remains `linear-agent-bridge/agent-bridge.mjs`; `PROJECT_DIR`, `JOBS_DIR`, `linear-jobs/`, local state, token stores and Mac SSH runner paths are unchanged. A runtime-state move to `/var/lib/agent-bridge/` still requires a separate supervised migration, rollback procedure, and restart window.
+This is the source-module consolidation acceptance gate, not a production runtime-data migration, process restart, or service deployment. The build/test runner and existing Worker workspace paths remain unchanged. The CI acceptance suite checks all canonical exports and compatibility modules, the existing source-order guarantees, and the persistent runtime path invariant.
