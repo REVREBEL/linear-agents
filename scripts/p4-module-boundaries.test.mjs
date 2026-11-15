@@ -1672,7 +1672,7 @@ test("P4 local Trae persists 0600 capability before launching with scoped identi
     assert.equal(result,undefined);
     assert.equal(events[0][0],"args");
     assert.deepEqual(events[0].slice(1),["chat {prompt}","Code task",root+"/job.json",root]);
-    const contextPath=path.join(root,".linear-agent","trae-active-session.json");
+    const contextPath=path.join(root,".linear-agent","trae-sessions",(await import("node:crypto")).createHash("sha256").update("trae:delivery-1").digest("hex")+".json");
     const context=JSON.parse(await fs.readFile(contextPath,"utf8"));
     assert.deepEqual(context,{
       token,agentSessionId:"session-1",
@@ -1688,6 +1688,7 @@ test("P4 local Trae persists 0600 capability before launching with scoped identi
     assert.equal(events[2][3].cwd,root);
     assert.deepEqual(events[2][3].stdio,["ignore","pipe","pipe"]);
     assert.equal(events[2][3].env.TRAE_LINEAR_API_KEY,"mock-app-token");
+    assert.equal(events[2][3].env.TRAE_ACTIVITY_CONTEXT_FILE,contextPath);
     assert.equal(events[2][3].env.LINEAR_API_KEY,"");
     assert.equal(events[2][3].env.LINEAR_ACCESS_TOKEN,"");
     assert.equal(events[2][3].env.GIT_AUTHOR_NAME,"revrebel-trae[bot]");
@@ -1728,5 +1729,70 @@ test("P4 Trae local dispatch retains original bridge state and remote SSH lifecy
   assert.ok(bridge.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
   assert.ok(local.includes('path.join(repositoryRoot, ".linear-agent")'));
+  assert.ok(bridge.includes('if (agent !== "trae") await jobStore.transition(jobKey, "launching"'));
+  assert.match(bridge,/if \(route\.executionHost === "macos"\) \{[\s\S]*?await launchMacTrae\(\{ job: message, jobKey, jobStore \}\)/);
   assert.ok(local.includes('attachProcessLogs(traeProcess, "Trae", jobKey)'));
+});
+
+test("P4 Trae concurrent jobs retain separate private callback files", async () => {
+  const fs = await import("node:fs/promises");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(),"abr28-trae-concurrent-"));
+  const launches=[];
+  try {
+    const run = key => dispatchLocalTraeAgent({
+      job:{completionUrl:"https://example.test/complete"},filename:root+"/task.json",
+      workspace:root,jobKey:key,repositoryRoot:root,traeBin:"trae",
+      traeArgsTemplate:"{prompt}",credential:{variable:"TRAE_LINEAR_API_KEY",accessToken:"mock"},
+      jobStore:{transition:async()=>{}},extractPromptContext:()=>"task",
+      extractAgentSessionId:()=>key,buildGenericArgs:()=>["chat","task"],maskArg:x=>x,
+      spawnProcess:(_bin,_args,opts)=>{ launches.push(opts.env.TRAE_ACTIVITY_CONTEXT_FILE); return {}; },
+      attachProcessLogs:()=>{},logger:{log:()=>{},error:()=>{}}
+    });
+    await Promise.all([run("trae:one"),run("trae:two")]);
+    assert.equal(launches.length,2);
+    assert.notEqual(launches[0],launches[1]);
+    for (const file of launches) assert.equal((await fs.stat(file)).mode & 0o777,0o600);
+    const contexts=await Promise.all(launches.map(f=>fs.readFile(f,"utf8").then(JSON.parse)));
+    assert.deepEqual(new Set(contexts.map(c=>c.jobKey)),new Set(["trae:one","trae:two"]));
+  } finally { await fs.rm(root,{recursive:true,force:true}); }
+});
+
+test("P4 Trae local callback checks the exact job ledger capability while remote remains separate", async () => {
+  const fs = await import("node:fs/promises");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(),"abr28-trae-callback-"));
+  try {
+    const dir=path.join(root,".linear-agent","trae-sessions");
+    await fs.mkdir(dir,{recursive:true});
+    const file=path.join(dir,"one.json");
+    await fs.writeFile(file,JSON.stringify({
+      token:"a".repeat(64),jobKey:"trae:one",agentSessionId:"session-1",
+      workspace:root,completionUrl:"https://example.test/complete"
+    }));
+    const calls=[];
+    const handler=createTraeCallbackRoutes({
+      projectsRoot:root,traeActivityState:new Map(),
+      jobStore:{get:async key=>key==="trae:one"?{
+        state:"launching",workspace:root,activityContextFile:file,key
+      }:null},
+      readTraeActivityContext:async(_workspace,filename)=>JSON.parse(await fs.readFile(filename,"utf8")),
+      safeTokenEqual:(a,b)=>a===b,sanitizeTraeActivityBody:body=>body,
+      postTraeActivity:async(...args)=>{calls.push(args);return true;}
+    });
+    async function post(payload) {
+      const req=new PassThrough(),res=new PassThrough();
+      req.method="POST"; req.url="/trae-activity";
+      res.statusCode=200;
+      res.setHeader=()=>{};
+      res.writeHead=(status)=>{res.statusCode=status;return res;};
+      const chunks=[];res.on("data",chunk=>chunks.push(chunk));
+      req.end(JSON.stringify(payload));
+      await handler(req,res,{url:new URL("http://localhost/trae-activity")});
+      return {status:res.statusCode,body:Buffer.concat(chunks).toString()};
+    }
+    const activity={jobKey:"trae:one",token:"a".repeat(64),agentSessionId:"session-1",workspace:root,body:"progress"};
+    assert.equal((await post(activity)).status,202);
+    assert.equal(calls.length,1);
+    assert.equal((await post({...activity,token:"wrong"})).status,401);
+    assert.equal((await post({...activity,jobKey:"trae:another"})).status,401);
+  } finally { await fs.rm(root,{recursive:true,force:true}); }
 });
