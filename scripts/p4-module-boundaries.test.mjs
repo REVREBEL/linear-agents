@@ -544,7 +544,9 @@ test("P4 diagnostic handlers are delegated but HTTP listener and job routes rema
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.match(src,/from "\.\.\/bridge\/diagnostic-routes\.mjs"/);
-  assert.match(src,/if \(handleDiagnosticRoute\(request, response, \{ host, url \}\)\) return;/);
+  const composer=await fs.readFile(new URL("../bridge/http-route-composition.mjs",import.meta.url),"utf8");
+  assert.match(src,/await handleComposedRoutes\(request, response, \{ host, url \}\)/);
+  assert.match(composer,/if \(handleDiagnosticRoute\(request, response, \{ host, url \}\)\) return true;/);
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/request\.method !== "POST" \|\| url\.pathname !== "\/jobs"/);
@@ -624,7 +626,10 @@ test("P4 review route extraction keeps original job dispatcher and path anchors"
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.match(source,/from "\.\.\/bridge\/review-routes\.mjs"/);
-  assert.match(source,/await handleReviewRoute\(request, response, \{ url \}\)/);
+  const httpComposer=await fs.readFile(new URL("../bridge/http-route-composition.mjs",import.meta.url),"utf8");
+  assert.ok(source.includes("createHttpRouteComposer({"));
+  assert.ok(source.includes("await handleComposedRoutes(request, response, { host, url })"));
+  assert.match(httpComposer,/await handleReviewRoute\(request, response, \{ url \}\)/);
   assert.match(source,/const server = http\.createServer\(async \(request, response\) => \{/);
   assert.match(source,/createReviewInbox\(JOBS_DIR\)/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
@@ -829,7 +834,10 @@ test("P4 Trae callback route extraction retains bridge-owned job and activity st
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.match(src,/from "\.\.\/bridge\/trae-callback-routes\.mjs"/);
-  assert.match(src,/await handleTraeCallbackRoute\(request, response, \{ url \}\)/);
+  const httpComposer=await fs.readFile(new URL("../bridge/http-route-composition.mjs",import.meta.url),"utf8");
+  assert.ok(src.includes("createHttpRouteComposer({"));
+  assert.ok(src.includes("await handleComposedRoutes(request, response, { host, url })"));
+  assert.match(httpComposer,/await handleTraeCallbackRoute\(request, response, \{ url \}\)/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/const traeActivityState = new Map\(\)/);
   assert.match(src,/createTraeCallbackRoutes\(\{/);
@@ -932,7 +940,10 @@ test("P4 issue completion source retains unchanged main jobs route and job-store
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.ok(src.includes('from "../bridge/issue-completion-route.mjs"'));
-  assert.ok(src.includes('await handleIssueCompletionRoute(request, response, { url })'));
+  const httpComposer=await fs.readFile(new URL("../bridge/http-route-composition.mjs",import.meta.url),"utf8");
+  assert.ok(src.includes("createHttpRouteComposer({"));
+  assert.ok(src.includes("await handleComposedRoutes(request, response, { host, url })"));
+  assert.ok(httpComposer.includes('await handleIssueCompletionRoute(request, response, { url })'));
   assert.ok(src.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(src.includes('request.method !== "POST" || url.pathname !== "/jobs"'));
   assert.ok(src.includes('const server = http.createServer(async (request, response) => {'));
