@@ -1734,9 +1734,10 @@ test("P4 Trae local dispatch retains original bridge state and remote SSH lifecy
   const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
   const local=await fs.readFile(new URL("../jobs/trae-local-dispatch.mjs",import.meta.url),"utf8");
+  const remote=await fs.readFile(new URL("../jobs/remote-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "./trae-local-dispatch.mjs"'));
   assert.ok(execution.includes("await dispatchers.trae({"));
-  assert.ok(bridge.includes("launchMacTrae({ job: message, jobKey, jobStore })"));
+  assert.ok(remote.includes("await dispatch({ job: message, jobKey, jobStore })"));
   assert.ok(bridge.includes("function safeTokenEqual(actual, expected)"));
   assert.ok(bridge.includes("function sanitizeTraeActivityBody(value)"));
   assert.ok(bridge.includes("createTraeCallbackRoutes({"));
@@ -1744,7 +1745,7 @@ test("P4 Trae local dispatch retains original bridge state and remote SSH lifecy
   assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
   assert.ok(local.includes('path.join(repositoryRoot, ".linear-agent")'));
   assert.ok(execution.includes('if (agent !== "trae") await jobStore.transition(jobKey, "launching"'));
-  assert.match(bridge,/if \(route\.executionHost === "macos"\) \{[\s\S]*?await launchMacTrae\(\{ job: message, jobKey, jobStore \}\)/);
+  assert.match(bridge,/if \(route\.executionHost === "macos"\) \{[\s\S]*?await coordinateRemoteExecution\(\{/);
   assert.ok(local.includes('attachProcessLogs(traeProcess, "Trae", jobKey)'));
 });
 
