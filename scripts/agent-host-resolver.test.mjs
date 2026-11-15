@@ -55,7 +55,7 @@ test("resolver reads supplied deployment config rather than environment globals"
 test("bridge calls the extracted resolver without moving its listener or runtime ledger", async () => {
   const fs = await import("node:fs/promises");
   const src = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs", import.meta.url), "utf8");
-  assert.match(src, /from "\.\.\/bridge\/agent-host-resolver\.mjs"/);
+  assert.match(src, /from "\.\.\/bridge\/config\/agent-host-resolver\.mjs"/);
   assert.match(src, /const agentForHost = createAgentHostResolver\(\{/);
   // Verify the resolver is actually consumed by both diagnostics and job routing.
   assert.match(src, /const handleDiagnosticRoute = createDiagnosticRoutes\(\{\s*sharedSecret: SHARED_SECRET,\s*agentForHost,/);
