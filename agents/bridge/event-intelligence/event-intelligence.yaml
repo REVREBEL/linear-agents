@@ -1,0 +1,77 @@
+id: event-intelligence
+displayName: EventIntelligence Triage Agent (Gemma 4 26B MoE)
+description: Model-assisted, auditable webhook triage and context-enrichment service
+  for the Linear Agent Bridge (ABR-18). Evaluates incoming GitHub and Linear webhooks
+  lacking natural-language promptContext (such as PR review requests, revision pushes,
+  Jules/Sorcery comments, CI check completions, and Renovate updates), hydrates them
+  with Git diffs and ABR-6 review checkpoints, and produces validated triage decisions
+  with semantic work deduplication.
+kind: llm
+provider: Google
+model: google/gemma-4-26b-a4b-it:free
+runtime:
+  transport: direct_api
+  executionHost: ubuntu_bridge_service
+  workspaceRoot: /var/agent-bridge/event-intelligence
+linearBridge:
+  workerHost: linear-event-intelligence.revrebel.io
+  tunnelHost: event-intelligence-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  - session_prompted
+  - code_review_verdict
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Utility-based
+  domain: Webhook event triage, context enrichment, and automated review dispatch
+  top_skills:
+  - Semantic webhook event classification and triage
+  - PR context hydration and review checkpoint correlation
+  - Deterministic policy enforcement and review deduplication
+routing:
+  complexity_tier: Medium
+  semantic_description: Evaluates sparse GitHub and Linear webhook events lacking
+    promptContext, determines whether events represent actionable review requests
+    or routine bot noise, and coordinates review dispatch to the ChatGPT review harness.
+  supported_intents:
+  - triage_webhook_event
+  - classify_review_intent
+  - evaluate_pr_actionability
+  - deduplicate_semantic_work
+  task_ratings:
+    webhook_triage: 4.9
+    review_intent_classification: 4.8
+    context_enrichment: 4.7
+    code_generation: 2.0
+execution:
+  autonomy_level: Recommender
+  memory_scope: stateless
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 60000
+    maxRetryAttempts: 3
+    exhaustionPattern: 429|rate_limited|model_not_available
+permissions:
+  sourceWrite: false
+  directoryMoves: false
+  gitCommit: false
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - OPENROUTER_API_KEY
+  - GITHUB_APP_PRIVATE_KEY
+  mcpToolAllowlist:
+  - github/get_pull_request
+  - github/get_check_runs
+  - github/get_pull_request_comments
+  - github/list_commits
+  handoff_targets:
+  - chatgpt-review
+  - submission-coordinator
+  - human_supervisor
