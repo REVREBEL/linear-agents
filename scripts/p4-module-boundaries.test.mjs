@@ -73,8 +73,8 @@ test("P4 uses canonical modules without relocating live job storage", async () =
   const fs = await import("node:fs/promises");
   const src = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.match(src,/from "\.\.\/routing\/hosts\/host-routing\.mjs"/);
-  assert.match(src,/from "\.\.\/jobs\/ordered-progress\.mjs"/);
-  assert.match(src,/from "\.\.\/jobs\/job-store\.mjs"/);
+  assert.match(src,/from "\.\.\/jobs\/lifecycle\/ordered-progress\.mjs"/);
+  assert.match(src,/from "\.\.\/jobs\/persistence\/job-store\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/createJobStore\(JOBS_DIR\)/);
 });
