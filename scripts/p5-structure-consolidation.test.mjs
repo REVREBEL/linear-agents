@@ -66,7 +66,7 @@ test("P5.2: all compatibility paths resolve to exactly the same exports as canon
 });
 
 test("P5.2: production entrypoint imports canonical code and retains live job root", async () => {
-  const bridge = await fs.readFile(path.join(root, "linear-agent-bridge/agent-bridge.mjs"), "utf8");
+  const bridge = await fs.readFile(path.join(root, "bridge/server/agent-bridge-runtime.mjs"), "utf8");
   const required = Object.values(canonicalModules).filter(p => (
     p.startsWith("bridge/") || p.startsWith("jobs/") || p.startsWith("routing/")
   ));
@@ -94,7 +94,9 @@ test("P5.2: production entrypoint imports canonical code and retains live job ro
   ];
   for (const target of runtimeDeps) {
     assert.ok(required.includes(target), `Missing ownership inventory item ${target}`);
-    assert.ok(bridge.includes(`from "../${target}"`), `Bridge still imports legacy module: ${target}`);
+    const relativeImport = path.relative(path.join(root, "bridge/server"), path.join(root, target));
+    const specifier = relativeImport.startsWith(".") ? relativeImport : "./" + relativeImport;
+    assert.ok(bridge.includes(`from "${specifier}"`), `Bridge still imports legacy module: ${target}`);
   }
   assert.ok(bridge.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));

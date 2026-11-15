@@ -104,7 +104,7 @@ test("Linux handoff source does not claim an unsupported automatic GitHub review
   assert.ok(guard !== -1 && guard < claim, "Linux unsupported-mode guard must precede delivery claim");
   const tokenGuard = src.indexOf('env.CHATGPT_REVIEW_INBOX_TOKEN.length < 32');
   assert.ok(tokenGuard !== -1 && tokenGuard < claim, "Inbox mode must validate the consumer token before claiming delivery");
-  const bridge = readFileSync(path.join(root, "linear-agent-bridge/agent-bridge.mjs"), "utf8");
+  const bridge = readFileSync(path.join(root, "bridge/server/agent-bridge-runtime.mjs"), "utf8");
   const humanHandoff = readFileSync(path.join(root, "jobs/dispatch/chatgpt-human-handoff.mjs"), "utf8");
   assert.ok(humanHandoff.includes("Linux ChatGPT browser/Shortcuts handoff unsupported"));
   const localExecution = readFileSync(path.join(root, "bridge/orchestration/local-execution-coordinator.mjs"), "utf8");

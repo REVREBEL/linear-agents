@@ -71,10 +71,10 @@ test("P4 queue module is same function identity and preserves ordered failure re
 });
 test("P4 uses canonical modules without relocating live job storage", async () => {
   const fs = await import("node:fs/promises");
-  const src = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(src,/from "\.\.\/routing\/hosts\/host-routing\.mjs"/);
-  assert.match(src,/from "\.\.\/jobs\/lifecycle\/ordered-progress\.mjs"/);
-  assert.match(src,/from "\.\.\/jobs\/persistence\/job-store\.mjs"/);
+  const src = await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  assert.match(src,/from "\.\.\/\.\.\/routing\/hosts\/host-routing\.mjs"/);
+  assert.match(src,/from "\.\.\/\.\.\/jobs\/lifecycle\/ordered-progress\.mjs"/);
+  assert.match(src,/from "\.\.\/\.\.\/jobs\/persistence\/job-store\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/createJobStore\(JOBS_DIR\)/);
 });
@@ -138,9 +138,9 @@ test("P4 session queue keeps same-session order while allowing distinct sessions
 });
 test("P4 bridge uses canonical conversation modules without changing state location", async () => {
   const fs=await import("node:fs/promises");
-  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(src,/from "\.\.\/conversations\/agy-conversation-state\.mjs"/);
-  assert.match(src,/from "\.\.\/conversations\/agy-session-queue\.mjs"/);
+  const src=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  assert.match(src,/from "\.\.\/\.\.\/conversations\/agy-conversation-state\.mjs"/);
+  assert.match(src,/from "\.\.\/\.\.\/conversations\/agy-session-queue\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
 });
 
@@ -179,9 +179,9 @@ test("P4 memU import identity and fail-open behavior remain unchanged", async ()
 });
 test("P4 bridge uses canonical memory modules but keeps storage roots unchanged", async () => {
   const fs=await import("node:fs/promises");
-  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(source,/from "\.\.\/memory\/active-task-memory\.mjs"/);
-  assert.match(source,/from "\.\.\/memory\/memu-memory\.mjs"/);
+  const source=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  assert.match(source,/from "\.\.\/\.\.\/memory\/active-task-memory\.mjs"/);
+  assert.match(source,/from "\.\.\/\.\.\/memory\/memu-memory\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(source,/createActiveTaskMemory\(JOBS_DIR\)/);
 });
@@ -214,8 +214,8 @@ test("P4 GitHub PR task memory shares implementation and persists review metadat
 });
 test("P4 GitHub task memory remains anchored to original bridge journal root", async () => {
   const fs = await import("node:fs/promises");
-  const source = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url), "utf8");
-  assert.match(source,/from "\.\.\/memory\/github-task-memory\.mjs"/);
+  const source = await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url), "utf8");
+  assert.match(source,/from "\.\.\/\.\.\/memory\/github-task-memory\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(source,/createGithubTaskMemory\(JOBS_DIR\)/);
 });
@@ -258,11 +258,11 @@ test("P4 GitHub event journal preserves original path and avoids storing comment
 });
 test("P4 bridge and review inbox reference canonical GitHub event adapter", async () => {
   const fs=await import("node:fs/promises");
-  const bridgeSource=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const bridgeSource=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const inboxSource=await fs.readFile(new URL("../bridge/orchestration/review-inbox.mjs",import.meta.url),"utf8");
-  assert.match(bridgeSource,/from "\.\.\/integrations\/github-events\.mjs"/);
+  assert.match(bridgeSource,/from "\.\.\/\.\.\/integrations\/github-events\.mjs"/);
   assert.match(inboxSource,/from "\.\.\/\.\.\/integrations\/github-events\.mjs"/);
-  const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const bridge=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const handler=await fs.readFile(new URL("../bridge/handlers/github-webhook-routes.mjs",import.meta.url),"utf8");
   assert.match(bridge,/createGithubWebhookRoutes\(/);
   assert.match(handler,/recordGithubEvent\(JOBS_DIR, event, source\)/);
@@ -320,8 +320,8 @@ test("P4 review inbox handoff attempt is not replayed after a pending restart", 
 });
 test("P4 bridge imports canonical review inbox while retaining original journal root", async () => {
   const fs=await import("node:fs/promises");
-  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(source,/from "\.\.\/bridge\/orchestration\/review-inbox\.mjs"/);
+  const source=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  assert.match(source,/from "\.\.\/orchestration\/review-inbox\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(source,/createReviewInbox\(JOBS_DIR\)/);
 });
@@ -371,9 +371,9 @@ test("P4 review SSH handoff preserves fixed trusted runner policy", () => {
 });
 test("P4 canonical review modules are used by bridge without relocating review data", async () => {
   const fs=await import("node:fs/promises");
-  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  for(const location of ["../bridge/orchestration/review-delivery.mjs","../bridge/orchestration/review-message-handoff.mjs",
-    "../integrations/review-linear-notifier.mjs"])
+  const src=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  for(const location of ["../orchestration/review-delivery.mjs","../orchestration/review-message-handoff.mjs",
+    "../../integrations/review-linear-notifier.mjs"])
     assert.ok(src.includes('from "'+location+'"'));
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/createReviewInbox\(JOBS_DIR\)/);
@@ -412,8 +412,8 @@ test("P4 canonical Linear credential handoff retains worker pinning and no-persi
 });
 test("P4 bridge imports canonical credentials without moving its startup entrypoint", async () => {
   const fs=await import("node:fs/promises");
-  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(src,/from "\.\.\/integrations\/linear-credentials\.mjs"/);
+  const src=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  assert.match(src,/from "\.\.\/\.\.\/integrations\/linear-credentials\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
 });
 
@@ -451,12 +451,12 @@ test("P4 SSH dispatch preserves trusted alias, fixed runner and no issue text in
 });
 test("P4 remote coordinator imports canonical callback and SSH adapters without moving job roots", async () => {
   const fs=await import("node:fs/promises");
-  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const source=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const remote=await fs.readFile(new URL("../bridge/orchestration/remote-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.match(remote,/from "\.\.\/\.\.\/routing\/ssh\/remote-trae-activity\.mjs"/);
   assert.match(remote,/from "\.\.\/\.\.\/routing\/ssh\/ssh-dispatch\.mjs"/);
-  assert.match(source,/from "\.\.\/bridge\/orchestration\/remote-execution-coordinator\.mjs"/);
-  assert.match(source,/from "\.\.\/routing\/ssh\/ssh-dispatch\.mjs"/);
+  assert.match(source,/from "\.\.\/orchestration\/remote-execution-coordinator\.mjs"/);
+  assert.match(source,/from "\.\.\/\.\.\/routing\/ssh\/ssh-dispatch\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
 });
 
@@ -493,8 +493,8 @@ test("P4 HTTP JSON response retains no-store and formatted JSON body", () => {
 });
 test("P4 live bridge invokes canonical helpers and retains original HTTP route table", async () => {
   const fs=await import("node:fs/promises");
-  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(source,/from "\.\.\/bridge\/server\/http-helpers\.mjs"/);
+  const source=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  assert.match(source,/from "\.\/http-helpers\.mjs"/);
   assert.match(source,/const server = http\.createServer\(async \(request, response\) => \{/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.equal(source.includes("function readBody(request) {"),false);
@@ -542,8 +542,8 @@ test("P4 diagnostics preserve health shape and exact probe authentication", () =
 });
 test("P4 diagnostic handlers are delegated but HTTP listener and job routes remain anchored", async () => {
   const fs=await import("node:fs/promises");
-  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(src,/from "\.\.\/bridge\/handlers\/diagnostic-routes\.mjs"/);
+  const src=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  assert.match(src,/from "\.\.\/handlers\/diagnostic-routes\.mjs"/);
   const composer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.match(src,/await handleComposedRoutes\(request, response, \{ host, url \}\)/);
   assert.match(composer,/if \(handleDiagnosticRoute\(request, response, \{ host, url \}\)\) return true;/);
@@ -624,8 +624,8 @@ test("P4 review routes keep evidence-verification failure and unclaimed states a
 });
 test("P4 review route extraction keeps original job dispatcher and path anchors", async () => {
   const fs=await import("node:fs/promises");
-  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(source,/from "\.\.\/bridge\/handlers\/review-routes\.mjs"/);
+  const source=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  assert.match(source,/from "\.\.\/handlers\/review-routes\.mjs"/);
   const httpComposer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.ok(source.includes("createHttpRouteComposer({"));
   assert.ok(source.includes("await handleComposedRoutes(request, response, { host, url })"));
@@ -832,8 +832,8 @@ test("P4 Trae completion retries remain idempotent and do not downgrade terminal
 });
 test("P4 Trae callback route extraction retains bridge-owned job and activity state", async () => {
   const fs=await import("node:fs/promises");
-  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(src,/from "\.\.\/bridge\/handlers\/trae-callback-routes\.mjs"/);
+  const src=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  assert.match(src,/from "\.\.\/handlers\/trae-callback-routes\.mjs"/);
   const httpComposer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.ok(src.includes("createHttpRouteComposer({"));
   assert.ok(src.includes("await handleComposedRoutes(request, response, { host, url })"));
@@ -938,8 +938,8 @@ test("P4 issue completion retains cleanup-before-ledger-transition ordering", as
 });
 test("P4 issue completion source retains unchanged main jobs route and job-store identity", async () => {
   const fs=await import("node:fs/promises");
-  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.ok(src.includes('from "../bridge/handlers/issue-completion-route.mjs"'));
+  const src=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
+  assert.ok(src.includes('from "../handlers/issue-completion-route.mjs"'));
   const httpComposer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.ok(src.includes("createHttpRouteComposer({"));
   assert.ok(src.includes("await handleComposedRoutes(request, response, { host, url })"));
@@ -1000,7 +1000,7 @@ test("P4 accepted duplicate preserves 202 status and original job ID", () => {
 });
 test("P4 /jobs authenticates before coordinator, which preflights before durable claim", async () => {
   const fs=await import("node:fs/promises");
-  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const src=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const coordinator=await fs.readFile(new URL("../bridge/orchestration/job-admission-coordinator.mjs",import.meta.url),"utf8");
   const auth=src.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
   const delegate=src.indexOf("await coordinateJobAdmission({",auth);
@@ -1019,7 +1019,7 @@ test("P4 /jobs authenticates before coordinator, which preflights before durable
   assert.ok(route>=0 && route<credentials && credentials<readiness);
   assert.match(coordinator,/from "\.\.\/\.\.\/jobs\/admission\/job-admission\.mjs"/);
   assert.match(coordinator,/from "\.\.\/\.\.\/jobs\/admission\/job-preflight\.mjs"/);
-  assert.match(src,/from "\.\.\/bridge\/orchestration\/job-admission-coordinator\.mjs"/);
+  assert.match(src,/from "\.\.\/orchestration\/job-admission-coordinator\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
   const preparation=await fs.readFile(new URL("../jobs/preparation/local-task-preparation.mjs",import.meta.url),"utf8");
@@ -1159,7 +1159,7 @@ test("P4 local task preparation fails before queued transition on write or memor
 });
 test("P4 local task preparation preserves bridge-owned launches and runtime job root", async () => {
   const fs=await import("node:fs/promises");
-  const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const bridge=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   const from=execution.indexOf("await prepareTask({");
   const launched=execution.indexOf('await jobStore.transition(jobKey, "launching"',from);
@@ -1234,7 +1234,7 @@ test("P4 Gemma asynchronous launch failure is recorded as failed without a secon
 });
 test("P4 simple dispatch adapters leave launch state, agent distinctions and HTTP listener in bridge", async () => {
   const fs=await import("node:fs/promises");
-  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const source=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "../../jobs/dispatch/simple-agent-dispatch.mjs"'));
   const start=execution.indexOf('await jobStore.transition(jobKey, "launching", { attempts: 1 })');
@@ -1287,7 +1287,7 @@ test("P4 ChatGPT CLI asynchronous queue rejection records job failure without wa
 });
 test("P4 ChatGPT CLI dispatch preserves serialized queue and human-review identity separation", async () => {
   const fs=await import("node:fs/promises");
-  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const source=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "../../jobs/dispatch/chatgpt-cli-dispatch.mjs"'));
   const cli=execution.indexOf('agent === "chatgpt-cli"');
@@ -1296,7 +1296,7 @@ test("P4 ChatGPT CLI dispatch preserves serialized queue and human-review identi
   assert.ok(cli>=0&&coding>cli&&human>coding);
   assert.ok(source.includes("function enqueueChatgptHandoff(task)"));
   assert.ok(source.includes("async function startChatgptOpenCode("));
-  assert.ok(source.includes('from "../bridge/handlers/review-routes.mjs"'));
+  assert.ok(source.includes('from "../handlers/review-routes.mjs"'));
   assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
 });
@@ -1419,7 +1419,7 @@ test("P4 Antigravity queue failures asynchronously record failed ledger state", 
 });
 test("P4 Antigravity dispatch keeps original queue and runtime ownership in main bridge", async () => {
   const fs=await import("node:fs/promises");
-  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const src=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "../../jobs/dispatch/antigravity-dispatch.mjs"'));
   assert.ok(execution.includes("dispatchers.antigravity({"));
@@ -1530,12 +1530,12 @@ test("P4 human ChatGPT auto-send queues one Playwright child and records asynchr
 });
 test("P4 human ChatGPT handoff remains distinct from CLI dispatch and review routes", async () => {
   const fs=await import("node:fs/promises");
-  const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const source=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "../../jobs/dispatch/chatgpt-human-handoff.mjs"'));
   assert.ok(execution.includes('await dispatchers.chatgptHuman({'));
   assert.ok(execution.includes('dispatchers.chatgptCli({'));
-  assert.ok(source.includes('from "../bridge/handlers/review-routes.mjs"'));
+  assert.ok(source.includes('from "../handlers/review-routes.mjs"'));
   assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
 });
@@ -1619,7 +1619,7 @@ test("P4 Gemini headless launch forwards original options and attaches process l
 });
 test("P4 Gemini execution stays within original bridge state and Warp implementation", async () => {
   const fs=await import("node:fs/promises");
-  const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const src=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   const handler=await fs.readFile(new URL("../jobs/dispatch/gemini-dispatch.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "../../jobs/dispatch/gemini-dispatch.mjs"'));
@@ -1745,7 +1745,7 @@ test("P4 local Trae does not spawn when capability ledger transition fails", asy
 });
 test("P4 Trae local dispatch retains original bridge state and remote SSH lifecycle", async () => {
   const fs=await import("node:fs/promises");
-  const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const bridge=await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   const local=await fs.readFile(new URL("../jobs/dispatch/trae-local-dispatch.mjs",import.meta.url),"utf8");
   const remote=await fs.readFile(new URL("../bridge/orchestration/remote-execution-coordinator.mjs",import.meta.url),"utf8");
