@@ -1796,3 +1796,12 @@ test("P4 Trae local callback checks the exact job ledger capability while remote
     assert.equal((await post({...activity,jobKey:"trae:another"})).status,401);
   } finally { await fs.rm(root,{recursive:true,force:true}); }
 });
+
+test("P4 Trae queued job without a recorded capability is never acknowledged as running", () => {
+  const claimed={created:false,record:{agent:"trae",state:"queued",jobId:"original"}};
+  const response=linearJobDuplicateResponse(claimed,"new","trae.example");
+  assert.equal(response.status,503);
+  assert.equal(response.body.accepted,false);
+  const afterPublication={created:false,record:{...claimed.record,activityContextFile:"/private/trae-sessions/token.json",state:"launching"}};
+  assert.equal(linearJobDuplicateResponse(afterPublication,"new","trae.example").status,202);
+});
