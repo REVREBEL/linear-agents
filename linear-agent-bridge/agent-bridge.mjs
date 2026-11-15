@@ -1,4 +1,4 @@
-import { createAgyProjectConversationStore } from "../conversations/agy-project-conversations.mjs";
+import { createAgentHostResolver } from "../bridge/agent-host-resolver.mjs";
 import { createProcessLifecycleReporter } from "../jobs/process-lifecycle.mjs";
 import { extractAgentSessionId, extractDirectTask, extractPromptContext, buildGenericArgs, shellQuote, maskArg } from "../bridge/prompt-arguments.mjs";
 import { dispatchLocalTraeAgent } from "../jobs/trae-local-dispatch.mjs";
@@ -225,6 +225,12 @@ const TRAE_HOST =
 const GEMINI_HOST =
   process.env.GEMINI_HOST || "gemini-agent.revrebel.io";
 const GEMMA_HOST = process.env.GEMMA_HOST || "gemma-agent.revrebel.io";
+
+const agentForHost = createAgentHostResolver({
+  mockHost: MOCK_HOST, antigravityHost: ANTIGRAVITY_HOST,
+  chatgptHost: CHATGPT_HOST, chatgptCliHost: CHATGPT_CLI_HOST,
+  traeHost: TRAE_HOST, geminiHost: GEMINI_HOST, gemmaHost: GEMMA_HOST,
+});
 
 // Legacy agent workspace overrides referred to an older checkout location.
 // All actual jobs now launch from resolveJobRoute(), using routing.json.
@@ -1264,13 +1270,3 @@ async function resolveJobRoute(job) {
 
 const attachProcessLogs = createProcessLifecycleReporter({ jobStore });
 
-function agentForHost(host) {
-  if (matchesHost(host, MOCK_HOST)) return "mock";
-  if (matchesHost(host, ANTIGRAVITY_HOST)) return "antigravity";
-  if (matchesHost(host, CHATGPT_HOST)) return "chatgpt";
-  if (matchesHost(host, CHATGPT_CLI_HOST)) return "chatgpt-cli";
-  if (matchesHost(host, TRAE_HOST)) return "trae";
-  if (matchesHost(host, GEMINI_HOST)) return "gemini";
-  if (matchesHost(host, GEMMA_HOST)) return "gemma";
-  return "unknown";
-}

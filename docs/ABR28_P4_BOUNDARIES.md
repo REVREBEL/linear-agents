@@ -285,6 +285,13 @@ P4 regression tests cover negative prechecks, per-job capability file permission
 - `scripts/prompt-arguments.test.mjs` verifies session precedence, original nested payload handling, issue descriptions and user-request filtering, argument template substitution, quoted paths, and truncation.
 - The new regression file is included in both `npm run bridge:test` and `npm run test:reliability`. There is no secret, state, runtime service, worker, or data migration.
 
+## P4 ordered agent hostname resolver
+
+- `bridge/agent-host-resolver.mjs` owns only the existing ordered hostname-to-agent selection. The original bridge still reads environment-specific hostname values, normalizes HTTP Host headers and owns the listener, job admission, process launches and runtime ledger.
+- The resolver receives seven existing hostname values explicitly, retains original matching via `matchesHost`, preserves first-match precedence and returns `unknown` for unmatched hosts.
+- `scripts/agent-host-resolver.test.mjs` covers all seven identities, subdomain boundaries, normalization, configured overrides, first-match precedence and source integration.
+- Both `npm run bridge:test` and `npm run test:reliability` include the new test. No DNS, Worker, Cloudflare, systemd, credential, runtime data or endpoint change.
+- 
 ## P4 shared process lifecycle reporter
 
 - `jobs/process-lifecycle.mjs` now owns the generic subprocess event handlers formerly embedded in `linear-agent-bridge/agent-bridge.mjs`. The bridge creates the reporter with the same live `jobStore` instance and passes the returned `attachProcessLogs` function to its existing launchers.
