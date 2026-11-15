@@ -1,15 +1,9 @@
+import { coordinateLocalExecution } from "../jobs/local-execution-coordinator.mjs";
 import { coordinateJobAdmission } from "../jobs/job-admission-coordinator.mjs";
 import { createAgyProjectConversationStore } from "../conversations/agy-project-conversations.mjs";
 import { createAgentHostResolver } from "../bridge/agent-host-resolver.mjs";
 import { createProcessLifecycleReporter } from "../jobs/process-lifecycle.mjs";
 import { extractAgentSessionId, extractDirectTask, extractPromptContext, buildGenericArgs, shellQuote, maskArg } from "../bridge/prompt-arguments.mjs";
-import { dispatchLocalTraeAgent } from "../jobs/trae-local-dispatch.mjs";
-import { dispatchGeminiAgent } from "../jobs/gemini-dispatch.mjs";
-import { dispatchChatgptHumanHandoff } from "../jobs/chatgpt-human-handoff.mjs";
-import { dispatchAntigravityAgent } from "../jobs/antigravity-dispatch.mjs";
-import { dispatchChatgptCliAgent } from "../jobs/chatgpt-cli-dispatch.mjs";
-import { dispatchMockAgent, dispatchGemmaAgent } from "../jobs/simple-agent-dispatch.mjs";
-import { prepareLocalAgentTask } from "../jobs/local-task-preparation.mjs";
 import { createIssueCompletionRoute } from "../bridge/issue-completion-route.mjs";
 import { createTraeCallbackRoutes } from "../bridge/trae-callback-routes.mjs";
 import { createGithubWebhookRoutes } from "../bridge/github-webhook-routes.mjs";
@@ -498,71 +492,20 @@ const server = http.createServer(async (request, response) => {
         jobId: safeJobId, executionHost: "macos", host });
     }
 
-    const { workspace, filename, routedJob } = await prepareLocalAgentTask({
-      job, route, agent, jobKey, safeJobId, jobStore,
-      activeTaskMemory, drainProgressWrites, retrieveMemuMemory,
-      extractDirectTask, extractPromptContext,
+    const execution = await coordinateLocalExecution({
+      job, route, agent, jobKey, safeJobId, credential, host,
+      jobStore, activeTaskMemory, drainProgressWrites, retrieveMemuMemory,
+      extractDirectTask, extractPromptContext, extractAgentSessionId,
+      agySessionQueue, readAgyProjectConversation, saveAgyProjectConversation,
+      recordResumedConversation, startAntigravity,
+      enqueueChatgptHandoff, startChatgptOpenCode, projectDir: PROJECT_DIR,
+      traeBin: TRAE_BIN, traeArgsTemplate: TRAE_ARGS_TEMPLATE,
+      buildGenericArgs, maskArg, attachProcessLogs,
+      startGemma, geminiBin: GEMINI_BIN, geminiLaunchMode: GEMINI_LAUNCH_MODE,
+      geminiArgsTemplate: GEMINI_ARGS_TEMPLATE,
+      startGeminiInWarp, buildGeminiLaunch, spawnProcess: spawn,
     });
-    console.log("\nLinear job received");
-    console.log(`Host: ${host}`);
-    console.log(`Saved to: ${filename}`);
-    console.log(`Resolved workspace: ${workspace}`);
-    console.log(`Project scope: ${route.projectScope}`);
-
-    // Local Trae publishes its capability and launching transition atomically before spawn.
-    if (agent !== "trae") await jobStore.transition(jobKey, "launching", { attempts: 1 });
-    if (agent === "mock") {
-      await dispatchMockAgent({ jobStore, jobKey, filename });
-    } else if (agent === "antigravity") {
-      dispatchAntigravityAgent({
-        job: routedJob, route, filename, workspace, jobKey, credential,
-        agySessionQueue, extractAgentSessionId, readAgyProjectConversation,
-        saveAgyProjectConversation, recordResumedConversation, startAntigravity,
-        jobStore,
-      });
-    } else if (agent === "chatgpt-cli") {
-      dispatchChatgptCliAgent({
-        job: routedJob, workspace, jobKey, credential,
-        enqueueChatgptHandoff, startChatgptOpenCode, jobStore,
-      });
-    } else if (agent === "chatgpt") {
-      await dispatchChatgptHumanHandoff({
-        route, job: routedJob, filename, safeJobId, jobKey,
-        jobStore, extractPromptContext, enqueueChatgptHandoff,
-        projectDir: PROJECT_DIR,
-      });
-    } else if (agent === "trae") {
-      await dispatchLocalTraeAgent({
-        job: routedJob, filename, workspace, jobKey, credential,
-        repositoryRoot: route.repositoryRoot, traeBin: TRAE_BIN,
-        traeArgsTemplate: TRAE_ARGS_TEMPLATE, jobStore,
-        extractPromptContext, extractAgentSessionId,
-        buildGenericArgs, maskArg, attachProcessLogs,
-      });
-    } else if (agent === "gemma") {
-      dispatchGemmaAgent({
-        job: routedJob, workspace, jobKey, credential, startGemma, jobStore,
-      });
-    } else if (agent === "gemini") {
-      await dispatchGeminiAgent({
-        job: routedJob, filename, workspace, jobKey, credential,
-        geminiBin: GEMINI_BIN, geminiLaunchMode: GEMINI_LAUNCH_MODE,
-        geminiArgsTemplate: GEMINI_ARGS_TEMPLATE,
-        jobStore, extractPromptContext, startGeminiInWarp,
-        buildGeminiLaunch, buildGenericArgs, maskArg, attachProcessLogs,
-        spawnProcess: spawn,
-      });
-    } else {
-      await jobStore.transition(jobKey, "failed", { error: "Unknown agent host" });
-      console.log(`Unknown agent hostname: ${host}. Job saved but not executed.`);
-    }
-
-    return sendJson(response, 202, {
-      ok: true,
-      accepted: true,
-      jobId: safeJobId,
-      host,
-    });
+    return sendJson(response, execution.status, execution.body);
   } catch (error) {
     console.error("Server Router Error:", error);
     return sendJson(response, 500, {
