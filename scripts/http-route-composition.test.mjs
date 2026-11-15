@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createHttpRouteComposer } from "../bridge/http-route-composition.mjs";
+import { createHttpRouteComposer } from "../bridge/server/http-route-composition.mjs";
 
 async function withComposer(callback) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-http-composition-"));

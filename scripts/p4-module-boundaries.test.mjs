@@ -543,8 +543,8 @@ test("P4 diagnostics preserve health shape and exact probe authentication", () =
 test("P4 diagnostic handlers are delegated but HTTP listener and job routes remain anchored", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(src,/from "\.\.\/bridge\/diagnostic-routes\.mjs"/);
-  const composer=await fs.readFile(new URL("../bridge/http-route-composition.mjs",import.meta.url),"utf8");
+  assert.match(src,/from "\.\.\/bridge\/handlers\/diagnostic-routes\.mjs"/);
+  const composer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.match(src,/await handleComposedRoutes\(request, response, \{ host, url \}\)/);
   assert.match(composer,/if \(handleDiagnosticRoute\(request, response, \{ host, url \}\)\) return true;/);
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
@@ -626,7 +626,7 @@ test("P4 review route extraction keeps original job dispatcher and path anchors"
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.match(source,/from "\.\.\/bridge\/review-routes\.mjs"/);
-  const httpComposer=await fs.readFile(new URL("../bridge/http-route-composition.mjs",import.meta.url),"utf8");
+  const httpComposer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.ok(source.includes("createHttpRouteComposer({"));
   assert.ok(source.includes("await handleComposedRoutes(request, response, { host, url })"));
   assert.match(httpComposer,/await handleReviewRoute\(request, response, \{ url \}\)/);
@@ -834,7 +834,7 @@ test("P4 Trae callback route extraction retains bridge-owned job and activity st
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.match(src,/from "\.\.\/bridge\/trae-callback-routes\.mjs"/);
-  const httpComposer=await fs.readFile(new URL("../bridge/http-route-composition.mjs",import.meta.url),"utf8");
+  const httpComposer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.ok(src.includes("createHttpRouteComposer({"));
   assert.ok(src.includes("await handleComposedRoutes(request, response, { host, url })"));
   assert.match(httpComposer,/await handleTraeCallbackRoute\(request, response, \{ url \}\)/);
@@ -940,7 +940,7 @@ test("P4 issue completion source retains unchanged main jobs route and job-store
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.ok(src.includes('from "../bridge/issue-completion-route.mjs"'));
-  const httpComposer=await fs.readFile(new URL("../bridge/http-route-composition.mjs",import.meta.url),"utf8");
+  const httpComposer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.ok(src.includes("createHttpRouteComposer({"));
   assert.ok(src.includes("await handleComposedRoutes(request, response, { host, url })"));
   assert.ok(httpComposer.includes('await handleIssueCompletionRoute(request, response, { url })'));
@@ -1001,7 +1001,7 @@ test("P4 accepted duplicate preserves 202 status and original job ID", () => {
 test("P4 /jobs authenticates before coordinator, which preflights before durable claim", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const coordinator=await fs.readFile(new URL("../jobs/job-admission-coordinator.mjs",import.meta.url),"utf8");
+  const coordinator=await fs.readFile(new URL("../bridge/orchestration/job-admission-coordinator.mjs",import.meta.url),"utf8");
   const auth=src.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
   const delegate=src.indexOf("await coordinateJobAdmission({",auth);
   const launch=src.indexOf('if (route.executionHost === "macos")',delegate);
@@ -1017,9 +1017,9 @@ test("P4 /jobs authenticates before coordinator, which preflights before durable
   const credentials=preflightSource.indexOf("const credential = route.ok ? await syncLinearCredential(",route);
   const readiness=preflightSource.indexOf('if (agent === "chatgpt-cli")',credentials);
   assert.ok(route>=0 && route<credentials && credentials<readiness);
-  assert.match(coordinator,/from "\.\/job-admission\.mjs"/);
-  assert.match(coordinator,/from "\.\/job-preflight\.mjs"/);
-  assert.match(src,/from "\.\.\/jobs\/job-admission-coordinator\.mjs"/);
+  assert.match(coordinator,/from "\.\.\/\.\.\/jobs\/job-admission\.mjs"/);
+  assert.match(coordinator,/from "\.\.\/\.\.\/jobs\/job-preflight\.mjs"/);
+  assert.match(src,/from "\.\.\/bridge\/orchestration\/job-admission-coordinator\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
   const preparation=await fs.readFile(new URL("../jobs/local-task-preparation.mjs",import.meta.url),"utf8");
