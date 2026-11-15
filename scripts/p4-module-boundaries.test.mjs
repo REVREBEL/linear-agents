@@ -544,7 +544,9 @@ test("P4 diagnostic handlers are delegated but HTTP listener and job routes rema
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   assert.match(src,/from "\.\.\/bridge\/diagnostic-routes\.mjs"/);
-  assert.match(src,/if \(handleDiagnosticRoute\(request, response, \{ host, url \}\)\) return;/);
+  const composer=await fs.readFile(new URL("../bridge/http-route-composition.mjs",import.meta.url),"utf8");
+  assert.match(src,/await handleComposedRoutes\(request, response, \{ host, url \}\)/);
+  assert.match(composer,/if \(handleDiagnosticRoute\(request, response, \{ host, url \}\)\) return true;/);
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/request\.method !== "POST" \|\| url\.pathname !== "\/jobs"/);
