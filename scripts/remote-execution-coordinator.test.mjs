@@ -150,7 +150,7 @@ test("completion URL uses validated activity origin without a string path replac
   assert.equal(message.activityEndpoint, "https://trae-agent.example.test/trae-activity");
   assert.equal(message.completionEndpoint, "https://trae-agent.example.test/trae-complete");
   const source = await fs.readFile(
-    new URL("../jobs/remote-execution-coordinator.mjs", import.meta.url), "utf8",
+    new URL("../bridge/orchestration/remote-execution-coordinator.mjs", import.meta.url), "utf8",
   );
   assert.equal(source.includes("activityEndpoint.replace("), false);
 });

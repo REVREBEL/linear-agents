@@ -204,7 +204,7 @@ test("bridge wires the coordinator after admission, keeps Mac execution and resp
   const local = source.indexOf("await coordinateLocalExecution({", remote);
   const response = source.indexOf("return sendJson(response, execution.status, execution.body)", local);
   assert.ok(auth >= 0 && auth < admission && admission < remote && remote < local && local < response);
-  assert.match(source, /from "\.\.\/jobs\/local-execution-coordinator\.mjs"/);
+  assert.match(source, /from "\.\.\/bridge\/orchestration\/local-execution-coordinator\.mjs"/);
   assert.match(source, /const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(source, /server\.listen\(PORT, HOST,/);
 });

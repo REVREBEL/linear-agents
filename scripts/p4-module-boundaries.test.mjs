@@ -1,16 +1,16 @@
-import { dispatchLocalTraeAgent } from "../jobs/trae-local-dispatch.mjs";
-import { dispatchGeminiAgent } from "../jobs/gemini-dispatch.mjs";
+import { dispatchLocalTraeAgent } from "../jobs/dispatch/trae-local-dispatch.mjs";
+import { dispatchGeminiAgent } from "../jobs/dispatch/gemini-dispatch.mjs";
 import { dispatchChatgptHumanHandoff } from "../jobs/chatgpt-human-handoff.mjs";
 import { dispatchAntigravityAgent } from "../jobs/antigravity-dispatch.mjs";
 import { dispatchChatgptCliAgent } from "../jobs/chatgpt-cli-dispatch.mjs";
 import { dispatchMockAgent, dispatchGemmaAgent } from "../jobs/simple-agent-dispatch.mjs";
-import { prepareLocalAgentTask } from "../jobs/local-task-preparation.mjs";
-import { preflightLinearJob } from "../jobs/job-preflight.mjs";
+import { prepareLocalAgentTask } from "../jobs/preparation/local-task-preparation.mjs";
+import { preflightLinearJob } from "../jobs/admission/job-preflight.mjs";
 import { identifyLinearJobDelivery, linearJobDuplicateResponse } from "../jobs/job-admission.mjs";
-import { createIssueCompletionRoute } from "../bridge/issue-completion-route.mjs";
+import { createIssueCompletionRoute } from "../bridge/handlers/issue-completion-route.mjs";
 import { createTraeCallbackRoutes } from "../bridge/trae-callback-routes.mjs";
 import { createGithubWebhookRoutes } from "../bridge/github-webhook-routes.mjs";
-import { createReviewRoutes } from "../bridge/review-routes.mjs";
+import { createReviewRoutes } from "../bridge/handlers/review-routes.mjs";
 import { createDiagnosticRoutes } from "../bridge/diagnostic-routes.mjs";
 import { normalizeHost, matchesHost, readBody, sendJson } from "../bridge/http-helpers.mjs";
 import { PassThrough } from "node:stream";
@@ -20,9 +20,9 @@ import * as sshDispatch from "../routing/ssh-dispatch.mjs";
 import * as legacySshDispatch from "../linear-agent-bridge/ssh-dispatch.mjs";
 import * as linearCredentials from "../integrations/linear-credentials.mjs";
 import * as legacyLinearCredentials from "../linear-agent-bridge/linear-credentials.mjs";
-import * as reviewDelivery from "../bridge/review-delivery.mjs";
+import * as reviewDelivery from "../bridge/orchestration/review-delivery.mjs";
 import * as legacyReviewDelivery from "../linear-agent-bridge/review-delivery.mjs";
-import * as messageHandoff from "../bridge/review-message-handoff.mjs";
+import * as messageHandoff from "../bridge/orchestration/review-message-handoff.mjs";
 import * as legacyMessageHandoff from "../linear-agent-bridge/review-message-handoff.mjs";
 import * as linearReviewNotifier from "../integrations/review-linear-notifier.mjs";
 import * as legacyLinearReviewNotifier from "../linear-agent-bridge/review-linear-notifier.mjs";
@@ -72,7 +72,7 @@ test("P4 queue module is same function identity and preserves ordered failure re
 test("P4 uses canonical modules without relocating live job storage", async () => {
   const fs = await import("node:fs/promises");
   const src = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(src,/from "\.\.\/routing\/host-routing\.mjs"/);
+  assert.match(src,/from "\.\.\/routing\/hosts\/host-routing\.mjs"/);
   assert.match(src,/from "\.\.\/jobs\/ordered-progress\.mjs"/);
   assert.match(src,/from "\.\.\/jobs\/job-store\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
@@ -258,10 +258,10 @@ test("P4 GitHub event journal preserves original path and avoids storing comment
 });
 test("P4 bridge and review inbox reference canonical GitHub event adapter", async () => {
   const fs=await import("node:fs/promises");
-  for(const file of ["../linear-agent-bridge/agent-bridge.mjs","../bridge/review-inbox.mjs"]){
-    const content=await fs.readFile(new URL(file,import.meta.url),"utf8");
-    assert.match(content,/from "\.\.\/integrations\/github-events\.mjs"/);
-  }
+  const bridgeSource=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
+  const inboxSource=await fs.readFile(new URL("../bridge/orchestration/review-inbox.mjs",import.meta.url),"utf8");
+  assert.match(bridgeSource,/from "\.\.\/integrations\/github-events\.mjs"/);
+  assert.match(inboxSource,/from "\.\.\/\.\.\/integrations\/github-events\.mjs"/);
   const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   const handler=await fs.readFile(new URL("../bridge/handlers/github-webhook-routes.mjs",import.meta.url),"utf8");
   assert.match(bridge,/createGithubWebhookRoutes\(/);
@@ -321,7 +321,7 @@ test("P4 review inbox handoff attempt is not replayed after a pending restart", 
 test("P4 bridge imports canonical review inbox while retaining original journal root", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(source,/from "\.\.\/bridge\/review-inbox\.mjs"/);
+  assert.match(source,/from "\.\.\/bridge\/orchestration\/review-inbox\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(source,/createReviewInbox\(JOBS_DIR\)/);
 });
@@ -372,7 +372,7 @@ test("P4 review SSH handoff preserves fixed trusted runner policy", () => {
 test("P4 canonical review modules are used by bridge without relocating review data", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  for(const location of ["../bridge/review-delivery.mjs","../bridge/review-message-handoff.mjs",
+  for(const location of ["../bridge/orchestration/review-delivery.mjs","../bridge/orchestration/review-message-handoff.mjs",
     "../integrations/review-linear-notifier.mjs"])
     assert.ok(src.includes('from "'+location+'"'));
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
@@ -453,10 +453,10 @@ test("P4 remote coordinator imports canonical callback and SSH adapters without 
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   const remote=await fs.readFile(new URL("../bridge/orchestration/remote-execution-coordinator.mjs",import.meta.url),"utf8");
-  assert.match(remote,/from "\.\.\/routing\/remote-trae-activity\.mjs"/);
-  assert.match(remote,/from "\.\.\/routing\/ssh-dispatch\.mjs"/);
-  assert.match(source,/from "\.\.\/jobs\/remote-execution-coordinator\.mjs"/);
-  assert.match(source,/from "\.\.\/routing\/ssh-dispatch\.mjs"/);
+  assert.match(remote,/from "\.\.\/\.\.\/routing\/ssh\/remote-trae-activity\.mjs"/);
+  assert.match(remote,/from "\.\.\/\.\.\/routing\/ssh\/ssh-dispatch\.mjs"/);
+  assert.match(source,/from "\.\.\/bridge\/orchestration\/remote-execution-coordinator\.mjs"/);
+  assert.match(source,/from "\.\.\/routing\/ssh\/ssh-dispatch\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
 });
 
@@ -494,7 +494,7 @@ test("P4 HTTP JSON response retains no-store and formatted JSON body", () => {
 test("P4 live bridge invokes canonical helpers and retains original HTTP route table", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(source,/from "\.\.\/bridge\/http-helpers\.mjs"/);
+  assert.match(source,/from "\.\.\/bridge\/server\/http-helpers\.mjs"/);
   assert.match(source,/const server = http\.createServer\(async \(request, response\) => \{/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.equal(source.includes("function readBody(request) {"),false);
@@ -625,7 +625,7 @@ test("P4 review routes keep evidence-verification failure and unclaimed states a
 test("P4 review route extraction keeps original job dispatcher and path anchors", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(source,/from "\.\.\/bridge\/review-routes\.mjs"/);
+  assert.match(source,/from "\.\.\/bridge\/handlers\/review-routes\.mjs"/);
   const httpComposer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.ok(source.includes("createHttpRouteComposer({"));
   assert.ok(source.includes("await handleComposedRoutes(request, response, { host, url })"));
@@ -833,7 +833,7 @@ test("P4 Trae completion retries remain idempotent and do not downgrade terminal
 test("P4 Trae callback route extraction retains bridge-owned job and activity state", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(src,/from "\.\.\/bridge\/trae-callback-routes\.mjs"/);
+  assert.match(src,/from "\.\.\/bridge\/handlers\/trae-callback-routes\.mjs"/);
   const httpComposer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.ok(src.includes("createHttpRouteComposer({"));
   assert.ok(src.includes("await handleComposedRoutes(request, response, { host, url })"));
@@ -939,7 +939,7 @@ test("P4 issue completion retains cleanup-before-ledger-transition ordering", as
 test("P4 issue completion source retains unchanged main jobs route and job-store identity", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.ok(src.includes('from "../bridge/issue-completion-route.mjs"'));
+  assert.ok(src.includes('from "../bridge/handlers/issue-completion-route.mjs"'));
   const httpComposer=await fs.readFile(new URL("../bridge/server/http-route-composition.mjs",import.meta.url),"utf8");
   assert.ok(src.includes("createHttpRouteComposer({"));
   assert.ok(src.includes("await handleComposedRoutes(request, response, { host, url })"));
@@ -1017,12 +1017,12 @@ test("P4 /jobs authenticates before coordinator, which preflights before durable
   const credentials=preflightSource.indexOf("const credential = route.ok ? await syncLinearCredential(",route);
   const readiness=preflightSource.indexOf('if (agent === "chatgpt-cli")',credentials);
   assert.ok(route>=0 && route<credentials && credentials<readiness);
-  assert.match(coordinator,/from "\.\.\/\.\.\/jobs\/job-admission\.mjs"/);
-  assert.match(coordinator,/from "\.\.\/\.\.\/jobs\/job-preflight\.mjs"/);
+  assert.match(coordinator,/from "\.\.\/\.\.\/jobs\/admission\/job-admission\.mjs"/);
+  assert.match(coordinator,/from "\.\.\/\.\.\/jobs\/admission\/job-preflight\.mjs"/);
   assert.match(src,/from "\.\.\/bridge\/orchestration\/job-admission-coordinator\.mjs"/);
   assert.match(src,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(src,/const server = http\.createServer\(async \(request, response\) => \{/);
-  const preparation=await fs.readFile(new URL("../jobs/local-task-preparation.mjs",import.meta.url),"utf8");
+  const preparation=await fs.readFile(new URL("../jobs/preparation/local-task-preparation.mjs",import.meta.url),"utf8");
   assert.ok(preparation.includes('await jobStore.transition(jobKey, "queued"'));
   assert.ok(src.includes("await coordinateLocalExecution({"));
 });
@@ -1164,7 +1164,7 @@ test("P4 local task preparation preserves bridge-owned launches and runtime job 
   const from=execution.indexOf("await prepareTask({");
   const launched=execution.indexOf('await jobStore.transition(jobKey, "launching"',from);
   assert.ok(from>=0&&launched>from);
-  assert.ok(execution.includes('from "./local-task-preparation.mjs"'));
+  assert.ok(execution.includes('from "../../jobs/preparation/local-task-preparation.mjs"'));
   assert.ok(bridge.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(bridge.includes('const server = http.createServer(async (request, response) => {'));
   assert.ok(execution.includes('await dispatchers.gemini({'));
@@ -1236,7 +1236,7 @@ test("P4 simple dispatch adapters leave launch state, agent distinctions and HTT
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
-  assert.ok(execution.includes('from "./simple-agent-dispatch.mjs"'));
+  assert.ok(execution.includes('from "../../jobs/dispatch/simple-agent-dispatch.mjs"'));
   const start=execution.indexOf('await jobStore.transition(jobKey, "launching", { attempts: 1 })');
   const mock=execution.indexOf('await dispatchers.mock({',start);
   const gemma=execution.indexOf('dispatchers.gemma({',mock);
@@ -1289,14 +1289,14 @@ test("P4 ChatGPT CLI dispatch preserves serialized queue and human-review identi
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
-  assert.ok(execution.includes('from "./chatgpt-cli-dispatch.mjs"'));
+  assert.ok(execution.includes('from "../../jobs/dispatch/chatgpt-cli-dispatch.mjs"'));
   const cli=execution.indexOf('agent === "chatgpt-cli"');
   const coding=execution.indexOf('dispatchers.chatgptCli({',cli);
   const human=execution.indexOf('agent === "chatgpt"',coding);
   assert.ok(cli>=0&&coding>cli&&human>coding);
   assert.ok(source.includes("function enqueueChatgptHandoff(task)"));
   assert.ok(source.includes("async function startChatgptOpenCode("));
-  assert.ok(source.includes('from "../bridge/review-routes.mjs"'));
+  assert.ok(source.includes('from "../bridge/handlers/review-routes.mjs"'));
   assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
 });
@@ -1421,7 +1421,7 @@ test("P4 Antigravity dispatch keeps original queue and runtime ownership in main
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
-  assert.ok(execution.includes('from "./antigravity-dispatch.mjs"'));
+  assert.ok(execution.includes('from "../../jobs/dispatch/antigravity-dispatch.mjs"'));
   assert.ok(execution.includes("dispatchers.antigravity({"));
   assert.ok(src.includes("const agySessionQueue = createSessionQueue("));
   assert.ok(src.includes("function startAntigravity("));
@@ -1532,10 +1532,10 @@ test("P4 human ChatGPT handoff remains distinct from CLI dispatch and review rou
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
-  assert.ok(execution.includes('from "./chatgpt-human-handoff.mjs"'));
+  assert.ok(execution.includes('from "../../jobs/dispatch/chatgpt-human-handoff.mjs"'));
   assert.ok(execution.includes('await dispatchers.chatgptHuman({'));
   assert.ok(execution.includes('dispatchers.chatgptCli({'));
-  assert.ok(source.includes('from "../bridge/review-routes.mjs"'));
+  assert.ok(source.includes('from "../bridge/handlers/review-routes.mjs"'));
   assert.ok(source.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
   assert.ok(source.includes('const server = http.createServer(async (request, response) => {'));
 });
@@ -1621,8 +1621,8 @@ test("P4 Gemini execution stays within original bridge state and Warp implementa
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
-  const handler=await fs.readFile(new URL("../jobs/gemini-dispatch.mjs",import.meta.url),"utf8");
-  assert.ok(execution.includes('from "./gemini-dispatch.mjs"'));
+  const handler=await fs.readFile(new URL("../jobs/dispatch/gemini-dispatch.mjs",import.meta.url),"utf8");
+  assert.ok(execution.includes('from "../../jobs/dispatch/gemini-dispatch.mjs"'));
   assert.ok(execution.includes('await dispatchers.gemini({'));
   assert.ok(src.includes('async function startGeminiInWarp('));
   assert.ok(src.includes('const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs")'));
@@ -1747,9 +1747,9 @@ test("P4 Trae local dispatch retains original bridge state and remote SSH lifecy
   const fs=await import("node:fs/promises");
   const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
   const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
-  const local=await fs.readFile(new URL("../jobs/trae-local-dispatch.mjs",import.meta.url),"utf8");
+  const local=await fs.readFile(new URL("../jobs/dispatch/trae-local-dispatch.mjs",import.meta.url),"utf8");
   const remote=await fs.readFile(new URL("../bridge/orchestration/remote-execution-coordinator.mjs",import.meta.url),"utf8");
-  assert.ok(execution.includes('from "./trae-local-dispatch.mjs"'));
+  assert.ok(execution.includes('from "../../jobs/dispatch/trae-local-dispatch.mjs"'));
   assert.ok(execution.includes("await dispatchers.trae({"));
   assert.ok(remote.includes("await dispatch({ job: message, jobKey, jobStore })"));
   assert.ok(bridge.includes("function safeTokenEqual(actual, expected)"));
