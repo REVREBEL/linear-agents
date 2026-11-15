@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 
-import { createHttpRouteComposer as canonicalComposer } from "./http-route-composition.mjs";
+import { createHttpRouteComposer as canonicalComposer } from "../bridge/server/http-route-composition.mjs";
 import { createHttpRouteComposer as legacyComposer } from "../bridge/http-route-composition.mjs";
-import { createDiagnosticRoutes as canonicalDiagnostics } from "../handlers/diagnostic-routes.mjs";
+import { createDiagnosticRoutes as canonicalDiagnostics } from "../bridge/handlers/diagnostic-routes.mjs";
 import { createDiagnosticRoutes as legacyDiagnostics } from "../bridge/diagnostic-routes.mjs";
-import { createAgentHostResolver as canonicalHostResolver } from "../config/agent-host-resolver.mjs";
+import { createAgentHostResolver as canonicalHostResolver } from "../bridge/config/agent-host-resolver.mjs";
 import { createAgentHostResolver as legacyHostResolver } from "../bridge/agent-host-resolver.mjs";
-import { coordinateJobAdmission as canonicalAdmission } from "../orchestration/job-admission-coordinator.mjs";
+import { coordinateJobAdmission as canonicalAdmission } from "../bridge/orchestration/job-admission-coordinator.mjs";
 import { coordinateJobAdmission as legacyAdmission } from "../jobs/job-admission-coordinator.mjs";
 
 test("P5 structure: legacy modules re-export canonical function identities without duplicate state", () => {
@@ -67,10 +67,10 @@ test("P5 structure: bridge entrypoint uses canonical folders without moving runt
 
 test("P5 structure: source owners reside in new folders and compatibility paths only re-export", async () => {
   for (const [canonicalPath, legacyPath, ownerExport] of [
-    ["./http-route-composition.mjs", "../bridge/http-route-composition.mjs", "createHttpRouteComposer"],
-    ["../handlers/diagnostic-routes.mjs", "../bridge/diagnostic-routes.mjs", "createDiagnosticRoutes"],
-    ["../config/agent-host-resolver.mjs", "../bridge/agent-host-resolver.mjs", "createAgentHostResolver"],
-    ["../orchestration/job-admission-coordinator.mjs", "../jobs/job-admission-coordinator.mjs", "coordinateJobAdmission"],
+    ["../bridge/server/http-route-composition.mjs", "../bridge/http-route-composition.mjs", "createHttpRouteComposer"],
+    ["../bridge/handlers/diagnostic-routes.mjs", "../bridge/diagnostic-routes.mjs", "createDiagnosticRoutes"],
+    ["../bridge/config/agent-host-resolver.mjs", "../bridge/agent-host-resolver.mjs", "createAgentHostResolver"],
+    ["../bridge/orchestration/job-admission-coordinator.mjs", "../jobs/job-admission-coordinator.mjs", "coordinateJobAdmission"],
   ]) {
     const original = await fs.readFile(new URL(canonicalPath, import.meta.url), "utf8");
     const shim = await fs.readFile(new URL(legacyPath, import.meta.url), "utf8");
