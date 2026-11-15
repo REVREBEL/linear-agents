@@ -140,6 +140,21 @@ test("invalid HTTPS callback URL fails closed before publishing capability or in
   assert.deepEqual(f.trace, []);
 });
 
+test("completion URL uses validated activity origin without a string path replacement", async () => {
+  const f = fixture({
+    env: { ...env, MAC_TRAE_ACTIVITY_URL: "https://trae-agent.example.test/trae-activity" },
+  });
+  const result = await coordinateRemoteExecution(f.args);
+  assert.equal(result.status, 202);
+  const message = f.trace.find(x => x[0] === "ssh")[1].job;
+  assert.equal(message.activityEndpoint, "https://trae-agent.example.test/trae-activity");
+  assert.equal(message.completionEndpoint, "https://trae-agent.example.test/trae-complete");
+  const source = await fs.readFile(
+    new URL("../jobs/remote-execution-coordinator.mjs", import.meta.url), "utf8",
+  );
+  assert.doesNotMatch(source, /activityEndpoint\\.replace\\(/);
+});
+
 test("failed launching ledger write prevents SSH dispatch", async () => {
   const f = fixture({
     jobStore: { transition: async () => { throw Error("durable job ledger unavailable"); } },
