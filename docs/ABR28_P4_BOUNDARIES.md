@@ -277,3 +277,10 @@ New P4 tests cover missing executable, missing prompt, Linux Warp rejection, mac
 - No live file locations, tokens, credentials, processes or sessions are changed by merging this code; no agent or Worker is deployed.
 
 P4 regression tests cover negative prechecks, per-job capability file permissions and payloads, launch-before-ledger prevention, credential isolation, bot identity, process logging, local callback authentication, and the preserved remote SSH dispatch path. A complete live Mac SSH and local Trae smoke test remains a P5 cutover check.
+
+## P4 stateless prompt and CLI argument utilities
+
+- `bridge/prompt-arguments.mjs` owns the original, behavior-preserving Linear agent-session ID lookup, promptContext extraction, issue instruction selection, shell-like tokenization, CLI argument interpolation, shell quoting, and safe log-argument truncation.
+- `linear-agent-bridge/agent-bridge.mjs` imports these pure functions; HTTP handling, rate/credentials, active jobs and session ledgers, CLI processes, GitHub review dispatch, and the systemd entrypoint remain in their existing locations.
+- `scripts/prompt-arguments.test.mjs` verifies session precedence, original nested payload handling, issue descriptions and user-request filtering, argument template substitution, quoted paths, and truncation.
+- The new regression file is included in both `npm run bridge:test` and `npm run test:reliability`. There is no secret, state, runtime service, worker, or data migration.
