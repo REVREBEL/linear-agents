@@ -1,0 +1,62 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022"
+    ],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@routing/*": [
+        "./routing/*"
+      ],
+      "@integrations/*": [
+        "./integrations/*"
+      ],
+      "@agents/*": [
+        "./agents/*"
+      ],
+      "@memory/*": [
+        "./memory/*"
+      ]
+    }
+  },
+  "include": [
+    "routing/**/*.ts",
+    "integrations/**/*.ts",
+    "agents/**/*.ts",
+    "jobs/**/*.ts",
+    "types/**/*.ts",
+    "routing/**/*.json"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".linear-agent",
+    "worktrees"
+  ]
+}

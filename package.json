@@ -54,6 +54,7 @@
   },
   "devDependencies": {
     "@openrouter/agent": "^1.0.1",
+    "@types/node": "^26.6.6",
     "typescript": "^7.0.0",
     "wrangler": "^4.151.3"
   },
