@@ -1,3 +1,4 @@
+import { createHttpRouteComposer } from "../bridge/http-route-composition.mjs";
 import { coordinateRemoteExecution } from "../jobs/remote-execution-coordinator.mjs";
 import { coordinateLocalExecution } from "../jobs/local-execution-coordinator.mjs";
 import { coordinateJobAdmission } from "../jobs/job-admission-coordinator.mjs";
@@ -328,76 +329,20 @@ const handleIssueCompletionRoute = createIssueCompletionRoute({
   osxProjectsRoot: OSX_PROJECTS_ROOT,
 });
 
+// Route precedence remains diagnostics, Shortcuts, review, GitHub,
+// Trae callbacks, and issue completion before the authenticated /jobs path.
+const handleComposedRoutes = createHttpRouteComposer({
+  handleDiagnosticRoute, handleReviewRoute, handleGithubWebhookRoute,
+  handleTraeCallbackRoute, handleIssueCompletionRoute,
+  jobsDir: JOBS_DIR, readBody, sendJson,
+});
+
 const server = http.createServer(async (request, response) => {
   try {
     const host = normalizeHost(request.headers.host);
     const url = new URL(request.url || "/", `http://${host || "localhost"}`);
 
-    if (handleDiagnosticRoute(request, response, { host, url })) return;
-
-    // Shortcuts may construct a URL with &handoffid= before the ?result suffix.
-    // Accept that legacy format as well as normal URL query parameters.
-    const shortcutLegacyMatch = new RegExp("^/github/handoff-result&handoffid=([a-zA-Z0-9_-]{8,128})$").exec(url.pathname);
-    if (request.method === "GET" && (url.pathname === "/github/handoff-result" || shortcutLegacyMatch)) {
-      const handoffId = shortcutLegacyMatch?.[1] || url.searchParams.get("handoffid") || url.searchParams.get("handoffId");
-      const allowed = { "success": "success", "cancelled": "cancelled", "error": "error",
-        "x-success": "success", "x-cancelled": "cancelled", "x-error": "error" };
-      const outcomeFlags = [...url.searchParams.keys()].filter(key => Object.hasOwn(allowed, key));
-      if (outcomeFlags.length !== 1 || (handoffId !== null && !/^[a-zA-Z0-9_-]{8,128}$/.test(handoffId))) {
-        return sendJson(response, 400, { ok: false, error: "Use ?success, ?cancelled or ?error, optionally with handoffid" });
-      }
-      const status = allowed[outcomeFlags[0]];
-      const record = { at: new Date().toISOString(), status, source: "shortcuts", stage: "handoff",
-        ...(handoffId ? { handoffId } : {}) };
-      const resultDir = path.join(JOBS_DIR, "chatgpt", "handoff-results");
-      await fs.mkdir(resultDir, { recursive: true, mode: 0o700 });
-      await fs.appendFile(path.join(resultDir, "results.jsonl"), JSON.stringify(record) + "\n", { mode: 0o600 });
-      console.log(`ChatGPT Shortcut signal: ${status} ${handoffId || "(unassigned)"}`);
-      return sendJson(response, 200, { ok: true, status, ...(handoffId ? { handoffId } : {}) });
-    }
-
-    if (url.pathname === "/github/handoff-result") {
-      if (request.method !== "POST") {
-        response.setHeader("Allow", "POST");
-        return sendJson(response, 405, { ok: false, error: "Use POST to report a Shortcut handoff result" });
-      }
-      const callbackToken = process.env.CHATGPT_HANDOFF_CALLBACK_TOKEN;
-      if (!callbackToken) return sendJson(response, 503, { ok: false, error: "Shortcut callback token not configured" });
-      const supplied = request.headers.authorization;
-      const expected = `Bearer ${callbackToken}`;
-      if (typeof supplied !== "string" ||
-          Buffer.byteLength(supplied) !== Buffer.byteLength(expected) ||
-          !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
-        return sendJson(response, 401, { ok: false, error: "Unauthorized" });
-      }
-      let payload;
-      try { payload = JSON.parse(await readBody(request)); }
-      catch { return sendJson(response, 400, { ok: false, error: "Invalid JSON payload" }); }
-      const handoffId = payload?.handoffId;
-      const status = payload?.status;
-      const stage = payload?.stage;
-      if (typeof handoffId !== "string" || !/^[a-zA-Z0-9_-]{8,128}$/.test(handoffId) ||
-          !["success", "error"].includes(status) ||
-          typeof stage !== "string" || !/^[a-zA-Z0-9_-]{1,64}$/.test(stage) ||
-          (payload.error !== undefined && (typeof payload.error !== "string" || payload.error.length > 500))) {
-        return sendJson(response, 400, { ok: false, error: "Invalid handoff result" });
-      }
-      const record = { at: new Date().toISOString(), handoffId, status, stage,
-        ...(status === "error" && payload.error ? { error: payload.error } : {}) };
-      const resultDir = path.join(JOBS_DIR, "chatgpt", "handoff-results");
-      await fs.mkdir(resultDir, { recursive: true, mode: 0o700 });
-      await fs.appendFile(path.join(resultDir, "results.jsonl"), JSON.stringify(record) + "\n", { mode: 0o600 });
-      console.log(`ChatGPT Shortcut handoff result: ${handoffId} ${status} ${stage}`);
-      return sendJson(response, 202, { ok: true, accepted: true, handoffId, status });
-    }
-
-    if (await handleReviewRoute(request, response, { url })) return;
-
-    if (await handleGithubWebhookRoute(request, response, { url })) return;
-
-    if (await handleTraeCallbackRoute(request, response, { url })) return;
-
-    if (await handleIssueCompletionRoute(request, response, { url })) return;
+    if (await handleComposedRoutes(request, response, { host, url })) return;
 
     if (request.method !== "POST" || url.pathname !== "/jobs") {
       return sendJson(response, 404, {
