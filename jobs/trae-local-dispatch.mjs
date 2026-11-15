@@ -56,22 +56,45 @@ export async function dispatchLocalTraeAgent({
     return;
   }
   const activityDir = path.join(repositoryRoot, ".linear-agent");
-  const activityContextFile = path.join(activityDir, "trae-active-session.json");
+  const activitySessionsDir = path.join(activityDir, "trae-sessions");
+  const activityContextFile = path.join(
+    activitySessionsDir, crypto.createHash("sha256").update(jobKey).digest("hex") + ".json"
+  );
   await fs.mkdir(activityDir, { recursive: true, mode: 0o700 });
-  await fs.writeFile(activityContextFile, JSON.stringify({
+  await fs.chmod(activityDir, 0o700);
+  await fs.mkdir(activitySessionsDir, { recursive: true, mode: 0o700 });
+  await fs.chmod(activitySessionsDir, 0o700);
+  const capability = JSON.stringify({
     token: generateToken(),
     agentSessionId: sessionId,
     completionUrl,
     workspace,
     jobKey,
     updatedAt: now(),
-  }, null, 2), { mode: 0o600 });
-  await jobStore.transition(jobKey, "launching", { activityContextFile });
+  }, null, 2);
+  // Never overwrite another session's capability or reuse a callback token.
+  await fs.writeFile(activityContextFile, capability, { flag: "wx", mode: 0o600 });
+  try {
+    await jobStore.transition(jobKey, "launching", { activityContextFile });
+  } catch (error) {
+    // Dispatch never occurred; revoke the unpublished callback capability.
+    await fs.rm(activityContextFile, { force: true }).catch(logger.error);
+    try {
+      await jobStore.transition(jobKey, "failed", {
+        error: "Trae prelaunch ledger transition failed; manual replay required",
+        activityContextFile: null,
+      });
+    } catch (recordError) {
+      logger.error("Trae ledger recovery failed:", recordError);
+    }
+    throw error;
+  }
 
   const traeProcess = spawnProcess(traeBin, args, {
     cwd: workspace,
     env: {
       ...env,
+      TRAE_ACTIVITY_CONTEXT_FILE: activityContextFile,
       LINEAR_API_KEY: "", LINEAR_ACCESS_TOKEN: "",
       [credential.variable]: credential.accessToken,
       GIT_AUTHOR_NAME: traeGitName,
