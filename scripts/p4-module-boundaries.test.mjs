@@ -449,10 +449,13 @@ test("P4 SSH dispatch preserves trusted alias, fixed runner and no issue text in
   assert.throws(()=>sshDispatch.buildSshArgs({...env,MAC_SSH_HOST:"-oProxyCommand=evil"}),/trusted SSH/);
   assert.throws(()=>sshDispatch.buildSshArgs({...env,MAC_NODE_BIN:"node;evil"}),/MAC_NODE_BIN/);
 });
-test("P4 bridge imports canonical remote activity and SSH dispatch without moving job roots", async () => {
+test("P4 remote coordinator imports canonical callback and SSH adapters without moving job roots", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  assert.match(source,/from "\.\.\/routing\/remote-trae-activity\.mjs"/);
+  const remote=await fs.readFile(new URL("../jobs/remote-execution-coordinator.mjs",import.meta.url),"utf8");
+  assert.match(remote,/from "\.\.\/routing\/remote-trae-activity\.mjs"/);
+  assert.match(remote,/from "\.\.\/routing\/ssh-dispatch\.mjs"/);
+  assert.match(source,/from "\.\.\/jobs\/remote-execution-coordinator\.mjs"/);
   assert.match(source,/from "\.\.\/routing\/ssh-dispatch\.mjs"/);
   assert.match(source,/const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
 });
