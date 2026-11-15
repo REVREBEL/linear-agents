@@ -1,12 +1,12 @@
 import {
   identifyLinearJobDelivery,
   linearJobDuplicateResponse,
-} from "../../jobs/job-admission.mjs";
-import { preflightLinearJob } from "../../jobs/job-preflight.mjs";
+} from "../../jobs/admission/job-admission.mjs";
+import { preflightLinearJob } from "../../jobs/admission/job-preflight.mjs";
 import {
   canRecoverUnroutedDelivery,
   handleUnroutedDelivery,
-} from "../../jobs/unrouted-delivery.mjs";
+} from "../../jobs/admission/unrouted-delivery.mjs";
 
 /**
  * Coordinate an already authenticated and parsed /jobs delivery.

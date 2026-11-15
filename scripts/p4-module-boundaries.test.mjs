@@ -263,7 +263,7 @@ test("P4 bridge and review inbox reference canonical GitHub event adapter", asyn
     assert.match(content,/from "\.\.\/integrations\/github-events\.mjs"/);
   }
   const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const handler=await fs.readFile(new URL("../bridge/github-webhook-routes.mjs",import.meta.url),"utf8");
+  const handler=await fs.readFile(new URL("../bridge/handlers/github-webhook-routes.mjs",import.meta.url),"utf8");
   assert.match(bridge,/createGithubWebhookRoutes\(/);
   assert.match(handler,/recordGithubEvent\(JOBS_DIR, event, source\)/);
 });
@@ -452,7 +452,7 @@ test("P4 SSH dispatch preserves trusted alias, fixed runner and no issue text in
 test("P4 remote coordinator imports canonical callback and SSH adapters without moving job roots", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const remote=await fs.readFile(new URL("../jobs/remote-execution-coordinator.mjs",import.meta.url),"utf8");
+  const remote=await fs.readFile(new URL("../bridge/orchestration/remote-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.match(remote,/from "\.\.\/routing\/remote-trae-activity\.mjs"/);
   assert.match(remote,/from "\.\.\/routing\/ssh-dispatch\.mjs"/);
   assert.match(source,/from "\.\.\/jobs\/remote-execution-coordinator\.mjs"/);
@@ -1012,7 +1012,7 @@ test("P4 /jobs authenticates before coordinator, which preflights before durable
   const duplicate=coordinator.indexOf("duplicateResponseFor(",claim);
   const unrouted=coordinator.indexOf("await handleUnrouted({",duplicate);
   assert.ok(identity>=0 && identity<preflight && preflight<claim && claim<duplicate && duplicate<unrouted);
-  const preflightSource=await fs.readFile(new URL("../jobs/job-preflight.mjs",import.meta.url),"utf8");
+  const preflightSource=await fs.readFile(new URL("../jobs/admission/job-preflight.mjs",import.meta.url),"utf8");
   const route=preflightSource.indexOf("const route = await resolveJobRoute(job)");
   const credentials=preflightSource.indexOf("const credential = route.ok ? await syncLinearCredential(",route);
   const readiness=preflightSource.indexOf('if (agent === "chatgpt-cli")',credentials);
@@ -1160,7 +1160,7 @@ test("P4 local task preparation fails before queued transition on write or memor
 test("P4 local task preparation preserves bridge-owned launches and runtime job root", async () => {
   const fs=await import("node:fs/promises");
   const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   const from=execution.indexOf("await prepareTask({");
   const launched=execution.indexOf('await jobStore.transition(jobKey, "launching"',from);
   assert.ok(from>=0&&launched>from);
@@ -1235,7 +1235,7 @@ test("P4 Gemma asynchronous launch failure is recorded as failed without a secon
 test("P4 simple dispatch adapters leave launch state, agent distinctions and HTTP listener in bridge", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "./simple-agent-dispatch.mjs"'));
   const start=execution.indexOf('await jobStore.transition(jobKey, "launching", { attempts: 1 })');
   const mock=execution.indexOf('await dispatchers.mock({',start);
@@ -1288,7 +1288,7 @@ test("P4 ChatGPT CLI asynchronous queue rejection records job failure without wa
 test("P4 ChatGPT CLI dispatch preserves serialized queue and human-review identity separation", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "./chatgpt-cli-dispatch.mjs"'));
   const cli=execution.indexOf('agent === "chatgpt-cli"');
   const coding=execution.indexOf('dispatchers.chatgptCli({',cli);
@@ -1420,7 +1420,7 @@ test("P4 Antigravity queue failures asynchronously record failed ledger state", 
 test("P4 Antigravity dispatch keeps original queue and runtime ownership in main bridge", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "./antigravity-dispatch.mjs"'));
   assert.ok(execution.includes("dispatchers.antigravity({"));
   assert.ok(src.includes("const agySessionQueue = createSessionQueue("));
@@ -1531,7 +1531,7 @@ test("P4 human ChatGPT auto-send queues one Playwright child and records asynchr
 test("P4 human ChatGPT handoff remains distinct from CLI dispatch and review routes", async () => {
   const fs=await import("node:fs/promises");
   const source=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "./chatgpt-human-handoff.mjs"'));
   assert.ok(execution.includes('await dispatchers.chatgptHuman({'));
   assert.ok(execution.includes('dispatchers.chatgptCli({'));
@@ -1620,7 +1620,7 @@ test("P4 Gemini headless launch forwards original options and attaches process l
 test("P4 Gemini execution stays within original bridge state and Warp implementation", async () => {
   const fs=await import("node:fs/promises");
   const src=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   const handler=await fs.readFile(new URL("../jobs/gemini-dispatch.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "./gemini-dispatch.mjs"'));
   assert.ok(execution.includes('await dispatchers.gemini({'));
@@ -1746,9 +1746,9 @@ test("P4 local Trae does not spawn when capability ledger transition fails", asy
 test("P4 Trae local dispatch retains original bridge state and remote SSH lifecycle", async () => {
   const fs=await import("node:fs/promises");
   const bridge=await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs",import.meta.url),"utf8");
-  const execution=await fs.readFile(new URL("../jobs/local-execution-coordinator.mjs",import.meta.url),"utf8");
+  const execution=await fs.readFile(new URL("../bridge/orchestration/local-execution-coordinator.mjs",import.meta.url),"utf8");
   const local=await fs.readFile(new URL("../jobs/trae-local-dispatch.mjs",import.meta.url),"utf8");
-  const remote=await fs.readFile(new URL("../jobs/remote-execution-coordinator.mjs",import.meta.url),"utf8");
+  const remote=await fs.readFile(new URL("../bridge/orchestration/remote-execution-coordinator.mjs",import.meta.url),"utf8");
   assert.ok(execution.includes('from "./trae-local-dispatch.mjs"'));
   assert.ok(execution.includes("await dispatchers.trae({"));
   assert.ok(remote.includes("await dispatch({ job: message, jobKey, jobStore })"));
