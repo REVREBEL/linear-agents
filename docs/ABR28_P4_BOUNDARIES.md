@@ -306,3 +306,9 @@ P4 regression tests cover negative prechecks, per-job capability file permission
 - Existing conversation ID validation, strict workspace matching, null return on missing files, JSON payload fields, 0600 file creation, atomic same-directory rename and temporary-file cleanup remain unchanged.
 - `linear-agent-bridge/agent-bridge.mjs` still owns job admission, startup, AGY session scheduling, agent launch, and verified conversation persistence decisions. No active sessions, credentials, job ledger entries, routes, or callback contracts change.
 - `scripts/agy-project-conversations.test.mjs` adds direct coverage for missing records, writing and reading, workspace isolation, invalid IDs, legacy record compatibility, and live path anchoring. Both bridge and reliability suites include it.
+
+## P4 review follow-up: project isolation and host-route test assertions
+
+- AGY conversation records now require a safe single-segment project identifier before file access and a matching `record.projectId` when read. Untrusted project IDs cannot traverse the project-conversations directory or reassign a saved conversation to another project with a shared workspace.
+- New regressions explicitly reject traversal inputs and swapped records. Valid legacy records that contain matching project IDs remain readable at the existing runtime data path.
+- The existing `scripts/agent-host-resolver.test.mjs` assertions introduced with merged PR #148 now verify actual use of `agentForHost` in the diagnostic route and POST `/jobs`, plus the HTTP listener's `server.listen(PORT, HOST)` binding. This closes two historical test-coverage review findings from #148 without changing production routing.
