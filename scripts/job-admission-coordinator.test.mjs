@@ -75,50 +75,101 @@ test("preflight exception also leaves delivery unclaimed", async () => {
   assert.deepEqual(f.steps.map(s => s[0]), ["identity"]);
 });
 
-test("duplicate active delivery returns its existing 202 without launching or persisting", async () => {
-  const f = fixture({
-    jobStore: { claim: async () => ({ created: false, record: { state: "running", jobId: "old-id", agent: "trae" } }) },
-    duplicateResponseFor: () => ({ status: 202, body: {
-      ok: true, accepted: true, duplicate: true, jobId: "old-id", state: "running", host: "trae.example.test",
-    } }),
-  });
+test("duplicate active delivery claims before checking recovery and returns the existing 202", async () => {
+  const f = fixture();
+  const record = { key: f.identity.jobKey, state: "running", jobId: "old-id", agent: "trae" };
+  f.args.jobStore = { claim: async (...args) => {
+    f.steps.push(["claim", ...args]);
+    return { created: false, record };
+  } };
+  f.args.recoverableUnrouted = args => {
+    f.steps.push(["recovery-check", args]);
+    return false;
+  };
+  f.args.duplicateResponseFor = (...args) => {
+    f.steps.push(["duplicate", ...args]);
+    return { status: 202, body: {
+      ok: true, accepted: true, duplicate: true,
+      jobId: "old-id", state: "running", host: "trae.example.test",
+    } };
+  };
   const result = await coordinateJobAdmission(f.args);
   assert.equal(result.response.status, 202);
   assert.equal(result.response.body.jobId, "old-id");
-  assert.deepEqual(f.steps.map(s => s[0]), ["identity", "preflight", "recovery-check"]);
+  assert.deepEqual(f.steps.map(s => s[0]),
+    ["identity", "preflight", "claim", "recovery-check", "duplicate"]);
+  assert.deepEqual(f.steps[2].slice(1), [f.identity.jobKey, {
+    agent: "trae", deliveryId: "raw/id", jobId: "safe-id",
+  }]);
+  assert.equal(f.steps[3][1].claimed.record, record);
+  assert.equal(f.steps[4][1].record, record);
 });
-
-test("unaccepted duplicate returns 503 without dispatch", async () => {
-  const f = fixture({
-    jobStore: { claim: async () => ({ created: false, record: { state: "failed" } }) },
-    duplicateResponseFor: () => ({ status: 503, body: { ok: false, accepted: false, duplicate: true } }),
-  });
+test("unaccepted duplicate claims before checking recovery and returns 503 without dispatch", async () => {
+  const f = fixture();
+  const record = { key: f.identity.jobKey, agent: "trae", state: "failed" };
+  f.args.jobStore = { claim: async (...args) => {
+    f.steps.push(["claim", ...args]);
+    return { created: false, record };
+  } };
+  f.args.recoverableUnrouted = args => {
+    f.steps.push(["recovery-check", args]);
+    return false;
+  };
+  f.args.duplicateResponseFor = (...args) => {
+    f.steps.push(["duplicate", ...args]);
+    return { status: 503, body: { ok: false, accepted: false, duplicate: true } };
+  };
   const result = await coordinateJobAdmission(f.args);
   assert.deepEqual(result.response, { status: 503, body: {
     ok: false, accepted: false, duplicate: true,
   } });
-  assert.deepEqual(f.steps.map(s => s[0]), ["identity", "preflight", "recovery-check"]);
+  assert.deepEqual(f.steps.map(s => s[0]),
+    ["identity", "preflight", "claim", "recovery-check", "duplicate"]);
+  assert.deepEqual(f.steps[2].slice(1), [f.identity.jobKey, {
+    agent: "trae", deliveryId: "raw/id", jobId: "safe-id",
+  }]);
+  assert.equal(f.steps[3][1].claimed.record, record);
+  assert.equal(f.steps[4][1].record, record);
 });
-
-test("recovered received-only unrouted claim bypasses duplicate guard and persists 422", async () => {
-  const f = fixture({
-    preflight: async () => ({ route: { ok: false, error: "No routing" }, credential: null, rejection: null }),
-    jobStore: { claim: async () => ({ created: false, record: {
-      key: "trae:raw/id", agent: "trae", state: "interrupted", previousState: "received",
-    } }) },
-    recoverableUnrouted: () => true,
-    duplicateResponseFor: () => { throw Error("recoverable job must not hit duplicate check"); },
-    handleUnrouted: async () => ({ status: 422, body: {
-      ok: false, accepted: false, error: "No routing",
-    } }),
-  });
+test("recovered received-only unrouted claim persists only after claim and skips duplicate guard", async () => {
+  const f = fixture();
+  const route = { ok: false, error: "No routing" };
+  const record = {
+    key: f.identity.jobKey, agent: "trae",
+    state: "interrupted", previousState: "received",
+  };
+  f.args.preflight = async options => {
+    f.steps.push(["preflight", options]);
+    return { route, credential: null, rejection: null };
+  };
+  f.args.jobStore = { claim: async (...args) => {
+    f.steps.push(["claim", ...args]);
+    return { created: false, record };
+  } };
+  f.args.recoverableUnrouted = options => {
+    f.steps.push(["recovery-check", options]);
+    return options.claimed.record === record && options.route === route;
+  };
+  f.args.duplicateResponseFor = () => { throw Error("recoverable job must not hit duplicate check"); };
+  f.args.handleUnrouted = async options => {
+    f.steps.push(["unrouted", options]);
+    return { status: 422, body: { ok: false, accepted: false, error: "No routing" } };
+  };
   const result = await coordinateJobAdmission(f.args);
   assert.deepEqual(result.response, { status: 422, body: {
     ok: false, accepted: false, error: "No routing",
   } });
-  assert.deepEqual(f.steps.map(s => s[0]), ["identity"]);
+  assert.deepEqual(f.steps.map(s => s[0]),
+    ["identity", "preflight", "claim", "recovery-check", "unrouted"]);
+  assert.deepEqual(f.steps[2].slice(1), [f.identity.jobKey, {
+    agent: "trae", deliveryId: "raw/id", jobId: "safe-id",
+  }]);
+  assert.equal(f.steps[3][1].claimed.record, record);
+  assert.equal(f.steps[3][1].route, route);
+  assert.equal(f.steps[4][1].route, route);
+  assert.equal(f.steps[4][1].jobStore, f.args.jobStore);
+  assert.equal(f.steps[4][1].jobKey, f.identity.jobKey);
 });
-
 test("ledger failure propagates; no job receives a success acknowledgment", async () => {
   const f = fixture({ jobStore: { claim: async () => { throw Error("ledger disk error"); } } });
   await assert.rejects(coordinateJobAdmission(f.args), /ledger disk error/);
