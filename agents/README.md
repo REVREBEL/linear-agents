@@ -1,9 +1,12 @@
-# Agent profiles on Ubuntu
+# Agent registry
 
-This directory documents the server's canonical `/opt/agents/` layout.
+This repository's `agents/` directory contains **source-controlled agent definitions and project registry files** used by Agent Bridge. It is **not** an empty placeholder and is **not** a mirror of the server's live `/opt/agents/` directory.
 
-The **live profiles are not stored in Git**. In particular, do not commit CLI credentials, OAuth state, sessions, history, local memory, SQLite databases, caches, installed binaries, or symlinks to a live profile.
+## Ubuntu runtime boundary
 
-Canonical server location: `/opt/agents/`. The existing Linux home-directory compatibility links are managed on the server, not by this repository.
+- `/opt/agents/` is the canonical host location for runtime CLI profiles.
+- Authentication, session databases, conversation history, installed binaries, memory, and runtime caches stay on Ubuntu, outside Git.
+- Linux home-directory symlinks to live profiles, if required, are managed on the host.
+- Agent definitions here may be versioned and reviewed independently of that private runtime state.
 
-This README preserves the directory in Git until individual, reviewed configuration files are intentionally added.
+Do not copy a live `/opt/agents/` tree into this repository.
