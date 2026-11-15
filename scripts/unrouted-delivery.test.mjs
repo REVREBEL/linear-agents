@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { persistUnroutedJob } from "../jobs/unrouted-delivery.mjs";
+import { persistUnroutedJob, unroutedTaskPath, canRecoverUnroutedDelivery, handleUnroutedDelivery } from "../jobs/unrouted-delivery.mjs";
 
 test("unrouted delivery writes the original task and transitions ledger before rejecting", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-unrouted-"));
@@ -12,7 +12,7 @@ test("unrouted delivery writes the original task and transitions ledger before r
     await fs.mkdir(dir);
     const order = [];
     const job = { payload: { data: { promptContext: "Fix issue" } } };
-    const file = path.join(dir, "delivery-1.unrouted.json");
+    const file = unroutedTaskPath({ agent: "gemini", safeJobId: "delivery-1", jobKey: "gemini:delivery-1", agentJobDirs: { gemini: dir } });
     const result = await persistUnroutedJob({
       agent: "gemini", safeJobId: "delivery-1", jobKey: "gemini:delivery-1", job,
       route: { ok: false, error: "Project not configured" }, agentJobDirs: { gemini: dir },
@@ -51,7 +51,7 @@ test("unrouted delivery fails closed if durable ledger transition fails", async 
     }), /Ledger unavailable/);
     assert.deepEqual(logs, []);
     assert.deepEqual(JSON.parse(await fs.readFile(
-      path.join(dir, "delivery-2.unrouted.json"), "utf8",
+      unroutedTaskPath({ agent: "mock", safeJobId: "delivery-2", jobKey: "mock:delivery-2", agentJobDirs: { mock: dir } }), "utf8",
     )), { reason: "Unknown project", job: { task: "unchanged" } });
   } finally {
     await fs.rm(root, { recursive: true, force: true });
@@ -80,9 +80,93 @@ test("bridge retains authentication/preflight and claim before unrouted handling
   const auth = src.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
   const preflight = src.indexOf("await preflightLinearJob({", auth);
   const claim = src.indexOf("const claimed = await jobStore.claim(", preflight);
-  const unrouted = src.indexOf("await persistUnroutedJob({", claim);
+  const unrouted = src.indexOf("await handleUnroutedDelivery({", claim);
   const remote = src.indexOf('if (route.executionHost === "macos")', unrouted);
   assert.ok(auth >= 0 && auth < preflight && preflight < claim && claim < unrouted && unrouted < remote);
-  assert.match(src, /return sendJson\(response, unrouted\.status, unrouted\.body\)/);
+  assert.match(src, /if \(unrouted\) return sendJson\(response, unrouted\.status, unrouted\.body\)/);
   assert.match(src, /const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
+});
+
+test("distinct ledger keys with colliding sanitized job IDs retain separate private files", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-unrouted-collision-"));
+  try {
+    const dir = path.join(root, "trae");
+    await fs.mkdir(dir);
+    const jobStore = { transition: async () => {} };
+    const base = { agent: "trae", safeJobId: "a_b", route: { ok: false, error: "Unrouted" },
+      agentJobDirs: { trae: dir }, jobStore, logger: { error: () => {} } };
+    const a = { ...base, jobKey: "trae:a/b", job: { id: "first" } };
+    const b = { ...base, jobKey: "trae:a?b", job: { id: "second" } };
+    await Promise.all([persistUnroutedJob(a), persistUnroutedJob(b)]);
+    const pA = unroutedTaskPath(a);
+    const pB = unroutedTaskPath(b);
+    assert.notEqual(pA, pB);
+    assert.deepEqual(JSON.parse(await fs.readFile(pA, "utf8")).job, a.job);
+    assert.deepEqual(JSON.parse(await fs.readFile(pB, "utf8")).job, b.job);
+    for (const file of [pA,pB]) assert.equal((await fs.stat(file)).mode & 0o777, 0o600);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an interrupted persistence can be retried only for the original unlaunched claim", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-unrouted-retry-"));
+  try {
+    const dir = path.join(root, "mock");
+    await fs.mkdir(dir);
+    let attempts = 0;
+    const options = { agent: "mock", safeJobId: "delivery", jobKey: "mock:delivery",
+      job: { id: "original" }, route: { ok: false, error: "Missing project" },
+      agentJobDirs: { mock: dir }, logger: { error: () => {} },
+      jobStore: { transition: async () => { if (++attempts === 1) throw Error("disk outage"); } }
+    };
+    await assert.rejects(persistUnroutedJob(options), /disk outage/);
+    const claimed = { created: false, record: { agent: "mock", key: "mock:delivery", state: "received" } };
+    assert.equal(canRecoverUnroutedDelivery({ claimed, route: options.route, jobKey: options.jobKey, agent: "mock" }), true);
+    const response = await handleUnroutedDelivery(options);
+    assert.equal(response.status, 422);
+    assert.equal(attempts, 2);
+    const file = unroutedTaskPath(options);
+    assert.deepEqual(JSON.parse(await fs.readFile(file, "utf8")).job, options.job);
+    assert.equal(canRecoverUnroutedDelivery({
+      claimed: { created: false, record: { ...claimed.record, state: "interrupted", previousState: "received" } },
+      route: options.route, jobKey: options.jobKey, agent: "mock" }), true);
+    assert.equal(canRecoverUnroutedDelivery({
+      claimed: { created: false, record: { ...claimed.record, state: "interrupted", previousState: "running" } },
+      route: options.route, jobKey: options.jobKey, agent: "mock" }), false);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("existing pending file with different contents rejects replay without overwrite", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-unrouted-conflict-"));
+  try {
+    const dir = path.join(root, "gemini");
+    await fs.mkdir(dir);
+    const options = { agent: "gemini", safeJobId: "delivery", jobKey: "gemini:delivery",
+      job: { id: "first" }, route: { ok: false, error: "Missing project" },
+      agentJobDirs: { gemini: dir }, logger: { error: () => {} },
+      jobStore: { transition: async () => {} } };
+    await persistUnroutedJob(options);
+    await assert.rejects(persistUnroutedJob({ ...options, job: { id: "changed" } }), /collision/);
+    assert.deepEqual(JSON.parse(await fs.readFile(unroutedTaskPath(options), "utf8")).job, options.job);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test("actual unrouted handler skips routed jobs and persists unresolved routes", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-unrouted-branch-"));
+  try {
+    const dir = path.join(root, "mock");
+    await fs.mkdir(dir);
+    let transitions = 0;
+    const base = { agent: "mock", safeJobId: "id", jobKey: "mock:id", job: {},
+      agentJobDirs: { mock: dir }, logger: { error: () => {} },
+      jobStore: { transition: async () => { transitions++; } } };
+    assert.equal(await handleUnroutedDelivery({ ...base, route: { ok: true } }), null);
+    assert.equal(transitions, 0);
+    assert.deepEqual(await fs.readdir(dir), []);
+    assert.equal((await handleUnroutedDelivery({ ...base, route: { ok: false, error: "No route" } })).status, 422);
+    assert.equal(transitions, 1);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
