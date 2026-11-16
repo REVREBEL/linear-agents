@@ -37,32 +37,32 @@ export async function auditBridgeDeployment({
       source.includes('ExecStart=/usr/bin/bash ${SCRIPT_Q} bridge') &&
       source.includes('WorkingDirectory=${ROOT_Q}') &&
       source.includes("NODE_ENV=production") &&
-      source.includes('Installed ${UNIT}; NOT restarted or enabled.');
+      source.includes('Installed ${UNIT}; NOT restarted or enabled.'));
   await check("env-wrapper", "scripts/with-env.sh",
     source => source.includes('require BRIDGE_SHARED_SECRET') &&
-      source.includes('exec node "${REPO_ROOT}/linear-agent-bridge/agent-bridge.mjs"'));
+      source.includes('exec node "${REPO_ROOT}/linear-agent-bridge/agent-bridge.mjs"')));
   await check("mac-loader", "linear-agent-bridge/start-bridge.sh",
-    source => source.includes('exec "${NODE_BIN}" "${ROOT}/linear-agent-bridge/agent-bridge.mjs"'));
+    source => source.includes('exec "${NODE_BIN}" "${ROOT}/linear-agent-bridge/agent-bridge.mjs"')));
   await check("loopback-probe", "scripts/p5-bridge-smoke.mjs",
     source => source.includes('http://127.0.0.1:') &&
       source.includes('request("/health"') &&
       source.includes('request("/diagnostics/probe"') &&
-      !source.includes('request("/jobs"'));
+      !source.includes('request("/jobs"')));
   await check("ssh-ack", "routing/ssh/ssh-dispatch.mjs",
     source => source.includes('REMOTE_ACCEPTED:') &&
       source.includes('StrictHostKeyChecking=yes') &&
       source.includes('awaiting_external') &&
-      source.includes('remoteCompletionConfirmedAt'));
+      source.includes('remoteCompletionConfirmedAt')));
   await check("mac-callback-capability", "bridge/orchestration/remote-execution-coordinator.mjs",
     source => source.includes("remoteActivityTokenHash: hashRemoteToken(remoteActivityToken)") &&
       source.includes('await dispatch({ job: message, jobKey, jobStore })') &&
-      source.includes("validateTraeCompletionUrl("));
+      source.includes("validateTraeCompletionUrl(")));
   await check("durable-ledger", "jobs/persistence/job-store.mjs",
     source => source.includes("export function createJobStore(") &&
-      source.includes("async reconcile("));
+      source.includes("async reconcile(")));
   await check("diagnostic-auth", "bridge/handlers/diagnostic-routes.mjs",
     source => source.includes('request.headers.authorization !== `Bearer ${sharedSecret}`') &&
-      source.includes('url.pathname === "/diagnostics/probe"'));
+      source.includes('url.pathname === "/diagnostics/probe"')));
   const passed = checks.every(item => item.passed);
   return { ok: passed, checkCount: checks.length, checks };
 }
