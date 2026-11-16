@@ -183,7 +183,7 @@ test("unrouted persistence error propagates without accepting the job", async ()
 });
 
 test("bridge keeps authentication and body parsing before coordinator, dispatch after it", async () => {
-  const src = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs", import.meta.url), "utf8");
+  const src = await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs", import.meta.url), "utf8");
   const auth = src.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
   const parse = src.indexOf("const job = JSON.parse(rawBody);", auth);
   const coordinator = src.indexOf("await coordinateJobAdmission({", parse);

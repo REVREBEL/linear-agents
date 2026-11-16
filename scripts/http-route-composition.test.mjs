@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createHttpRouteComposer } from "../bridge/http-route-composition.mjs";
+import { createHttpRouteComposer } from "../bridge/server/http-route-composition.mjs";
 
 async function withComposer(callback) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "abr28-http-composition-"));
@@ -144,7 +144,7 @@ test("shortcut POST enforces method, payload shape and original error redaction"
 });
 
 test("bridge owns HTTP listener, final 404, and /jobs authorization after composed routes", async () => {
-  const source = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs", import.meta.url), "utf8");
+  const source = await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs", import.meta.url), "utf8");
   const compose = source.indexOf("await handleComposedRoutes(request, response, { host, url })");
   const notFound = source.indexOf('if (request.method !== "POST" || url.pathname !== "/jobs")', compose);
   const auth = source.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)', notFound);

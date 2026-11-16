@@ -98,19 +98,19 @@ test("Linux restart uses the exact passwordless sudoers unit argument", () => {
 });
 
 test("Linux handoff source does not claim an unsupported automatic GitHub review", () => {
-  const src = readFileSync(path.join(root, "bridge/github-webhook-routes.mjs"), "utf8");
+  const src = readFileSync(path.join(root, "bridge/handlers/github-webhook-routes.mjs"), "utf8");
   const guard = src.indexOf('env.CHATGPT_REVIEW_MODE !== "inbox" &&');
   const claim = src.indexOf('const claimFile = path.join(eventDir');
   assert.ok(guard !== -1 && guard < claim, "Linux unsupported-mode guard must precede delivery claim");
   const tokenGuard = src.indexOf('env.CHATGPT_REVIEW_INBOX_TOKEN.length < 32');
   assert.ok(tokenGuard !== -1 && tokenGuard < claim, "Inbox mode must validate the consumer token before claiming delivery");
-  const bridge = readFileSync(path.join(root, "linear-agent-bridge/agent-bridge.mjs"), "utf8");
-  const humanHandoff = readFileSync(path.join(root, "jobs/chatgpt-human-handoff.mjs"), "utf8");
+  const bridge = readFileSync(path.join(root, "bridge/server/agent-bridge-runtime.mjs"), "utf8");
+  const humanHandoff = readFileSync(path.join(root, "jobs/dispatch/chatgpt-human-handoff.mjs"), "utf8");
   assert.ok(humanHandoff.includes("Linux ChatGPT browser/Shortcuts handoff unsupported"));
-  const localExecution = readFileSync(path.join(root, "jobs/local-execution-coordinator.mjs"), "utf8");
+  const localExecution = readFileSync(path.join(root, "bridge/orchestration/local-execution-coordinator.mjs"), "utf8");
   assert.ok(bridge.includes("await coordinateLocalExecution({"));
   assert.ok(localExecution.includes("await dispatchers.chatgptHuman({"));
-  assert.ok(localExecution.includes('from "./chatgpt-human-handoff.mjs"'));
+  assert.ok(localExecution.includes('from "../../jobs/dispatch/chatgpt-human-handoff.mjs"'));
   assert.ok(bridge.includes("createGithubWebhookRoutes("));
 });
 

@@ -1,0 +1,1094 @@
+import { createHttpRouteComposer } from "./http-route-composition.mjs";
+import { coordinateRemoteExecution } from "../orchestration/remote-execution-coordinator.mjs";
+import { coordinateLocalExecution } from "../orchestration/local-execution-coordinator.mjs";
+import { coordinateJobAdmission } from "../orchestration/job-admission-coordinator.mjs";
+import { createAgyProjectConversationStore } from "../../conversations/agy-project-conversations.mjs";
+import { createAgentHostResolver } from "../config/agent-host-resolver.mjs";
+import { createProcessLifecycleReporter } from "../../jobs/lifecycle/process-lifecycle.mjs";
+import { extractAgentSessionId, extractDirectTask, extractPromptContext, buildGenericArgs, shellQuote, maskArg } from "../orchestration/prompt-arguments.mjs";
+import { createIssueCompletionRoute } from "../handlers/issue-completion-route.mjs";
+import { createTraeCallbackRoutes } from "../handlers/trae-callback-routes.mjs";
+import { createGithubWebhookRoutes } from "../handlers/github-webhook-routes.mjs";
+import { createReviewRoutes } from "../handlers/review-routes.mjs";
+import { createDiagnosticRoutes } from "../handlers/diagnostic-routes.mjs";
+import { normalizeHost, matchesHost, readBody, sendJson } from "./http-helpers.mjs";
+import { syncLinearCredential } from "../../integrations/linear-credentials.mjs";
+import { chooseExecutionHost, makeRemoteRoute } from "../../routing/hosts/host-routing.mjs";
+import { cleanupMacTrae } from "../../routing/ssh/ssh-dispatch.mjs";
+import { buildAntigravityLaunch } from "../../linear-agent-bridge/agents/antigravity/scripts/launch.mjs";
+import { buildGeminiLaunch } from "../../linear-agent-bridge/agents/gemini/scripts/launch.mjs";
+import { buildOpenCodeLaunch, runOpenCode, checkOpenCodeReady } from "../../linear-agent-bridge/agents/chatgpt/scripts/launch.mjs";
+import { resolveGithubReviewDestination, shouldDispatchGithubReview, buildGithubReviewPrompt, githubReviewChangeKey } from "../../integrations/github-events.mjs";
+import { createGithubTaskMemory } from "../../memory/github-task-memory.mjs";
+import { createReviewInbox } from "../orchestration/review-inbox.mjs";
+import { sendInitialReviewMessage } from "../orchestration/review-message-handoff.mjs";
+import { notifyLinearReview } from "../../integrations/review-linear-notifier.mjs";
+import { verifyPublishedGithubReview } from "../orchestration/review-delivery.mjs";
+import { createActiveTaskMemory } from "../../memory/active-task-memory.mjs";
+import { retrieveMemuMemory } from "../../memory/memu-memory.mjs";
+import { createOrderedProgressQueue } from "../../jobs/lifecycle/ordered-progress.mjs";
+import http from "node:http";
+import fs from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import { spawn } from "node:child_process";
+import crypto from "node:crypto";
+import { createJobStore } from "../../jobs/persistence/job-store.mjs";
+import { createSessionQueue } from "../../conversations/agy-session-queue.mjs";
+import { recordResumedConversation } from "../../conversations/agy-conversation-state.mjs";
+
+// Linux agent processes inherit this systemd service identity. Fail before
+// accepting jobs if the bridge was accidentally launched as root or a
+// personal CLI account. Mac development remains unaffected.
+if (process.platform === "linux" && process.env.NODE_ENV === "production") {
+  const identity = os.userInfo();
+  if (identity.username !== "bridge" || process.getuid?.() === 0) {
+    throw Error("Linux Agent Bridge must run as the bridge service user (systemd User=bridge)");
+  }
+  if (process.env.CHATGPT_OPENCODE_USER) {
+    throw Error("Unset CHATGPT_OPENCODE_USER: OpenCode must execute as the bridge service user");
+  }
+}
+
+const PORT = Number(process.env.BRIDGE_PORT || 8788);
+const HOST = process.env.BRIDGE_HOST || "127.0.0.1";
+const GITHUB_CHATGPT_SELF = {
+  ids: (process.env.GITHUB_CHATGPT_SELF_IDS ?? "").split(",").map(v => v.trim()).filter(Boolean),
+  logins: (process.env.GITHUB_CHATGPT_SELF_LOGINS ?? "").split(",").map(v => v.trim()).filter(Boolean),
+};
+
+const SHARED_SECRET = process.env.BRIDGE_SHARED_SECRET || "";
+const LINEAR_API_KEY = process.env.LINEAR_API_KEY || "";
+const LINEAR_ACCESS_TOKEN = process.env.LINEAR_ACCESS_TOKEN || "";
+
+// Stable runtime root for systemd and Mac LaunchAgent compatibility.
+const PROJECT_DIR = path.dirname(new URL("../../linear-agent-bridge/agent-bridge.mjs", import.meta.url).pathname);
+const AGENT_ENV_FILE = process.env.AGENT_ENV_FILE || path.join(PROJECT_DIR, ".env");
+const PROJECTS_ROOT = process.env.LINUX_PROJECTS_ROOT ||
+  process.env.PROJECTS_ROOT || path.join(os.homedir(), "github-revrebel");
+const OSX_PROJECTS_ROOT = process.env.OSX_PROJECTS_ROOT || "";
+const JOBS_DIR = path.join(PROJECT_DIR, "linear-jobs");
+const jobStore = createJobStore(JOBS_DIR);
+const githubTaskMemory = createGithubTaskMemory(JOBS_DIR);
+const reviewInbox = createReviewInbox(JOBS_DIR);
+const activeTaskMemory = createActiveTaskMemory(JOBS_DIR);
+const pendingProgressWrites = new Set();
+function trackProgressWrite(promise) {
+  const tracked = promise.catch(error => console.error("Unable to checkpoint AGY progress:", error.message));
+  pendingProgressWrites.add(tracked);
+  void tracked.finally(() => pendingProgressWrites.delete(tracked));
+}
+async function drainProgressWrites() {
+  await Promise.all([...pendingProgressWrites]);
+}
+const agySessionQueue = createSessionQueue();
+const traeActivityState = new Map();
+// Serialize automated ChatGPT handoffs across the shared Chrome CDP browser.
+// Different conversations share the same browser process and visible tabs.
+let chatgptHandoffTail = Promise.resolve();
+function enqueueChatgptHandoff(task) {
+  const running = chatgptHandoffTail.catch(() => {}).then(task);
+  chatgptHandoffTail = running.catch(error => {
+    console.error("ChatGPT handoff queue error:", error);
+  });
+  return running;
+}
+
+async function prepareGithubShortcutHandoff(event, source) {
+  if (!shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) return null;
+  if (process.env.CHATGPT_REVIEW_MODE !== "inbox" && process.env.CHATGPT_HANDOFF_MODE !== "shortcuts") {
+    throw new Error("GitHub PR review dispatch requires CHATGPT_REVIEW_MODE=inbox or legacy shortcuts");
+  }
+  const config = JSON.parse(await fs.readFile(ROUTING_CONFIG_FILE, "utf8"));
+  const destination = resolveGithubReviewDestination(config, event.repository);
+  if (!destination.ok) throw new Error(destination.error);
+  if (process.env.CHATGPT_REVIEW_MODE === "inbox") {
+    const stored = await reviewInbox.enqueue(event, { source, destination });
+    let notification = null;
+    if (process.env.CHATGPT_REVIEW_NOTIFY_MODE === "linear-user") {
+      notification = await notifyLinearReview(stored.record, {
+        apiKey: LINEAR_API_KEY,
+        teamId: process.env.CHATGPT_REVIEW_LINEAR_TEAM_ID,
+        userId: process.env.CHATGPT_REVIEW_LINEAR_USER_ID,
+      });
+    }
+    let reviewMessageAttempted = false;
+    if (process.env.CHATGPT_REVIEW_SEND_MODE === "mac-ssh") {
+      const claim = await reviewInbox.beginMessageHandoff(stored.record.reviewId);
+      if (claim.started) {
+        try {
+          await sendInitialReviewMessage(claim.record);
+          await reviewInbox.finishMessageHandoff(stored.record.reviewId, { attempted: true });
+          reviewMessageAttempted = true;
+        } catch (error) {
+          await reviewInbox.finishMessageHandoff(stored.record.reviewId, {
+            attempted: false, error: error.message,
+          });
+          throw error;
+        }
+      } else if (claim.record.messageHandoff?.state === "attempted") {
+        reviewMessageAttempted = true;
+      } else {
+        // An unknown handoff outcome requires operator reconciliation.
+        // Retrying blindly could post duplicate messages to ChatGPT.
+        throw Error("ChatGPT message handoff is pending or uncertain; inspect Mac handoff before replay");
+      }
+    }
+    return {
+      reviewQueued: true, reviewId: stored.record.reviewId,
+      handoffId: stored.record.reviewId, created: stored.created,
+      reviewMessageAttempted,
+      reviewNotified: notification !== null, reviewIssue: notification?.identifier || null,
+    };
+  }
+  const handoffId = crypto.createHash("sha256").update(`github:${source}:${event.delivery}`).digest("hex");
+  const handoffDir = path.join(JOBS_DIR, "github-events", "handoffs");
+  const handoffFile = path.join(handoffDir, `${source}-${event.delivery}.chatgpt-handoff.json`);
+  await fs.mkdir(handoffDir, { recursive: true, mode: 0o700 });
+  await fs.writeFile(handoffFile, JSON.stringify({
+    conversationUrl: destination.conversationUrl,
+    prompt: buildGithubReviewPrompt(event),
+    handoffId,
+  }, null, 2), { mode: 0o600 });
+  return { handoffFile, handoffId };
+}
+
+async function claimGithubReviewDispatch(event, source) {
+  if (!shouldDispatchGithubReview(event, source, GITHUB_CHATGPT_SELF)) return null;
+  const memory = await githubTaskMemory.read(event);
+  if (memory?.lastReviewChange === githubReviewChangeKey(event)) return { duplicate: true };
+  const eventDir = path.join(JOBS_DIR, "github-events");
+  await fs.mkdir(eventDir, { recursive: true, mode: 0o700 });
+  // Claim the semantic change, not a provider-specific delivery ID. Two GitHub Apps
+  // may deliver the same revision with independent delivery IDs.
+  const dispatchClaim = path.join(eventDir, `${githubReviewChangeKey(event)}.review.claim`);
+  try { await fs.writeFile(dispatchClaim, event.delivery, { flag: "wx", mode: 0o600 }); }
+  catch (error) {
+    if (error.code === "EEXIST") return { duplicate: true };
+    throw error;
+  }
+  try {
+    const handoff = await prepareGithubShortcutHandoff(event, source);
+    return { ...handoff, dispatchClaim };
+  } catch (error) {
+    await fs.unlink(dispatchClaim).catch(() => {});
+    throw error;
+  }
+}
+
+function launchGithubShortcutHandoff(handoff) {
+  if (handoff.reviewQueued) return;
+  const script = path.resolve(PROJECT_DIR, "../scripts/chatgpt-shortcuts/handoff.mjs");
+  void enqueueChatgptHandoff(() => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [script, "--handoff-file", handoff.handoffFile], {
+      cwd: path.resolve(PROJECT_DIR, ".."), env: process.env, stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout?.on("data", chunk => console.log("[GitHub ChatGPT handoff] " + String(chunk).trimEnd()));
+    child.stderr?.on("data", chunk => console.error("[GitHub ChatGPT handoff] " + String(chunk).trimEnd()));
+    child.once("error", reject);
+    child.once("close", code => code === 0 ? resolve() : reject(new Error(`GitHub Shortcut handoff exited with code ${code}`)));
+  })).catch(error => console.error("GitHub ChatGPT handoff failed:", error));
+}
+
+const ROUTING_CONFIG_FILE = process.env.ROUTING_CONFIG_FILE || path.join(PROJECT_DIR, "routing.json");
+const { readAgyProjectConversation, saveAgyProjectConversation } = createAgyProjectConversationStore(JOBS_DIR);
+
+const AGENT_JOB_DIRS = {
+  antigravity: path.join(JOBS_DIR, "antigravity"),
+  mock: path.join(JOBS_DIR, "mock"),
+  chatgpt: path.join(JOBS_DIR, "chatgpt"),
+  "chatgpt-cli": path.join(JOBS_DIR, "chatgpt-cli"),
+  trae: path.join(JOBS_DIR, "trae"),
+  gemini: path.join(JOBS_DIR, "gemini"),
+  gemma: path.join(JOBS_DIR, "gemma"),
+  unknown: path.join(JOBS_DIR, "unknown"),
+};
+
+const PYTHON_BIN =
+  process.env.PYTHON_BIN || path.join(PROJECT_DIR, ".venv", "bin", "python");
+const RUN_AGENT_PATH =
+  process.env.RUN_AGENT_PATH || path.join(PROJECT_DIR, "run_agent.py");
+
+// Public hostnames that Cloudflare Tunnel forwards to this same local listener.
+const ANTIGRAVITY_HOST =
+  process.env.ANTIGRAVITY_HOST || "antigravity-agent.revrebel.io";
+const MOCK_HOST = process.env.MOCK_HOST || "mock-agent.revrebel.io";
+const CHATGPT_HOST =
+  process.env.CHATGPT_HOST || "chatgpt-agent.revrebel.io";
+const CHATGPT_CLI_HOST = process.env.CHATGPT_CLI_HOST || "chatgpt-cli-agent.revrebel.io";
+const TRAE_HOST =
+  process.env.TRAE_HOST || "trae-agent.revrebel.io";
+const GEMINI_HOST =
+  process.env.GEMINI_HOST || "gemini-agent.revrebel.io";
+const GEMMA_HOST = process.env.GEMMA_HOST || "gemma-agent.revrebel.io";
+
+const agentForHost = createAgentHostResolver({
+  mockHost: MOCK_HOST, antigravityHost: ANTIGRAVITY_HOST,
+  chatgptHost: CHATGPT_HOST, chatgptCliHost: CHATGPT_CLI_HOST,
+  traeHost: TRAE_HOST, geminiHost: GEMINI_HOST, gemmaHost: GEMMA_HOST,
+});
+
+// Legacy agent workspace overrides referred to an older checkout location.
+// All actual jobs now launch from resolveJobRoute(), using routing.json.
+// Report the running bridge directory here, not stale workspace variables.
+const AGENT_WORKSPACE = PROJECT_DIR;
+const ANTIGRAVITY_WORKSPACE = PROJECT_DIR;
+const CHATGPT_WORKSPACE = PROJECT_DIR;
+
+const TRAE_BIN = process.env.TRAE_BIN || "";
+const TRAE_WORKSPACE = PROJECT_DIR;
+const TRAE_ARGS_TEMPLATE =
+  process.env.TRAE_ARGS_TEMPLATE || "chat --reuse-window --maximize {{PROMPT}}";
+
+const GEMINI_BIN = process.env.GEMINI_BIN || "";
+const GEMINI_WORKSPACE = PROJECT_DIR;
+const GEMINI_LAUNCH_MODE = process.env.GEMINI_LAUNCH_MODE || "headless";
+const GEMINI_ARGS_TEMPLATE =
+  process.env.GEMINI_ARGS_TEMPLATE ||
+  "-p {{PROMPT}} --approval-mode auto_edit --skip-trust";
+
+if (!SHARED_SECRET) {
+  console.error("Missing BRIDGE_SHARED_SECRET environment variable.");
+  process.exit(1);
+}
+
+await Promise.all(
+  Object.values(AGENT_JOB_DIRS).map((directory) =>
+    fs.mkdir(directory, { recursive: true }),
+  ),
+);
+
+const recovered = await jobStore.reconcile();
+if (recovered) console.warn(`Marked ${recovered} unfinished jobs interrupted; manual reconciliation required.`);
+
+// Keep runtime values anchored to the existing entrypoint; diagnostics only
+// formats these values and authorizes the probe.
+const handleDiagnosticRoute = createDiagnosticRoutes({
+  sharedSecret: SHARED_SECRET,
+  agentForHost,
+  health: {
+    port: PORT,
+    antigravityHost: ANTIGRAVITY_HOST,
+    chatgptHost: CHATGPT_HOST,
+    mockHost: MOCK_HOST,
+    traeHost: TRAE_HOST,
+    geminiHost: GEMINI_HOST,
+    gemmaHost: GEMMA_HOST,
+    python: PYTHON_BIN,
+    antigravityWorkspace: ANTIGRAVITY_WORKSPACE,
+    antigravityMode: process.env.ANTIGRAVITY_MODE || "cli",
+    chatgptWorkspace: CHATGPT_WORKSPACE,
+    traeBin: TRAE_BIN || null,
+    traeWorkspace: TRAE_WORKSPACE,
+    geminiBin: GEMINI_BIN || null,
+    geminiWorkspace: GEMINI_WORKSPACE,
+    projectsRoot: PROJECTS_ROOT,
+    linuxProjectsRoot: PROJECTS_ROOT,
+    macProjectsRootConfigured: Boolean(OSX_PROJECTS_ROOT),
+    macSshConfigured: Boolean(process.env.MAC_SSH_HOST),
+    jobsDir: JOBS_DIR,
+    hasBridgeSharedSecret: Boolean(SHARED_SECRET),
+    hasLinearApiKey: Boolean(LINEAR_API_KEY),
+    hasLinearAccessToken: Boolean(LINEAR_ACCESS_TOKEN),
+  },
+});
+
+// The existing inbox and verifier remain the only review state authorities.
+const handleReviewRoute = createReviewRoutes({
+  reviewInbox,
+  verifyPublishedGithubReview,
+  safeTokenEqual,
+});
+
+// Shared state and dispatch coordinator remain anchored in the existing bridge.
+const handleGithubWebhookRoute = createGithubWebhookRoutes({
+  sharedSecret: SHARED_SECRET,
+  jobsDir: JOBS_DIR,
+  linearApiKey: LINEAR_API_KEY,
+  selfIdentity: GITHUB_CHATGPT_SELF,
+  githubTaskMemory,
+  claimGithubReviewDispatch,
+  launchGithubShortcutHandoff,
+});
+
+// Callback state and Linear publication stay owned by the main bridge.
+const handleTraeCallbackRoute = createTraeCallbackRoutes({
+  jobStore,
+  projectsRoot: PROJECTS_ROOT,
+  traeActivityState,
+  readTraeActivityContext,
+  safeTokenEqual,
+  sanitizeTraeActivityBody,
+  postTraeActivity,
+});
+
+// Issue cleanup continues using the live bridge ledger and Mac SSH dispatcher.
+const handleIssueCompletionRoute = createIssueCompletionRoute({
+  sharedSecret: SHARED_SECRET,
+  jobStore,
+  cleanupMacTrae,
+  osxProjectsRoot: OSX_PROJECTS_ROOT,
+});
+
+// Route precedence remains diagnostics, Shortcuts, review, GitHub,
+// Trae callbacks, and issue completion before the authenticated /jobs path.
+const handleComposedRoutes = createHttpRouteComposer({
+  handleDiagnosticRoute, handleReviewRoute, handleGithubWebhookRoute,
+  handleTraeCallbackRoute, handleIssueCompletionRoute,
+  jobsDir: JOBS_DIR, readBody, sendJson,
+});
+
+const server = http.createServer(async (request, response) => {
+  try {
+    const host = normalizeHost(request.headers.host);
+    const url = new URL(request.url || "/", `http://${host || "localhost"}`);
+
+    if (await handleComposedRoutes(request, response, { host, url })) return;
+
+    if (request.method !== "POST" || url.pathname !== "/jobs") {
+      return sendJson(response, 404, {
+        ok: false,
+        error: "Not found",
+        host,
+        path: url.pathname,
+      });
+    }
+
+    if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`) {
+      return sendJson(response, 401, { ok: false, error: "Unauthorized" });
+    }
+
+    const rawBody = await readBody(request);
+    const job = JSON.parse(rawBody);
+
+    const agent = agentForHost(host);
+    const admission = await coordinateJobAdmission({
+      headers: request.headers, rawBody, job, host, agent,
+      sharedSecret: SHARED_SECRET, resolveJobRoute,
+      syncLinearCredential, checkOpenCodeReady,
+      jobStore, agentJobDirs: AGENT_JOB_DIRS,
+    });
+    if (admission.response) {
+      return sendJson(response, admission.response.status, admission.response.body);
+    }
+    const { safeJobId, jobKey, route, credential } = admission.delivery;
+
+    if (route.executionHost === "macos") {
+      const remote = await coordinateRemoteExecution({
+        agent, job, jobKey, safeJobId, credential, host, route,
+        jobStore, osxProjectsRoot: OSX_PROJECTS_ROOT,
+        extractPromptContext, extractDirectTask, extractAgentSessionId,
+      });
+      return sendJson(response, remote.status, remote.body);
+    }
+
+    const execution = await coordinateLocalExecution({
+      job, route, agent, jobKey, safeJobId, credential, host,
+      jobStore, activeTaskMemory, drainProgressWrites, retrieveMemuMemory,
+      extractDirectTask, extractPromptContext, extractAgentSessionId,
+      agySessionQueue, readAgyProjectConversation, saveAgyProjectConversation,
+      recordResumedConversation, startAntigravity,
+      enqueueChatgptHandoff, startChatgptOpenCode, projectDir: PROJECT_DIR,
+      traeBin: TRAE_BIN, traeArgsTemplate: TRAE_ARGS_TEMPLATE,
+      buildGenericArgs, maskArg, attachProcessLogs,
+      startGemma, geminiBin: GEMINI_BIN, geminiLaunchMode: GEMINI_LAUNCH_MODE,
+      geminiArgsTemplate: GEMINI_ARGS_TEMPLATE,
+      startGeminiInWarp, buildGeminiLaunch, spawnProcess: spawn,
+    });
+    return sendJson(response, execution.status, execution.body);
+  } catch (error) {
+    console.error("Server Router Error:", error);
+    return sendJson(response, 500, {
+      ok: false,
+      error: error instanceof Error ? error.message : "Unexpected error",
+    });
+  }
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`Local Linear agent router listening on http://${HOST}:${PORT}`);
+  console.log(`Antigravity host: ${ANTIGRAVITY_HOST}`);
+  console.log(`ChatGPT host: ${CHATGPT_HOST}`);
+  console.log(`ChatGPT CLI host: ${CHATGPT_CLI_HOST}`);
+  console.log(`Mock host: ${MOCK_HOST}`);
+  console.log(`Trae host: ${TRAE_HOST}`);
+  console.log(`Gemini host: ${GEMINI_HOST}`);
+  console.log(`Gemma host: ${GEMMA_HOST}`);
+  console.log(`Antigravity workspace: ${ANTIGRAVITY_WORKSPACE}`);
+  console.log(`Antigravity mode: ${process.env.ANTIGRAVITY_MODE || "cli"}`);
+  console.log(`ChatGPT workspace: ${CHATGPT_WORKSPACE}`);
+  console.log(`Trae runner: ${TRAE_BIN || "not configured"}`);
+  console.log(`Trae workspace: ${TRAE_WORKSPACE}`);
+  console.log(`Gemini runner: ${GEMINI_BIN || "not configured"}`);
+  console.log(`Gemini workspace: ${GEMINI_WORKSPACE}`);
+  console.log(`Projects root: ${PROJECTS_ROOT}`);
+  console.log(`Jobs directory: ${JOBS_DIR}`);
+  console.log(`Python runner: ${PYTHON_BIN}`);
+});
+
+// Post scheduler-owned status only after the durable ledger transition succeeds.
+async function postAgyRecoveryActivity(record, message, activityType = "thought") {
+  if (!SHARED_SECRET || !record?.agentSessionId || !record?.taskFile) return false;
+  try {
+    const job = JSON.parse(await fs.readFile(record.taskFile, "utf8"));
+    const url = job.completionUrl || job.payload?.data?.completionUrl;
+    if (!url) throw new Error("Missing completionUrl");
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SHARED_SECRET}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ agentSessionId: record.agentSessionId, activityType, body: message }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!response.ok || !(await response.json()).ok) throw new Error(`Activity callback HTTP ${response.status}`);
+    return true;
+  } catch (error) {
+    console.error("[Antigravity] Failed to publish recovery activity:", error);
+    return false;
+  }
+}
+
+function formatAgyRetryDuration(milliseconds) {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  return `${Math.floor(seconds / 3600)}h ${String(Math.floor(seconds % 3600 / 60)).padStart(2, "0")}m`;
+}
+
+function agyRetryQueueKey(record) {
+  const projectId = record.taskFile?.match(/[/\\]projects[/\\]([a-zA-Z0-9-]+)[/\\]/)?.[1];
+  return projectId ? `project:${projectId}` : record.agentSessionId;
+}
+
+const AGY_RETRY_DELAY_MS = Math.max(60000, Number(process.env.AGY_RETRY_DELAY_MS || 7200000));
+const agyResumeTimers = new Map();
+
+function scheduleAgyResume(jobKey, resumeAt) {
+  clearTimeout(agyResumeTimers.get(jobKey));
+  const delay = Math.max(0, new Date(resumeAt).getTime() - Date.now());
+  const timer = setTimeout(() => {
+    agyResumeTimers.delete(jobKey);
+    void (async () => {
+      const record = await jobStore.get(jobKey);
+      if (record.state !== "waiting_quota" || record.resumeAt !== resumeAt) return;
+      if (!record.conversationId || !record.taskFile || !record.repositoryRoot || !record.workspace || !record.agentSessionId) {
+        await jobStore.transition(jobKey, "failed", { error: "Incomplete AGY resume metadata" });
+        await postAgyRecoveryActivity(record, "Automatic quota retry failed: resume metadata is incomplete.", "error");
+        return;
+      }
+      try {
+        await fs.access(record.taskFile);
+      } catch {
+        await jobStore.transition(jobKey, "failed", { error: "Original task file missing; cannot resume" });
+        await postAgyRecoveryActivity(record, "Automatic quota retry failed: original task file is missing.", "error");
+        return;
+      }
+      const job = JSON.parse(await fs.readFile(record.taskFile, "utf8"));
+      const updated = await jobStore.transition(jobKey, "launching", { resumeAt: null });
+      await agySessionQueue.enqueue(agyRetryQueueKey(record), async () => {
+        await postAgyRecoveryActivity(record, "Quota recovery started. Resuming the existing Antigravity conversation.");
+        await recordResumedConversation(jobStore, jobKey, updated.conversationId, "quota_retry");
+        await startAntigravity(job, record.taskFile, record.workspace, jobKey, updated.conversationId);
+      });
+    })().catch(async error => {
+      console.error("AGY scheduled resume failed:", error);
+      const record = await jobStore.get(jobKey).catch(() => null);
+      if (record) await postAgyRecoveryActivity(record, `Automatic quota retry failed: ${error.message}`, "error");
+    });
+  }, Math.min(delay, 2147483647));
+  agyResumeTimers.set(jobKey, timer);
+}
+
+function startAntigravity(job, filename, workspace, jobKey, conversationId = null, onVerifiedConversation = null, credential = null) {
+  return new Promise((resolve, reject) => {
+  const sessionId = extractAgentSessionId(job);
+
+  if (!sessionId) {
+    void jobStore.transition(jobKey, "failed", { error: "Missing Linear agent session ID" }).catch(console.error);
+    console.log("Antigravity skipped. Missing Linear agent session ID.");
+    reject(new Error("Missing Linear agent session ID"));
+    return;
+  }
+
+  console.log(`Antigravity Agent Session verified (${sessionId}). Spawning local engine...`);
+
+  // Linear Agent Activities require the app installation's OAuth token, which
+  // is intentionally held only by the Worker. Do not expose personal Linear
+  // credentials to AGY: its textual result is relayed through /complete below.
+  const antigravityEnv = { ...process.env };
+  delete antigravityEnv.LINEAR_API_KEY;
+  delete antigravityEnv.LINEAR_ACCESS_TOKEN;
+  // Python owns the completion callback; AGY itself must not inherit the secret.
+  // The Python runner strips BRIDGE_SHARED_SECRET from its own child process.
+
+  const agyLaunch = buildAntigravityLaunch({
+    pythonBin: PYTHON_BIN, runnerPath: RUN_AGENT_PATH, sessionId,
+    taskFile: filename, conversationId, workspace, projectDir: PROJECT_DIR,
+    credential, env: antigravityEnv,
+  });
+  const agentProcess = spawn(agyLaunch.command, agyLaunch.args, agyLaunch.options);
+
+  // AGY emits a structured exhaustion event; only that event schedules a retry.
+  // Keep the same Linear agent session and explicitly resume the AGY conversation.
+  let output = "";
+  let exhaustionEvent = null;
+  let verifiedConversationId = conversationId;
+  let conversationPersist = Promise.resolve();
+  const progressQueue = createOrderedProgressQueue();
+  agentProcess.on("spawn", () => { void jobStore.transition(jobKey, "running", { pid: agentProcess.pid }).catch(console.error); });
+  agentProcess.stdout.on("data", data => {
+    output += String(data);
+    let newline;
+    while ((newline = output.indexOf("\n")) >= 0) {
+      const line = output.slice(0, newline).trim();
+      output = output.slice(newline + 1);
+      if (line.startsWith("AGY_BRIDGE_EVENT=")) {
+        try {
+          const parsed = JSON.parse(line.slice("AGY_BRIDGE_EVENT=".length));
+          if (parsed.event === "conversation_started" && parsed.conversation_id) {
+            verifiedConversationId = parsed.conversation_id;
+            if (onVerifiedConversation) {
+              conversationPersist = conversationPersist.then(() => onVerifiedConversation(verifiedConversationId));
+              conversationPersist.catch(error => console.error("AGY conversation persistence failed:", error));
+            }
+            void jobStore.transition(jobKey, "running", { conversationId: verifiedConversationId, conversationVerifiedAt: new Date().toISOString() }).catch(console.error);
+          } else if (parsed.event === "progress" && typeof parsed.summary === "string" &&
+                     /^Step [0-9]+: [A-Za-z0-9_.-]{1,60}$/.test(parsed.summary)) {
+            trackProgressWrite(progressQueue.enqueue(async () => {
+              const record = await jobStore.get(jobKey);
+              return activeTaskMemory.progress(record.repositoryRoot, record.issueId, {
+                kind: "tool", summary: parsed.summary, jobKey,
+              });
+            }));
+          } else if (parsed.event === "on_exhaustion") exhaustionEvent = parsed;
+        } catch (error) { console.error("Invalid AGY exhaustion event:", error.message); }
+      } else if (line) console.log("[Antigravity-Out]:", line);
+    }
+  });
+  agentProcess.stderr.on("data", data => console.error("[Antigravity-Err]:", String(data).trimEnd()));
+  agentProcess.on("error", error => { void jobStore.transition(jobKey, "failed", { error: error.message }).catch(console.error); reject(error); });
+  agentProcess.on("close", (code, signal) => {
+    void (async () => {
+      await conversationPersist;
+      await drainProgressWrites();
+      if (code === 75 && exhaustionEvent?.event === "on_exhaustion") {
+        const conversationId = exhaustionEvent.conversation_id || verifiedConversationId;
+        if (!conversationId) {
+          await jobStore.transition(jobKey, "failed", { error: "Quota exhausted but AGY conversation ID could not be established; automatic resume refused." });
+          await postAgyRecoveryActivity({ agentSessionId: sessionId, taskFile: filename }, "Quota exhausted, but no conversation ID was available. Automatic recovery cannot proceed.", "error");
+          return;
+        }
+        const previous = await jobStore.get(jobKey);
+        const attempts = previous.resumeAttempts || 0;
+        if (attempts >= 3) {
+          await jobStore.transition(jobKey, "failed", { error: "Exhaustion retry limit reached", resumeAttempts: attempts });
+          await postAgyRecoveryActivity({ agentSessionId: sessionId, taskFile: filename }, "Antigravity quota recovery stopped: maximum of 3 retries reached.", "error");
+          return;
+        }
+        const resumeAt = new Date(Date.now() + AGY_RETRY_DELAY_MS).toISOString();
+        await jobStore.transition(jobKey, "waiting_quota", {
+          conversationId, resumeAt, resumeAttempts: attempts + 1,
+          pid: null, exitCode: code,
+        });
+        console.log(`[Antigravity] on_exhaustion: conversation ${conversationId}; resume at ${resumeAt}`);
+        await postAgyRecoveryActivity({ agentSessionId: sessionId, taskFile: filename },
+          `Quota exhausted. Conversation preserved. Automatic retry ${attempts + 1} of 3 scheduled for ${resumeAt} (in approximately ${formatAgyRetryDuration(new Date(resumeAt).getTime() - Date.now())}).`);
+        scheduleAgyResume(jobKey, resumeAt);
+      } else {
+        await jobStore.transition(jobKey, code === 0 ? "completed" : "failed", { exitCode: code, signal, pid: null });
+        const completedRecord = await jobStore.get(jobKey);
+        await activeTaskMemory.update(completedRecord.repositoryRoot, completedRecord.issueId, {
+          state: code === 0 ? "agent-finished" : "needs-recovery",
+          lastVerifiedResult: code === 0
+            ? "Agent process exited 0; tests and review are NOT independently verified"
+            : "Agent process exited " + code + "; recovery required",
+        });
+      }
+    })().then(() => resolve(verifiedConversationId), error => { console.error("Antigravity completion handling failed:", error); reject(error); });
+  });
+  });
+}
+
+// Recover scheduled AGY quota retries after a bridge restart.
+void jobStore.findByState("waiting_quota").then(records => {
+  for (const record of records) {
+    if (record.resumeAt) scheduleAgyResume(record.key, record.resumeAt);
+  }
+}).catch(error => console.error("AGY retry recovery failed:", error));
+
+function startChatGPT(job, filename) {
+  const sessionId = extractAgentSessionId(job);
+
+  if (!sessionId) {
+    console.log("ChatGPT skipped. Missing Linear agent session ID.");
+    return;
+  }
+
+  // ChatGPT does not have a local executable here. The Worker has already saved
+  // the Linear job to disk via this bridge. Gary/ChatGPT can inspect the saved
+  // JSON file and call /complete from the task instructions when finished.
+  console.log(`ChatGPT Agent Session verified (${sessionId}). Job saved only.`);
+  console.log(`ChatGPT job file: ${filename}`);
+}
+
+function safeTokenEqual(actual, expected) {
+  if (typeof actual !== "string" || typeof expected !== "string") return false;
+  const left = Buffer.from(actual);
+  const right = Buffer.from(expected);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function sanitizeTraeActivityBody(value) {
+  if (typeof value !== "string") return null;
+  const body = value.replace(/[\r\n\0]+/g, " ").trim();
+  if (!body || body.length > 240) return null;
+  if (/(gh[opusr]_[A-Za-z0-9_]{20,}|github_pat_|bearer\s+[A-Za-z0-9._-]{20,}|private[-_ ]?key)/i.test(body)) {
+    return "Trae completed a protected operation.";
+  }
+  return body;
+}
+
+async function readTraeActivityContext(workspace, explicitFile = null) {
+  const projectsRoot = path.resolve(PROJECTS_ROOT);
+  if (explicitFile) {
+    const resolved = path.resolve(explicitFile);
+    const dir = path.dirname(resolved);
+    if (!resolved.startsWith(projectsRoot + path.sep) ||
+        path.basename(dir) !== "trae-sessions" ||
+        path.basename(path.dirname(dir)) !== ".linear-agent") {
+      throw Error("Trae callback context outside trusted project scope");
+    }
+    try { return JSON.parse(await fs.readFile(resolved, "utf8")); }
+    catch (error) {
+      if (error.code === "ENOENT" || error instanceof SyntaxError) return null;
+      throw error;
+    }
+  }
+  let current = path.resolve(workspace);
+  while (current === projectsRoot || current.startsWith(projectsRoot + path.sep)) {
+    const contextFile = path.join(current, ".linear-agent", "trae-active-session.json");
+    try { return JSON.parse(await fs.readFile(contextFile, "utf8")); }
+    catch (error) {
+      if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
+    }
+    if (current === projectsRoot) break;
+    current = path.dirname(current);
+  }
+  return null;
+}
+
+async function postTraeActivity(context, body, activityType = "thought") {
+  if (!SHARED_SECRET || !context?.completionUrl || !context?.agentSessionId) return false;
+  try {
+    const response = await fetch(context.completionUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${SHARED_SECRET}` },
+      body: JSON.stringify({ agentSessionId: context.agentSessionId, activityType, body }),
+    });
+    if (!response.ok) throw new Error(`Trae Worker returned ${response.status}`);
+    return true;
+  } catch (error) {
+    console.error("[Trae] Failed to publish progress activity:", error);
+    return false;
+  }
+}
+
+async function startChatgptOpenCode(job, workspace, jobKey, credential) {
+  const prompt = extractPromptContext(job);
+  const agentSessionId = extractAgentSessionId(job);
+  const callback = job.completionUrl || job.payload?.data?.completionUrl;
+  if (!prompt || !agentSessionId || !callback || !credential?.accessToken) {
+    await jobStore.transition(jobKey, "failed", { error: "OpenCode job is missing prompt/session/callback/agent app credential" });
+    return;
+  }
+  const url = new URL(callback);
+  const expected = process.env.CHATGPT_CLI_WORKER_HOST ||
+    `linear-${process.env.CHATGPT_CLI_PREFIX || "chatgpt-cli"}.${process.env.DOMAIN || "revrebel.io"}`;
+  if (url.protocol !== "https:" || url.hostname !== expected || url.pathname !== "/complete" ||
+      url.port || url.search || url.hash || url.username || url.password) {
+    await jobStore.transition(jobKey, "failed", { error: "Invalid ChatGPT Worker completion destination" });
+    return;
+  }
+  const prior = job.sessionAction === "prompted"
+    ? await jobStore.findLatestOpenCodeSessionBySessionId(agentSessionId, jobKey, workspace)
+    : null;
+  let launch;
+  try {
+    launch = buildOpenCodeLaunch({
+      workspace, prompt, sessionId: prior?.opencodeSessionId || null,
+    });
+  } catch (error) {
+    await jobStore.transition(jobKey, "failed", { error: error.message });
+    return;
+  }
+  await jobStore.transition(jobKey, "running", {
+    runtime: "opencode", opencodeSessionId: prior?.opencodeSessionId || null,
+    executionHost: "bridge-server",
+  });
+  let result;
+  try {
+    await sendOpenCodeActivity(callback, agentSessionId, "thought",
+      job.sessionAction === "prompted"
+        ? "ChatGPT CLI received a coding follow-up and is resuming its OpenCode session."
+        : "ChatGPT CLI accepted the coding assignment and is starting a new OpenCode session.")
+      .catch(error => console.warn("Initial ChatGPT CLI activity could not be published:", error.message));
+    result = await runOpenCode({
+      launch,
+      onSession: async id => jobStore.transition(jobKey, "running", { opencodeSessionId: id }),
+      onProgress: message => sendOpenCodeActivity(callback, agentSessionId, "thought", message)
+        .catch(error => console.warn("ChatGPT CLI progress callback failed:", error.message)),
+    });
+  } catch (error) {
+    await jobStore.transition(jobKey, "failed", { error: error.message });
+    // Failures are reported through the app Worker; the OpenCode child does not
+    // receive the bridge-wide secret or app installation token.
+    await sendOpenCodeActivity(callback, agentSessionId, "error",
+      "OpenCode execution failed; inspect the Ubuntu bridge job ledger.").catch(console.error);
+    return;
+  }
+  const confirmed = await sendOpenCodeActivity(callback, agentSessionId, "response", result.summary)
+    .catch(error => { console.error("ChatGPT OpenCode completion callback failed:", error.message); return false; });
+  await jobStore.transition(jobKey, confirmed ? "completed" : "awaiting_external", {
+    opencodeSessionId: result.sessionId || prior?.opencodeSessionId || null,
+    ...(confirmed ? { completionConfirmedAt: new Date().toISOString() } :
+      { note: "OpenCode exited successfully but the Linear Worker did not confirm completion" }),
+  });
+}
+
+async function sendOpenCodeActivity(url, agentSessionId, activityType, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${SHARED_SECRET}` },
+    body: JSON.stringify({ agentSessionId, activityType, body: String(body).slice(0, 3500) }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) throw Error("ChatGPT Worker completion callback returned HTTP " + response.status);
+  return true;
+}
+
+async function startGemma(job, workspace, jobKey, credential) {
+  const callback = job.completionUrl || job.payload?.data?.completionUrl;
+  const prompt = extractPromptContext(job);
+  const agentSessionId = extractAgentSessionId(job);
+  if (process.env.GEMMA_ENABLED !== "true") {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma is disabled" });
+    return;
+  }
+  if (typeof prompt !== "string" || !prompt || !agentSessionId || !credential?.accessToken || !callback) {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma session, prompt, or callback missing" });
+    return;
+  }
+  const url = new URL(callback);
+  const expectedHost = process.env.GEMMA_WORKER_HOST || `linear-${process.env.GEMMA_PREFIX || "gemma"}.${process.env.DOMAIN || "revrebel.io"}`;
+  if (url.protocol !== "https:" || url.hostname !== expectedHost || url.pathname !== "/complete" ||
+      url.port || url.search || url.hash || url.username || url.password) {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma completion callback origin mismatch" });
+    return;
+  }
+  // The checkout must be disposable and owned by a dedicated unprivileged OS user.
+  // Never use the live bridge's repository or an arbitrary workspace outside /home/rebel.
+  const canonicalWorkspace = await fs.realpath(workspace);
+  if (!canonicalWorkspace.startsWith("/home/rebel/")) {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma workspace must be under /home/rebel/" });
+    return;
+  }
+  await jobStore.transition(jobKey, "running", { runtime: "openrouter-agent-sdk", model: "google/gemma-4-31b-it:free", workspace: canonicalWorkspace });
+  try {
+    const { runGemmaIsolated } = await import("../../agents/coding/gemma/isolated-launch.mjs");
+    const provider = process.env.GEMMA_PROVIDER || "openrouter";
+    if (!["openrouter", "litellm"].includes(provider)) throw Error("Unknown Gemma provider");
+    const model = provider === "litellm" ? process.env.GEMMA_LITELLM_MODEL || "" : "";
+    if (provider === "litellm" && !model) throw Error("Gemma LiteLLM model alias not configured");
+    const result = await runGemmaIsolated({
+      workspace: canonicalWorkspace, prompt, provider, model,
+      baseUrl: provider === "litellm" ? (process.env.GEMMA_LITELLM_BASE_URL || "http://127.0.0.1:4000/v1") : "",
+      onStatus: async message => sendOpenCodeActivity(callback, agentSessionId, "thought", message),
+    });
+    const confirmed = await sendOpenCodeActivity(callback, agentSessionId, "response", result.text);
+    await jobStore.transition(jobKey, confirmed ? "completed" : "awaiting_external", { ...(confirmed ? { completionConfirmedAt: new Date().toISOString() } : {}) });
+  } catch (error) {
+    await jobStore.transition(jobKey, "failed", { error: "Gemma SDK execution failed" });
+    await sendOpenCodeActivity(callback, agentSessionId, "error", "Gemma execution failed; see restricted bridge diagnostics.").catch(() => {});
+  }
+}
+
+async function startGeminiInWarp(promptContext, filename, workspace, jobKey) {
+  const jobStem = path.basename(filename, path.extname(filename));
+  const launchDir = path.join(AGENT_JOB_DIRS.gemini, "warp-launchers");
+  const tabConfigDir = path.join(os.homedir(), ".warp", "tab_configs");
+  const promptFile = path.join(launchDir, `${jobStem}.prompt.txt`);
+  const commandFile = path.join(launchDir, `${jobStem}.command`);
+  const tabConfigStem = `linear_gemini_${jobStem}`;
+  const tabConfigFile = path.join(tabConfigDir, `${tabConfigStem}.toml`);
+
+  await Promise.all([
+    fs.mkdir(launchDir, { recursive: true }),
+    fs.mkdir(tabConfigDir, { recursive: true }),
+  ]);
+  await fs.writeFile(promptFile, promptContext, { encoding: "utf8", mode: 0o600 });
+
+  const command = `#!/bin/zsh
+set -e
+export PATH=${shellQuote(process.env.PATH || "/usr/bin:/bin:/usr/sbin:/sbin")}
+export GOOGLE_CLOUD_PROJECT=${shellQuote(process.env.GOOGLE_CLOUD_PROJECT || "")}
+cd ${shellQuote(workspace)}
+if [[ ! -p ${shellQuote(AGENT_ENV_FILE)} ]]; then
+  print -u2 -- "Gemini launch stopped: 1Password environment mount is unavailable at ${AGENT_ENV_FILE}"
+  exit 1
+fi
+export BRIDGE_SHARED_SECRET="$(
+  source ${shellQuote(AGENT_ENV_FILE)}
+  print -rn -- "\${BRIDGE_SHARED_SECRET:-}"
+)"
+if [[ -z \${BRIDGE_SHARED_SECRET:-} ]]; then
+  print -u2 -- "Gemini launch stopped: BRIDGE_SHARED_SECRET is missing from the mounted environment"
+  exit 1
+fi
+# Warp starts a fresh interactive shell rather than inheriting launchd's environment.
+# Load Gemini's app token from the managed repository environment file.
+bridge_env_file=${shellQuote(path.join(workspace, ".env.linear-bridge"))}
+if [[ ! -f "$bridge_env_file" ]]; then
+  print -u2 -- "Gemini launch stopped: missing .env.linear-bridge"
+  exit 1
+fi
+source "$bridge_env_file"
+if [[ -z \${GEMINI_LINEAR_API_KEY:-} ]]; then
+  print -u2 -- "Gemini launch stopped: no Gemini App token"
+  exit 1
+fi
+export GEMINI_LINEAR_API_KEY
+unset LINEAR_API_KEY LINEAR_ACCESS_TOKEN
+gemini_prompt=$(<${shellQuote(promptFile)})
+exec ${shellQuote(GEMINI_BIN)} --prompt-interactive "$gemini_prompt" --approval-mode auto_edit --skip-trust
+`;
+
+  await fs.writeFile(commandFile, command, { encoding: "utf8", mode: 0o700 });
+
+  const tabConfig = `name = ${JSON.stringify(`Linear Gemini ${jobStem}`)}
+title = ${JSON.stringify(`Gemini: ${jobStem}`)}
+color = "blue"
+
+[[panes]]
+id = "gemini"
+type = "terminal"
+shell = "zsh"
+directory = ${JSON.stringify(workspace)}
+commands = [${JSON.stringify(commandFile)}]
+is_focused = true
+`;
+
+  await fs.writeFile(tabConfigFile, tabConfig, { encoding: "utf8", mode: 0o600 });
+  const warpUri = `warp://tab_config/${encodeURIComponent(tabConfigStem)}?new_window=true`;
+
+  console.log("Gemini job accepted. Opening interactive Gemini CLI in Warp...");
+  console.log(`Gemini binary: ${GEMINI_BIN}`);
+  console.log(`Gemini workspace: ${workspace}`);
+  console.log(`Gemini Warp launcher: ${commandFile}`);
+  console.log(`Gemini Warp tab config: ${tabConfigFile}`);
+
+  const warpProcess = spawn("/usr/bin/open", [warpUri], {
+    cwd: workspace,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  attachProcessLogs(warpProcess, "Gemini-Warp", jobKey, true);
+}
+
+function configuredWorkspaceForAgent(agent) {
+  if (agent === "antigravity") return ANTIGRAVITY_WORKSPACE;
+  if (agent === "chatgpt") return CHATGPT_WORKSPACE;
+  if (agent === "trae") return TRAE_WORKSPACE;
+  if (agent === "gemini") return GEMINI_WORKSPACE;
+  return AGENT_WORKSPACE;
+}
+
+async function resolveJobRoute(job) {
+  let config;
+  try {
+    config = JSON.parse(await fs.readFile(ROUTING_CONFIG_FILE, "utf8"));
+  } catch (error) {
+    return { ok: false, error: `Cannot load routing config ${ROUTING_CONFIG_FILE}: ${error.message}` };
+  }
+  const routing = job?.routing || {};
+  const projectId = routing.projectId;
+  const initiativeIds = Array.isArray(routing.initiativeIds) ? routing.initiativeIds : [];
+  if (!projectId) {
+    return { ok: false, error: "Missing structured Linear project ID; no implicit fallback" };
+  }
+  const project = config.projects?.[projectId];
+  if (!project) return { ok: false, error: `Unmapped Linear project: ${projectId}` };
+  // An app-actor OAuth token may be allowed to read Issue.project but denied
+  // the initiativeToProjects connection. Use only a previously configured
+  // project-to-initiative mapping, never a guessed initiative or repository.
+  // Do not override any nonempty Linear membership list: conflicting data
+  // must continue to fail closed.
+  const effectiveInitiativeIds = initiativeIds.length === 0 &&
+    typeof project.initiativeId === "string" &&
+    config.initiatives?.[project.initiativeId]
+    ? [project.initiativeId] : initiativeIds;
+  const matches = effectiveInitiativeIds.filter(id => config.initiatives?.[id] && (!project.initiativeId || project.initiativeId === id));
+  let initiativeId = null;
+  let repoName;
+  if (project.repository) {
+    // Standalone projects must explicitly declare their repository. If an
+    // initiative is also configured, refuse a conflicting repository mapping.
+    if (project.initiativeId && !effectiveInitiativeIds.includes(project.initiativeId)) {
+      return { ok: false, error: `Required initiative missing for project ${projectId}` };
+    }
+    if (matches.length > 1) {
+      return { ok: false, error: `Ambiguous initiatives for project ${projectId}` };
+    }
+    initiativeId = matches[0] || null;
+    if (initiativeId && config.initiatives[initiativeId].repository !== project.repository) {
+      return { ok: false, error: `Conflicting repository mapping for project ${projectId}` };
+    }
+    repoName = project.repository;
+  } else {
+    if (matches.length !== 1) {
+      return { ok: false, error: `Expected one mapped initiative for project ${projectId}, found ${matches.length}; set project.repository for a standalone project` };
+    }
+    initiativeId = matches[0];
+    repoName = config.initiatives[initiativeId].repository;
+  }
+  if (typeof repoName !== "string" || !/^REVREBEL\/[a-zA-Z0-9._-]+$/.test(repoName)) {
+    return { ok: false, error: "Invalid or missing allowed REVREBEL repository mapping" };
+  }
+  const selection = chooseExecutionHost(routing);
+  if (!selection.ok) return selection;
+  if (selection.host === "macos") {
+    if (!OSX_PROJECTS_ROOT) return { ok: false, error: "Missing OSX_PROJECTS_ROOT for Mac dispatch" };
+    try {
+      const remote = makeRemoteRoute({
+        root: OSX_PROJECTS_ROOT, repository: repoName, scope: project.scope || ".",
+        launchFromScope: project.launchFromScope === true,
+      });
+      return { ok: true, ...remote, repository: repoName, executionHost: "macos",
+        projectId, initiativeId, launchFromScope: project.launchFromScope === true,
+        scopeKey: String(projectId).replace(/[^a-zA-Z0-9_-]/g, "_") };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  }
+  const root = path.resolve(process.env.LINUX_PROJECTS_ROOT || config.projectsRoot || PROJECTS_ROOT);
+  const target = path.resolve(root, repoName.split("/")[1]);
+  let repositoryRoot;
+  try {
+    const realRoot = await fs.realpath(root);
+    repositoryRoot = await fs.realpath(target);
+    if (!repositoryRoot.startsWith(realRoot + path.sep) || !(await fs.stat(path.join(repositoryRoot, ".git"))).isDirectory()) {
+      return { ok: false, error: "Repository escapes projects root or is not a Git checkout" };
+    }
+  } catch (error) {
+    return { ok: false, error: `Repository not available: ${target}: ${error.message}` };
+  }
+  const projectScope = project.scope || ".";
+  if (typeof projectScope !== "string" || path.isAbsolute(projectScope)) {
+    return { ok: false, error: "Invalid project scope" };
+  }
+  const scoped = path.resolve(repositoryRoot, projectScope);
+  let actualScope;
+  try {
+    actualScope = await fs.realpath(scoped);
+    if (actualScope !== repositoryRoot && !actualScope.startsWith(repositoryRoot + path.sep)) {
+      return { ok: false, error: "Project scope escapes repository root" };
+    }
+    if (!(await fs.stat(actualScope)).isDirectory()) throw new Error("Not a directory");
+  } catch (error) {
+    return { ok: false, error: `Project scope does not exist: ${scoped}: ${error.message}` };
+  }
+  const launchDirectory = project.launchFromScope === true ? actualScope : repositoryRoot;
+  const scopeKey = String(projectId).replace(/[^a-zA-Z0-9_-]/g, "_");
+  // Roles own their conversation settings; legacy chatgpt config remains supported.
+  const roleAgent = project.agent;
+  const roleReview = project.codeReview;
+  for (const [name, role] of [["agent", roleAgent], ["codeReview", roleReview]]) {
+    if (role === undefined) continue;
+    if (!role || typeof role !== "object" || Array.isArray(role) ||
+        !["antigravity", "chatgpt"].includes(role.provider)) {
+      return { ok: false, error: `${name}.provider must be chatgpt or antigravity` };
+    }
+    if (!["reuse-existing", "new-per-issue"].includes(role.conversationMode)) {
+      return { ok: false, error: `${name}.conversationMode must be reuse-existing or new-per-issue` };
+    }
+    if (role.provider === "antigravity" && role.conversationId !== undefined &&
+        (typeof role.conversationId !== "string" ||
+         !/^[a-zA-Z0-9_-]{8,128}$/.test(role.conversationId))) {
+      return { ok: false, error: `${name}.conversationId must be a valid conversation ID when supplied` };
+    }
+    if (role.projectName !== undefined &&
+        (typeof role.projectName !== "string" || !role.projectName.trim())) {
+      return { ok: false, error: `${name}.projectName must be a nonempty string` };
+    }
+    if (role.projectId !== undefined &&
+        (typeof role.projectId !== "string" || !role.projectId.trim())) {
+      return { ok: false, error: `${name}.projectId must be a nonempty string` };
+    }
+    if (role.provider === "chatgpt") {
+      const url = role.conversationUrl || role.projectUrl;
+      if (role.projectId !== undefined && !/^g-p-[a-zA-Z0-9_-]+$/.test(role.projectId)) {
+        return { ok: false, error: `${name}.projectId must be a ChatGPT Project ID` };
+      }
+      if (url !== undefined) {
+        try {
+          const parsed = new URL(url);
+          const parts = parsed.pathname.split("/").filter(Boolean);
+          const validProject = parts.length === 2 && parts[0] === "g" && parts[1].startsWith("g-p-");
+          const validConversation = parts.length === 4 && parts[0] === "g" && parts[1].startsWith("g-p-") &&
+            parts[2] === "c" && Boolean(parts[3]);
+          if (parsed.protocol !== "https:" || parsed.hostname !== "chatgpt.com" ||
+              parsed.search || parsed.hash ||
+              (role.conversationMode === "reuse-existing" ? !validConversation : !validProject)) {
+            return { ok: false, error: `${name} requires a valid ChatGPT URL for its conversationMode` };
+          }
+          if (role.projectId && role.projectId !== parts[1]) {
+            return { ok: false, error: `${name}.projectId does not match the ChatGPT URL` };
+          }
+        } catch {
+          return { ok: false, error: `${name} contains an invalid ChatGPT URL` };
+        }
+      }
+    }
+    if (role.autoSend !== undefined && typeof role.autoSend !== "boolean") {
+      return { ok: false, error: `${name}.autoSend must be boolean` };
+    }
+  }
+  // Code-review roles are stored independently. Actual review-event dispatch
+  // still follows the installed Worker; do not redirect implementation jobs.
+  const chatgptRole = roleAgent?.provider === "chatgpt" ? roleAgent : null;
+  const chatgptConfig = chatgptRole || project.chatgpt || {};
+  const chatgptProjectUrl = chatgptConfig.conversationUrl || chatgptConfig.projectUrl;
+  const chatgptConversationMode = chatgptConfig.conversationMode || "new-per-issue";
+  const chatgptAutoSend = chatgptConfig.autoSend === true;
+  if (chatgptAutoSend && chatgptConversationMode !== "reuse-existing") return { ok: false, error: "ChatGPT autoSend requires reuse-existing conversation mode" };
+  if (chatgptProjectUrl !== undefined) {
+    try {
+      const destination = new URL(chatgptProjectUrl);
+      const segments = destination.pathname.split("/").filter(Boolean);
+      const isProjectPath = segments.length === 2 &&
+        segments[0] === "g" && segments[1].startsWith("g-p-");
+      const isConversationPath = segments.length === 4 &&
+        segments[0] === "g" && segments[1].startsWith("g-p-") &&
+        segments[2] === "c" && Boolean(segments[3]);
+      const validPath = chatgptConversationMode === "reuse-existing"
+        ? isConversationPath
+        : chatgptConversationMode === "new-per-issue" && isProjectPath;
+      if (chatgptConfig.projectId !== undefined && segments[1] !== chatgptConfig.projectId) {
+        return { ok: false, error: `ChatGPT projectId does not match conversation URL for project ${projectId}` };
+      }
+      if (destination.protocol !== "https:" || destination.hostname !== "chatgpt.com" ||
+          destination.search || destination.hash || !validPath) {
+        return { ok: false, error: `Invalid ChatGPT URL or conversationMode for project ${projectId}` };
+      }
+    } catch {
+      return { ok: false, error: `Invalid ChatGPT URL for project ${projectId}` };
+    }
+  }
+  const agyConfig = roleAgent?.provider === "antigravity" ? roleAgent : null;
+  return { ok: true, repositoryRoot, projectScope, launchDirectory, scopeKey, projectId, initiativeId,
+    repository: repoName, executionHost: "bridge-server", launchFromScope: project.launchFromScope === true,
+    chatgptProjectUrl, chatgptConversationMode, chatgptAutoSend,
+    agentRole: roleAgent || null, codeReviewRole: roleReview || null,
+    agyConversationMode: agyConfig?.conversationMode || null,
+    agyConversationId: agyConfig?.conversationMode === "reuse-existing" ? agyConfig.conversationId : null };
+}
+
+const attachProcessLogs = createProcessLifecycleReporter({ jobStore });
+

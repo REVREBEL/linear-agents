@@ -197,14 +197,14 @@ test("real local task persistence completes before execution and callback contex
 });
 
 test("bridge wires the coordinator after admission, keeps Mac execution and response ownership", async () => {
-  const source = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs", import.meta.url), "utf8");
+  const source = await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs", import.meta.url), "utf8");
   const auth = source.indexOf('if (request.headers.authorization !== `Bearer ${SHARED_SECRET}`)');
   const admission = source.indexOf("await coordinateJobAdmission({", auth);
   const remote = source.indexOf('if (route.executionHost === "macos")', admission);
   const local = source.indexOf("await coordinateLocalExecution({", remote);
   const response = source.indexOf("return sendJson(response, execution.status, execution.body)", local);
   assert.ok(auth >= 0 && auth < admission && admission < remote && remote < local && local < response);
-  assert.match(source, /from "\.\.\/jobs\/local-execution-coordinator\.mjs"/);
+  assert.match(source, /from "\.\.\/orchestration\/local-execution-coordinator\.mjs"/);
   assert.match(source, /const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(source, /server\.listen\(PORT, HOST,/);
 });

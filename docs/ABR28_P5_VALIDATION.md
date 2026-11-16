@@ -35,3 +35,29 @@ Temporary test servers bind to `127.0.0.1` on an OS-assigned port; temporary led
 - **P5.5**: verify Cloudflare webhook and Linear response acknowledgment for valid, rejected, duplicate, delayed, and resumed deliveries. Include operational rollback conditions and evidence log.
 
 Passing P5.1 is **not** permission to restart the live bridge, move persisted job roots, or mark the end-to-end agent loop production-verified.
+
+
+## P5.2: Repository consolidation acceptance map
+
+Canonical owners are now located in the directories below. The old import paths remain **thin, import-only re-exports**, not parallel implementations; `scripts/p5-structure-consolidation.test.mjs` is the executable full 31-module inventory and verifies each export's reference identity.
+
+| Area | Canonical implementation directory | Responsibility |
+| --- | --- | --- |
+| HTTP | `bridge/server/` | Shared HTTP helpers and non-job route composition |
+| Ingress | `bridge/handlers/` | Diagnostics, GitHub, review, Trae callbacks, issue completion |
+| Configuration | `bridge/config/` | Agent host resolver |
+| Orchestration | `bridge/orchestration/` | Admission, local/SSH execution, prompt parsing, reviewer state and handoff |
+| Job admission | `jobs/admission/` | Delivery identity, validation, preflight and unrouted recovery |
+| Dispatch | `jobs/dispatch/` | Antigravity, Gemini, Trae, ChatGPT CLI, human handoff, simple agents |
+| Preparation | `jobs/preparation/` | Canonical task writing and recovery context preparation |
+| Lifecycle | `jobs/lifecycle/` | Process reporting and ordered progress |
+| Persistence | `jobs/persistence/` | Durable job ledger |
+| Host routing | `routing/hosts/` | Trusted host mapping |
+| Remote transport | `routing/ssh/` | SSH dispatch and remote activity authentication |
+| Existing owners | `agents/`, `conversations/`, `memory/`, `integrations/`, `shared/` | No additional relocation needed in this PR |
+
+**Safety boundary:** The executable Ubuntu systemd/LaunchAgent entrypoint `linear-agent-bridge/agent-bridge.mjs` is now a thin compatibility loader importing the canonical implementation at `bridge/server/agent-bridge-runtime.mjs`. That implementation resolves `PROJECT_DIR` from the loader's original path, preserving all existing `linear-jobs/` data and the previously deployed script paths. Provider runner files under `linear-agent-bridge/agents/` remain in their existing path-sensitive runtime positions. Moving those files or rewriting `PROJECT_DIR` would alter the location of `linear-jobs/` or the SSH runner contract, so a separate explicitly approved deployment/migration is required. The entrypoint imports canonical module owners directly, not their compatibility shims.
+
+This is the source-module consolidation acceptance gate, not a production runtime-data migration, process restart, or service deployment. The build/test runner and existing Worker workspace paths remain unchanged. The CI acceptance suite checks all canonical exports and compatibility modules, the existing source-order guarantees, and the persistent runtime path invariant.
+
+The isolated Linux bridge boot fixtures execute the original loader path and stage all canonical module directories. CI checks that the runtime still serves from this legacy entrypoint and does not derive a new persistence root from the canonical source location. The source-level reorganization therefore does not require a production job-state migration.

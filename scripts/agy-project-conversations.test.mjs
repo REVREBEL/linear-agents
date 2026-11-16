@@ -70,8 +70,8 @@ test("existing project-conversation records remain readable without migration", 
 });
 
 test("bridge uses shared AGY store while anchoring data at its original JOBS_DIR", async () => {
-  const source = await fs.readFile(new URL("../linear-agent-bridge/agent-bridge.mjs", import.meta.url), "utf8");
-  assert.match(source, /from "\.\.\/conversations\/agy-project-conversations\.mjs"/);
+  const source = await fs.readFile(new URL("../bridge/server/agent-bridge-runtime.mjs", import.meta.url), "utf8");
+  assert.match(source, /from "\.\.\/\.\.\/conversations\/agy-project-conversations\.mjs"/);
   assert.match(source, /createAgyProjectConversationStore\(JOBS_DIR\)/);
   assert.match(source, /const JOBS_DIR = path\.join\(PROJECT_DIR, "linear-jobs"\)/);
   assert.match(source, /readAgyProjectConversation,/);
