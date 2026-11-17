@@ -1,5 +1,8 @@
 # REVREBEL remaining Ubuntu agent migration scripts
 
+> **Agent takeover / current architecture:** Read [AGENT_INFRASTRUCTURE_HANDOFF.md](./AGENT_INFRASTRUCTURE_HANDOFF.md) first. It documents the current `/opt` layout, shared-user permissions, legacy migration paths, observed Codex failures, and safe diagnostic checklist. The historical migration steps below predate the new `/opt/global-tools` arrangement and must not be run blindly.
+
+
 This is the **remaining** work after the successful Node 26 `/opt/volta` rebuild. No earlier Volta rebuild or upgrade scripts are included. Run scripts as root, from any working directory. The directory `/opt/scripts` may be used temporarily for extraction, then removed once migration is finished.
 
 ## Order
