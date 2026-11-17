@@ -35,3 +35,45 @@ bash 07-audit-old-toolchains.sh
 ```
 
 Execute sequentially; inspect logs if any step exits unsuccessfully. None of these steps performs a service cutover. Service identity, endpoint and environment settings must be reconciled before activating a replacement OpenCode unit.
+
+
+## Shared agent and tool home symlinks
+
+`link-agent-homes.sh` configures dot-directory links in the existing home folders of
+`root`, `rebel`, `bridge`, and `n8n`. Edit the variables near the top of the
+script to change users or the shared installation roots.
+
+- Agent links: `.codex`, `.gemini`, `.kilo`, `.vibe`, `.openchamber`,
+  `.opencode`, and `.qwen` to their corresponding folders under `/opt/agents`.
+  The `.gemini` link includes the native Antigravity CLI subfolders under that profile.
+- Shared agent resources: `.agents` to `/opt/agent-tools/agents`.
+- Shared tools: `.bun`, `.cargo`, `.go`, `.npm`, `.pm2`, `.snap`, `.uv`,
+  `.venv`, `.volta`, and `.yarn` to the matching directories under
+  `/opt/global-tools`. The `.cargo` link intentionally points to Cargo,
+  not Bun.
+
+```bash
+sudo bash /opt/scripts/link-agent-homes.sh --dry-run
+sudo bash /opt/scripts/link-agent-homes.sh
+# Only after stopping dependent applications and reviewing existing data:
+sudo bash /opt/scripts/link-agent-homes.sh --archive-existing
+```
+
+The script **does not replace or merge any existing user-local directory by default**.
+Use `--archive-existing` only after checking whether affected services, especially
+PM2 and agent CLIs, still use those directories. That option renames each existing
+entry to `NAME_archived_N` before creating its symlink. Every created link is
+owned by the respective local user and primary group, using `chown -h`, **without
+altering the shared target's ownership or permissions**. Existing correct links
+are left in place and their symlink ownership is reconciled.
+
+The script skips missing source directories rather than fabricating an empty
+profile. It does not configure CLIs, start/stop services, change group memberships,
+modify `~/.zshenv`, or migrate credentials/sessions. Sharing a symlink does
+**not** grant read/write access to the target: its ownership and ACLs must be
+managed separately. A shared PM2 home means a shared daemon/control context,
+not independent per-user PM2 instances.
+
+`HOME_ROOT=$HOME` is recorded as context; each target user's home comes from
+`getent passwd`, so running the script as root will not redirect all links
+into root's home.
