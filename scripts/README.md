@@ -81,39 +81,43 @@ into root's home.
 
 ## Global permission reconciliation
 
-`global_permissions.sh` implements the agreed shared-tool permission model:
-`bridge:bridge-adm` ownership, setgid `2775` shared directories,
-`775` already-executable files and `664` other files. Everyone has
-read/traverse access to shared software; only the owner/admin group may write.
+`global_permissions.sh` reconciles shared Ubuntu access without modifying
+installed dependency files. For tools and scripts it sets `bridge:bridge-adm`
+ownership and `2775` mode **only on designated entrypoint directories**:
+`/opt/global-tools`, its known tool roots, selected `bin` directories,
+`/opt/agent-tools`, `/opt/scripts`, and the `/opt/zsh_config` checkout root.
+It does not recurse into Cargo's registry, Volta's package images, Go modules,
+Yarn caches, PM2, Git repositories or other package contents.
+
+**Shared native profiles are enabled by default.** The script grants named-user
+traverse ACLs on `/opt/agents` and the per-agent parent directories, and
+read/write ACLs for `rebel`, `bridge`, and `n8n` on existing native agent
+profile trees. Directory default ACLs allow new state to inherit access.
+Root retains its usual root privileges. This fixes shared profile access to
+`environments.toml` and `tmp/arg0`, without recursively changing ownership
+or opening profile data to all local users.
 
 ```bash
+git -C /opt pull --ff-only
 sudo bash /opt/scripts/global_permissions.sh --dry-run
 sudo bash /opt/scripts/global_permissions.sh --apply
 ```
 
-The default intentionally skips application-state/config folders named
-`pm2`, `npm`, `config`, `.pm2`, `.npm` and `.git`, as well as all
-agent-profile contents. It does not modify any home-directory symlinks.
-It changes only the `/opt/zsh_config` directory itself, not the files in
-that independent checkout. It assumes the original global-services
-permission and ownership model is acceptable for the shared installations;
-inspect the dry-run before applying in production.
-
-To grant the users named in `TARGET_USERS` read/write access to shared
-native agent profiles as well, use the **explicit opt-in** after auditing
-the profiles and stopping their processes:
+For an entrypoint-only operation that **does not touch agent profiles**:
 
 ```bash
-sudo bash /opt/scripts/global_permissions.sh --dry-run --share-agent-profiles
-sudo bash /opt/scripts/global_permissions.sh --apply --share-agent-profiles
+sudo bash /opt/scripts/global_permissions.sh --dry-run --no-agent-profiles
+sudo bash /opt/scripts/global_permissions.sh --apply --no-agent-profiles
 ```
 
-This does not set profile file ownership: it grants named-user ACLs on the
-configured native profiles and traverse rights on per-agent parents.
-Sharing a single native profile means the named accounts share its
-sessions/state and any data readable through that profile. It does **not**
-grant ordinary `bridge-usr` members access to every profile.
+Native profiles may contain tokens, authentication state, session logs and
+temporary helper files. Granting these users access is an intentional part of
+the shared-profile architecture. ACLs do not eliminate application-level
+concurrency collisions. Pause active agent jobs before permission
+reconciliation where practical. Avoid sharing these native profiles with
+untrusted accounts.
 
-The earlier `--install-auto` behavior is retired; the old
-`--sync-users-only` invocation remains a harmless no-op for any installed
-timer, and should be removed from systemd separately after auditing it.
+The older `--share-agent-profiles` flag remains accepted for compatibility.
+The old `--sync-users-only` timer invocation remains a harmless no-op and
+should be removed from systemd separately once audited. The script never
+modifies home symlinks, `~/.zshenv`, services or unrelated paths.
