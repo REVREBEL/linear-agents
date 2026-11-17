@@ -99,7 +99,7 @@ LINK_SOURCES=(
   "$GLOBAL_TOOLS_DIR/volta"
   "$GLOBAL_TOOLS_DIR/yarn"
 )
-[[ "\${#LINK_NAMES[@]}" == "\${#LINK_SOURCES[@]}" ]] || {
+[[ "${#LINK_NAMES[@]}" == "${#LINK_SOURCES[@]}" ]] || {
   error 'Mapping name/source counts differ'; exit 1;
 }
 for parent in "$GLOBAL_TOOLS_DIR" "$AGENTS_DIR" "$AGENTS_TOOLS"; do
@@ -109,7 +109,7 @@ for parent in "$GLOBAL_TOOLS_DIR" "$AGENTS_DIR" "$AGENTS_TOOLS"; do
 done
 link_managed() {
   local src="$1" dest="$2" uid="$3" gid="$4"
-  local parent="\${dest%/*}" base="\${dest##*/}" backup n
+  local parent="${dest%/*}" base="${dest##*/}" backup n
   if [[ ! -d "$src" ]]; then
     warn "Missing source, skipping: $dest -> $src"
     return 0
@@ -126,7 +126,7 @@ link_managed() {
     fi
     n=1
     while :; do
-      backup="$parent/\${base}_archived_$n"
+      backup="$parent/${base}_archived_$n"
       [[ -e "$backup" || -L "$backup" ]] || break
       ((n+=1))
     done
@@ -139,15 +139,15 @@ link_managed() {
   run chown -h -- "$uid:$gid" "$dest"
 }
 info "Invoking HOME_ROOT=$HOME_ROOT; shared roots: $AGENTS_DIR $AGENTS_TOOLS $GLOBAL_TOOLS_DIR"
-for user in "\${TARGET_USERS[@]}"; do
+for user in "${TARGET_USERS[@]}"; do
   entry="$(getent passwd -- "$user")" || { error "Missing account: $user"; exit 1; }
   IFS=: read -r _ _ uid gid _ home shell <<< "$entry"
   [[ "$home" == /* && "$home" != / && -d "$home" && ! -L "$home" ]] || {
     error "Unsafe or unavailable home for $user: $home"; exit 1;
   }
   info "Account $user: home=$home uid=$uid gid=$gid shell=$shell"
-  for i in "\${!LINK_NAMES[@]}"; do
-    link_managed "\${LINK_SOURCES[i]}" "$home/\${LINK_NAMES[i]}" "$uid" "$gid"
+  for i in "${!LINK_NAMES[@]}"; do
+    link_managed "${LINK_SOURCES[i]}" "$home/${LINK_NAMES[i]}" "$uid" "$gid"
   done
 done
 info 'Complete. Shared targets and ~/.zshenv were not changed.'
