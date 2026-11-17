@@ -77,3 +77,43 @@ not independent per-user PM2 instances.
 `HOME_ROOT=$HOME` is recorded as context; each target user's home comes from
 `getent passwd`, so running the script as root will not redirect all links
 into root's home.
+
+
+## Global permission reconciliation
+
+`global_permissions.sh` implements the agreed shared-tool permission model:
+`bridge:bridge-adm` ownership, setgid `2775` shared directories,
+`775` already-executable files and `664` other files. Everyone has
+read/traverse access to shared software; only the owner/admin group may write.
+
+```bash
+sudo bash /opt/scripts/global_permissions.sh --dry-run
+sudo bash /opt/scripts/global_permissions.sh --apply
+```
+
+The default intentionally skips application-state/config folders named
+`pm2`, `npm`, `config`, `.pm2`, `.npm` and `.git`, as well as all
+agent-profile contents. It does not modify any home-directory symlinks.
+It changes only the `/opt/zsh_config` directory itself, not the files in
+that independent checkout. It assumes the original global-services
+permission and ownership model is acceptable for the shared installations;
+inspect the dry-run before applying in production.
+
+To grant the users named in `TARGET_USERS` read/write access to shared
+native agent profiles as well, use the **explicit opt-in** after auditing
+the profiles and stopping their processes:
+
+```bash
+sudo bash /opt/scripts/global_permissions.sh --dry-run --share-agent-profiles
+sudo bash /opt/scripts/global_permissions.sh --apply --share-agent-profiles
+```
+
+This does not set profile file ownership: it grants named-user ACLs on the
+configured native profiles and traverse rights on per-agent parents.
+Sharing a single native profile means the named accounts share its
+sessions/state and any data readable through that profile. It does **not**
+grant ordinary `bridge-usr` members access to every profile.
+
+The earlier `--install-auto` behavior is retired; the old
+`--sync-users-only` invocation remains a harmless no-op for any installed
+timer, and should be removed from systemd separately after auditing it.
