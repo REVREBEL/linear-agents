@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # REVREBEL /opt shared ownership and permission reconciliation.
 # Shared tools are bridge:bridge-adm; all users may read/traverse/execute.
-# Native agent state is excluded unless explicitly opted in.
+# Named local accounts share native agent profiles, including existing state.
 set -Eeuo pipefail
 IFS=$'\n\t'
 
@@ -16,26 +16,28 @@ TARGET_USERS=(root rebel bridge n8n)
 MODE=''
 DRY_RUN=0
 LOG_FILE=''
-SHARE_AGENT_PROFILES=0
-SKIP_NAMES=(.git config pm2 npm .pm2 .npm)
+SHARE_AGENT_PROFILES=1
+TOOL_DIRS=(bun cargo go npm pm2 snap uv venv volta yarn)
+# Only directories are managed in the toolchain; package files remain untouched.
 
 usage() {
   cat <<'HELP'
-Usage: sudo bash global_permissions.sh --dry-run [--share-agent-profiles] [--log FILE]
-       sudo bash global_permissions.sh --apply [--share-agent-profiles] [--log FILE]
+Usage: sudo bash global_permissions.sh --dry-run [--no-agent-profiles] [--log FILE]
+       sudo bash global_permissions.sh --apply [--no-agent-profiles] [--log FILE]
        sudo bash global_permissions.sh --sync-users-only
 
 --dry-run             Show changes without applying permissions.
 --apply               Reconcile shared install/script ownership and modes.
---share-agent-profiles Explicitly grant root/rebel/bridge/n8n write access
-                       to existing agent profile trees. Use only after
-                       reviewing/stopping active agent sessions.
+--share-agent-profiles Backward-compatible explicit enable (now default).
+--no-agent-profiles   Skip shared profile ACL reconciliation.
 --sync-users-only     Legacy timer compatibility; no-op. New account group
                        enrollment is unnecessary for universal read/execute.
 --log FILE            Log output to FILE.
 
-Shared-tree operations skip .git, config, pm2, npm, .pm2 and .npm
-subdirectories. Does not change symlinks, home files, or service units.
+Shared tool operations manage only installation/container directories.
+Installed packages, caches, config, PM2 state and Git data stay untouched.
+Native profiles are intentionally shared by designated accounts, including
+sessions, credentials and temporary state. Protect them accordingly.
 HELP
 }
 while (( $# )); do
@@ -44,6 +46,7 @@ while (( $# )); do
       [[ -z "$MODE" ]] || { echo 'Choose exactly one mode' >&2; exit 2; }
       MODE="$1"; shift ;;
     --share-agent-profiles) SHARE_AGENT_PROFILES=1; shift ;;
+    --no-agent-profiles) SHARE_AGENT_PROFILES=0; shift ;;
     --log)
       (( $# >= 2 )) || { echo '--log requires an argument' >&2; exit 2; }
       LOG_FILE="$2"; shift 2 ;;
@@ -52,10 +55,6 @@ while (( $# )); do
   esac
 done
 [[ -n "$MODE" ]] || { usage >&2; exit 2; }
-if [[ "$MODE" == --sync-users-only ]] && (( SHARE_AGENT_PROFILES )); then
-  echo '--share-agent-profiles cannot combine with --sync-users-only' >&2
-  exit 2
-fi
 (( EUID == 0 )) || { echo 'Run as root' >&2; exit 1; }
 for tool in getent stat find chown chmod setfacl getfacl tee install; do
   command -v "$tool" >/dev/null || { echo "Missing required executable: $tool" >&2; exit 1; }
@@ -108,43 +107,37 @@ apply_dir() {
     run setfacl -m "g:$ADMIN_GROUP:rwx,m::rwx" -- "$path"
   fi
 }
-apply_file() {
-  local path="$1" mode
-  mode="$(stat -c %A -- "$path")"
-  run chown -- "$OWNER:$ADMIN_GROUP" "$path"
-  if [[ "$mode" == *x* || "$mode" == *s* || "$mode" == *t* ]]; then
-    run chmod -- 775 "$path"
-  else
-    run chmod -- 664 "$path"
+# Only correct the shared entrypoint directories. Do not recursively chown or
+# chmod package files: Cargo registries, Volta images, Go modules and Yarn
+# dependencies frequently contain intentionally managed metadata.
+shared_entry() {
+  local path="$1"
+  if [[ ! -d "$path" || -L "$path" ]]; then
+    warn "Missing or symlinked shared directory, skipping: $path"
+    return
   fi
+  info "Shared entrypoint: $path"
+  apply_dir "$path"
 }
-apply_shared_tree() {
-  local root="$1" name path
-  assert_shared_root "$root"
-  info "Shared tree: $root"
-  local -a prune=()
-  for name in "${SKIP_NAMES[@]}"; do prune+=( -name "$name" -o ); done
-  unset 'prune[${#prune[@]}-1]'
-  # No symlinks, separate mounts, runtime state, or .git metadata traversed.
-  while IFS= read -r -d '' path; do
-    if [[ -d "$path" && ! -L "$path" ]]; then
-      apply_dir "$path"
-    elif [[ -f "$path" && ! -L "$path" ]]; then
-      apply_file "$path"
-    fi
-  done < <(find -P "$root" -xdev \( -type d \( "${prune[@]}" \) \) -prune -o \( -type d -o -type f \) -print0)
-}
-assert_shared_root "$AGENTS_DIR"
-for root in "$GLOBAL_TOOLS_DIR" "$AGENTS_TOOLS" "$SCRIPTS_DIR"; do
-  apply_shared_tree "$root"
+shared_entry "$GLOBAL_TOOLS_DIR"
+for name in "${TOOL_DIRS[@]}"; do
+  shared_entry "$GLOBAL_TOOLS_DIR/$name"
+done
+shared_entry "$AGENTS_TOOLS"
+shared_entry "$SCRIPTS_DIR"
+# Selected executable entrypoint directories only, not their file contents.
+for path in "$GLOBAL_TOOLS_DIR/volta/bin" "$GLOBAL_TOOLS_DIR/bun/bin" "$GLOBAL_TOOLS_DIR/cargo/bin" "$AGENTS_TOOLS/bin"; do
+  if [[ -d "$path" && ! -L "$path" ]]; then
+    shared_entry "$path"
+  fi
 done
 # zsh_config is independently versioned. Touch its root, not its contents.
 if [[ -d "$ZSH_CONFIG_DIR" && ! -L "$ZSH_CONFIG_DIR" ]]; then
   info "zsh_config checkout root only"
   apply_dir "$ZSH_CONFIG_DIR"
 fi
-info "Agent parent directory only: $AGENTS_DIR"
-apply_dir "$AGENTS_DIR"
+info "Agent parent directory: named-user traverse access, preserve ownership/mode"
+run setfacl -m u:rebel:r-x,u:bridge:r-x,u:n8n:r-x -- "$AGENTS_DIR"
 
 PROFILE_PATHS=(
   "$AGENTS_DIR/codex/.codex"
@@ -177,7 +170,8 @@ if (( SHARE_AGENT_PROFILES )); then
       traversal="${acl//:rwX/:r-x}"
       run setfacl -m "$traversal" -- "$parent"
     fi
-    # Preserve existing owners; do not follow symlinks.
+    # Preserve existing owners and native file modes. ACLs apply to each
+    # existing inode without following symlinks; defaults cover new children.
     run setfacl -R -m "$acl" -- "$root"
     if (( DRY_RUN )); then
       info "[DRY RUN] set native profile default ACL on directories under $root"
@@ -196,5 +190,5 @@ for path in "$GLOBAL_TOOLS_DIR" "$GLOBAL_TOOLS_DIR/volta/bin" "$AGENTS_TOOLS" "$
     warn "Absent: $path"
   fi
 done
-info 'Complete: no home symlinks, services or Git metadata modified.'
+info 'Complete: shared agent ACLs reconciled; no home symlinks, service units or Git metadata modified.'
 info "Log: $LOG_FILE"
