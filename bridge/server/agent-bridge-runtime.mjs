@@ -25,6 +25,7 @@ import { sendInitialReviewMessage } from "../orchestration/review-message-handof
 import { notifyLinearReview } from "../../integrations/review-linear-notifier.mjs";
 import { verifyPublishedGithubReview } from "../orchestration/review-delivery.mjs";
 import { createActiveTaskMemory } from "../../memory/active-task-memory.mjs";
+import { mirrorAgentTransition } from "../../memory/local-agent-checkpoint.mjs";
 import { retrieveMemuMemory } from "../../memory/memu-memory.mjs";
 import { createOrderedProgressQueue } from "../../jobs/lifecycle/ordered-progress.mjs";
 import http from "node:http";
@@ -1090,5 +1091,16 @@ async function resolveJobRoute(job) {
     agyConversationId: agyConfig?.conversationMode === "reuse-existing" ? agyConfig.conversationId : null };
 }
 
-const attachProcessLogs = createProcessLifecycleReporter({ jobStore });
+const attachProcessLogs = createProcessLifecycleReporter({
+  jobStore,
+  onTransition: async (jobKey, state) => {
+    const record = await jobStore.get(jobKey);
+    if (!record?.repositoryRoot || !record?.issueId) return;
+    const checkpoint = await activeTaskMemory.read(record.repositoryRoot, record.issueId);
+    await mirrorAgentTransition({
+      memory: activeTaskMemory, jobStore, jobKey, state,
+      agent: checkpoint?.lastAgent || "local-cli",
+    });
+  },
+});
 
