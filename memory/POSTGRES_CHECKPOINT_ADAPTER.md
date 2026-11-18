@@ -50,3 +50,29 @@ cluster's `postgres` user, and will refuse to start if the test port is busy.
    selected deployment database before enabling live traffic.
 5. Separately implement a trusted memU evolve executor; this adapter does not
    authorize transcript promotion or model-generated SQL.
+
+## Verified server configuration (November 18, 2026)
+
+The Ubuntu host has **PostgreSQL 18/main online at port 5433**, with pgvector
+0.8.1 enabled in `agent_memory`. The installed memU CLI is 0.10.0 in
+`/opt/agents/memu/.venv`, configured through bridge-owned mode-0600
+`/home/bridge/.memu/config.env`. It uses local Unix peer authentication,
+`memu` schema, and Ollama `nomic-embed-text` (768 dimensions). A real memU
+commit/retrieve canary passed; the bridge adapter's retrieval output was also
+verified against the live database. PostgreSQL and Ollama are enabled at boot.
+
+`memory/memu-memory.mjs` now handles memU 0.10's `segments/files/resources`
+response, retaining compatibility with older `hits` results. Retrieval remains
+**disabled by default** in the running bridge; even when enabled, recalled
+text is intentionally withheld from the agent prompt pending security review.
+
+The existing `memory/active-task-memory.mjs` is the operational per-issue file
+checkpoint, and `memory/github-task-memory.mjs` is per-PR review state.
+Event Intelligence owns separate advisory review-checkpoint logic, and the
+ChatGPT reviewer Worker is not the ChatGPT CLI coding runtime. None of these
+paths are replaced by the new PostgreSQL adapter in this draft PR.
+
+The pre-existing collation mismatch affects `postgres` and `template1` (older
+collation version 2.39 vs OS 2.43); `agent_memory` was created from `template0`
+with current collation 2.43. Do not blindly refresh template collation without
+reviewing any affected indexes.
