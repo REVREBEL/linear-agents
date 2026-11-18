@@ -1,0 +1,11 @@
+{
+  "name": "linear-chatgpt-playwright-test",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node handoff-test.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}
