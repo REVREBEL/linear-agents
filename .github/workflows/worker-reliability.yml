@@ -26,24 +26,49 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Determine whether change is research profiles only
+        id: scope
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/changed-files.txt
+          if [ -s /tmp/changed-files.txt ] && ! grep -Ev '^(agents/profiles/|agents/(README\.md|bridge/README\.md|coding/README\.md)$|\.github/workflows/worker-reliability\.yml$)' /tmp/changed-files.txt; then
+            echo 'profiles_only=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'profiles_only=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Validate research profile organization
+        if: steps.scope.outputs.profiles_only == 'true'
+        run: node --test agents/profiles/profile-structure.test.mjs
       - uses: actions/setup-node@v7
+        if: steps.scope.outputs.profiles_only != 'true'
         with:
           node-version: '26'
           cache: npm
       - run: npm ci
+        if: steps.scope.outputs.profiles_only != 'true'
       - name: Prepare isolated local Worker configuration
+        if: steps.scope.outputs.profiles_only != 'true'
         run: |
           echo 'DOMAIN=example.com' > .env
           for agent in ANTIGRAVITY CHATGPT CHATGPT_CLI GEMINI GEMMA TRAE MOCK; do
             echo "${agent}_KV_NAMESPACE_ID=00000000000000000000000000000000" >> .env
           done
       - name: Generate Worker runtime types
+        if: steps.scope.outputs.profiles_only != 'true'
         run: npm run types
       - name: Check Worker TypeScript
+        if: steps.scope.outputs.profiles_only != 'true'
         run: npm run typecheck
       - name: Run reliability and bridge regression tests
+        if: steps.scope.outputs.profiles_only != 'true'
         run: npm run test:reliability
       - name: Validate isolated Gemma SDK dependency and test package
+        if: steps.scope.outputs.profiles_only != 'true'
         run: |
           npm install --prefix agents/coding/gemma --ignore-scripts --no-audit --no-fund
           npm run test --prefix agents/coding/gemma
