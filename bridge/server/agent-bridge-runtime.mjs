@@ -26,6 +26,7 @@ import { notifyLinearReview } from "../../integrations/review-linear-notifier.mj
 import { verifyPublishedGithubReview } from "../orchestration/review-delivery.mjs";
 import { createActiveTaskMemory } from "../../memory/active-task-memory.mjs";
 import { retrieveMemuMemory } from "../../memory/memu-memory.mjs";
+import { updateOpenCodeCheckpoint, recordOpenCodeProgress } from "../../memory/opencode-session-checkpoint.mjs";
 import { createOrderedProgressQueue } from "../../jobs/lifecycle/ordered-progress.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
@@ -722,6 +723,11 @@ async function startChatgptOpenCode(job, workspace, jobKey, credential) {
     runtime: "opencode", opencodeSessionId: prior?.opencodeSessionId || null,
     executionHost: "bridge-server",
   });
+  await updateOpenCodeCheckpoint({ jobStore, memory: activeTaskMemory, jobKey, patch: {
+    state: "active", nextAction: "Inspect OpenCode progress and preserve the provider session before continuing",
+    lastProviderSessionId: prior?.opencodeSessionId || null,
+    lastSeenAt: new Date().toISOString(),
+  } });
   let result;
   try {
     await sendOpenCodeActivity(callback, agentSessionId, "thought",
@@ -731,12 +737,26 @@ async function startChatgptOpenCode(job, workspace, jobKey, credential) {
       .catch(error => console.warn("Initial ChatGPT CLI activity could not be published:", error.message));
     result = await runOpenCode({
       launch,
-      onSession: async id => jobStore.transition(jobKey, "running", { opencodeSessionId: id }),
-      onProgress: message => sendOpenCodeActivity(callback, agentSessionId, "thought", message)
-        .catch(error => console.warn("ChatGPT CLI progress callback failed:", error.message)),
+      onSession: async id => {
+        await jobStore.transition(jobKey, "running", { opencodeSessionId: id });
+        await updateOpenCodeCheckpoint({ jobStore, memory: activeTaskMemory, jobKey, patch: {
+          lastProviderSessionId: id, lastSeenAt: new Date().toISOString(),
+          nextAction: "Continue the recorded OpenCode session; inspect repository state before resuming",
+        } });
+      },
+      onProgress: async message => {
+        await recordOpenCodeProgress({ jobStore, memory: activeTaskMemory, jobKey, summary: message });
+        await sendOpenCodeActivity(callback, agentSessionId, "thought", message)
+          .catch(error => console.warn("ChatGPT CLI progress callback failed:", error.message));
+      },
     });
   } catch (error) {
     await jobStore.transition(jobKey, "failed", { error: error.message });
+    await updateOpenCodeCheckpoint({ jobStore, memory: activeTaskMemory, jobKey, patch: {
+      state: "needs-recovery", nextAction: "Inspect the OpenCode session, workspace changes, and job ledger before retrying",
+      lastVerifiedResult: "OpenCode execution failed; task outcome requires inspection",
+      lastSeenAt: new Date().toISOString(),
+    } });
     // Failures are reported through the app Worker; the OpenCode child does not
     // receive the bridge-wide secret or app installation token.
     await sendOpenCodeActivity(callback, agentSessionId, "error",
@@ -745,11 +765,24 @@ async function startChatgptOpenCode(job, workspace, jobKey, credential) {
   }
   const confirmed = await sendOpenCodeActivity(callback, agentSessionId, "response", result.summary)
     .catch(error => { console.error("ChatGPT OpenCode completion callback failed:", error.message); return false; });
+  const terminalAt = new Date().toISOString();
+  const providerSessionId = result.sessionId || prior?.opencodeSessionId || null;
   await jobStore.transition(jobKey, confirmed ? "completed" : "awaiting_external", {
-    opencodeSessionId: result.sessionId || prior?.opencodeSessionId || null,
-    ...(confirmed ? { completionConfirmedAt: new Date().toISOString() } :
+    opencodeSessionId: providerSessionId,
+    ...(confirmed ? { completionConfirmedAt: terminalAt } :
       { note: "OpenCode exited successfully but the Linear Worker did not confirm completion" }),
   });
+  await updateOpenCodeCheckpoint({ jobStore, memory: activeTaskMemory, jobKey, patch: {
+    state: confirmed ? "agent-finished" : "needs-recovery",
+    lastProviderSessionId: providerSessionId,
+    lastVerifiedResult: confirmed
+      ? "OpenCode returned a final response and the Linear callback was confirmed; code and tests remain independently unverified"
+      : "OpenCode returned a final response but Linear callback confirmation is pending",
+    nextAction: confirmed
+      ? "Verify the resulting diff, tests, and commit before promoting knowledge to long-term memory"
+      : "Reconcile the Linear callback and job ledger before retrying or starting another session",
+    lastSeenAt: terminalAt,
+  } });
 }
 
 async function sendOpenCodeActivity(url, agentSessionId, activityType, body) {
