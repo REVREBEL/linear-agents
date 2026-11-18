@@ -8,12 +8,20 @@ function warnRecall(reason, logger = console, now = Date.now()) {
 }
 
 export function compactRecall(result, limit = 5) {
-  const hits = Array.isArray(result?.hits) ? result.hits : [];
-  const texts = hits.slice(0, limit).map(hit =>
-    [hit.description, hit.text || hit.content]
-      .filter(value => typeof value === "string" && value.length > 0)
-      .join(": ").slice(0, 600)
-  ).filter(Boolean);
+  // memU CLI 0.10+ returns segments/files/resources; older adapters returned hits.
+  // Prefer segments to avoid duplicating their parent recall-file content.
+  const candidates = Array.isArray(result?.segments) && result.segments.length
+    ? result.segments
+    : Array.isArray(result?.hits) ? result.hits
+    : Array.isArray(result?.files) ? result.files
+    : Array.isArray(result?.resources) ? result.resources : [];
+  const texts = candidates.slice(0, Math.max(0, Math.min(limit, 5))).map(hit => {
+    if (!hit || typeof hit !== "object") return "";
+    const description = typeof hit.description === "string" ? hit.description : "";
+    const content = typeof hit.text === "string" ? hit.text
+      : typeof hit.content === "string" ? hit.content : "";
+    return [description, content].filter(Boolean).join(": ").slice(0, 600);
+  }).filter(Boolean);
   return texts.join("\n").slice(0, 2500);
 }
 
