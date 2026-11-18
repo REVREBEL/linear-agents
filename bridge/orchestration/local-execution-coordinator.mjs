@@ -1,3 +1,4 @@
+import { withLocalAgentCheckpoint } from "../../memory/local-agent-checkpoint.mjs";
 import { prepareLocalAgentTask } from "../../jobs/preparation/local-task-preparation.mjs";
 import { dispatchMockAgent, dispatchGemmaAgent } from "../../jobs/dispatch/simple-agent-dispatch.mjs";
 import { dispatchAntigravityAgent } from "../../jobs/dispatch/antigravity-dispatch.mjs";
@@ -41,6 +42,7 @@ export async function coordinateLocalExecution({
     activeTaskMemory, drainProgressWrites, retrieveMemuMemory,
     extractDirectTask, extractPromptContext,
   });
+  jobStore = withLocalAgentCheckpoint({ jobStore, memory: activeTaskMemory, jobKey, agent, logger });
   logger.log("\nLinear job received");
   logger.log(`Host: ${host}`);
   logger.log(`Saved to: ${filename}`);
