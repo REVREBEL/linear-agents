@@ -23,6 +23,13 @@ SHA = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 MAX_MESSAGE_BYTES = 256_000
+
+
+def valid_repository(value):
+    if not isinstance(value, str) or not REPOSITORY.fullmatch(value):
+        return False
+    return all(part not in (".", "..") and not part.startswith("-")
+               for part in value.split("/"))
 MAX_HANDOFF_BYTES = 2_000_000
 
 
@@ -56,7 +63,7 @@ def git(root, *arguments):
 
 def create_handoff(repo_root, repository, message, *, topic=None, path=None,
                    files_changed=False, allow_partial=False, environ=None):
-    if not REPOSITORY.fullmatch(repository or ""):
+    if not valid_repository(repository):
         raise ValueError("Repository must be a portable owner/name identifier")
     if not isinstance(message, str) or not message.strip():
         raise ValueError("Handoff message must be nonempty")
@@ -175,7 +182,7 @@ def verify_handoff(envelope, *, allow_partial=False, repo_root=None,
         raise ValueError("Invalid versioned handoff envelope")
     if type(envelope["handoffVersion"]) is not int or envelope["handoffVersion"] != VERSION:
         raise ValueError("Unsupported handoff contract version")
-    if not REPOSITORY.fullmatch(envelope["repository"] or ""):
+    if not valid_repository(envelope["repository"]):
         raise ValueError("Invalid source repository identity")
     if not SHA.fullmatch(envelope["repoCommit"]):
         raise ValueError("Missing source-linked Git commit")
