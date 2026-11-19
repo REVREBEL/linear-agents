@@ -13,6 +13,7 @@ Status: **implementation contract** for ABR-60 (A1). This document establishes r
 | `/opt/agent-tools/` | Shared **agent-specific** tooling: wrappers, skills/plugins, launch utilities and managed copies of context templates | Reviewed installer/source manifests in Git; host artifacts are installations, not independent master definitions | Reviewed tool installation/update; respect host access controls |
 | `/opt/global-tools/` | Shared **general-purpose** development tooling for authorized Ubuntu users: Volta, Bun, uv, Cargo, Go, npm, PM2, etc. | The package/tool manager and reviewed provisioning configuration | General-purpose toolchain provisioning, independent of Bridge-specific agent identity |
 | `<repo>/bridge/`, `jobs/`, `routing/`, `integrations/` | Executable admission, dispatch, routing, lifecycle and provider adapters | **Git implementation** plus validated operational configuration | PRs, tests and required deployment/activation procedures |
+| `<repo>/memory/` | Source-controlled short-term checkpoints, optional memU recall, and a separate experimental PostgreSQL checkpoint adapter | **Git implementation**; runtime state and PostgreSQL data are not copied into Git | PRs with checkpoint tests, schema/migration review and separate DB activation gates |
 
 `<repo>` means the checked-out project root, **not** a hardcoded Ubuntu path. A different machine or repository can adopt the same arrangement with different host-root paths.
 

@@ -131,6 +131,73 @@ def validate_active_readme_metadata(manifest, schema):
             raise ValueError(f"{relative}: required dispatch dependencies missing")
 
 
+DOMAIN_READMES = {
+    "repo.memory": "memory/README.md",
+    "repo.memory.migrations": "memory/migrations/README.md",
+    "repo.memory.scripts": "memory/scripts/README.md",
+    "repo.integrations": "integrations/README.md",
+    "repo.integrations.litellm": "integrations/litellm/README.md",
+    "repo.integrations.openrouter": "integrations/openrouter/README.md",
+}
+
+DOMAIN_REQUIREMENTS = {
+    "repo.memory": {"repo.bridge", "repo.jobs"},
+    "repo.memory.migrations": {"repo.memory"},
+    "repo.memory.scripts": {"repo.memory", "repo.memory.migrations"},
+    "repo.integrations": {"repo.bridge", "repo.agents"},
+    "repo.integrations.litellm": {"repo.integrations"},
+    "repo.integrations.openrouter": {"repo.integrations"},
+}
+
+
+def validate_domain_dependency_graph(graph, declared):
+    """Check known document IDs and reject cycles between owning README domains."""
+    seen, visiting = set(), set()
+
+    def visit(doc_id):
+        if doc_id in visiting:
+            raise ValueError(f"Context documentation dependency cycle at {doc_id}")
+        if doc_id in seen:
+            return
+        visiting.add(doc_id)
+        for dependency in graph.get(doc_id, ()):
+            if dependency not in declared:
+                raise ValueError(f"Unknown context documentation dependency {dependency}")
+            if dependency in graph:
+                visit(dependency)
+        visiting.remove(doc_id)
+        seen.add(doc_id)
+
+    for doc_id in graph:
+        visit(doc_id)
+
+
+def validate_domain_readme_metadata(manifest, schema):
+    """B5: validate existing memory/integration ownership README metadata."""
+    documents = manifest["documents"]
+    graph = {}
+    for doc_id, relative_path in DOMAIN_READMES.items():
+        if documents.get(doc_id) != {"root": "repo", "path": relative_path}:
+            raise ValueError(f"{doc_id}: invalid or missing context manifest alias")
+        path = ROOT / relative_path
+        body = path.read_text(encoding="utf-8")
+        if not body.startswith("---\n") or "\n---\n" not in body[4:]:
+            raise ValueError(f"{relative_path}: missing context frontmatter")
+        metadata = yaml.safe_load(body[4:].split("\n---\n", 1)[0])
+        validate(metadata, schema, relative_path)
+        context = metadata["context"]
+        if context["id"] != doc_id:
+            raise ValueError(f"{relative_path}: expected context.id {doc_id}")
+        if not set(DOMAIN_REQUIREMENTS[doc_id]).issubset(context["requires"]):
+            raise ValueError(f"{relative_path}: missing owning documentation dependency")
+        graph[doc_id] = context["requires"]
+    validate_domain_dependency_graph(graph, set(documents))
+    for entrypoint, doc_id in (("memory", "repo.memory"), ("integrations", "repo.integrations")):
+        if manifest["entrypoints"].get(entrypoint) != doc_id:
+            raise ValueError(f"Context entrypoint {entrypoint} must reference {doc_id}")
+    return graph
+
+
 def main():
     schema_path = TEMPLATES / "agent-profile.entry.schema.json"
     mirror_path = ROOT / "agents/agent-registry-schema.json"
@@ -265,6 +332,7 @@ def main():
         raise ValueError("Root bootstrap README has an undeclared document dependency")
 
     validate_active_readme_metadata(active_manifest, context_schema)
+    validate_domain_readme_metadata(active_manifest, context_schema)
     # B4: reviewed host-root README sources must agree with the declared host
     # aliases, but host installation itself is optional until post-merge apply.
     from importlib import util

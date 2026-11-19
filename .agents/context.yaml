@@ -24,6 +24,12 @@ documents:
   repo.agents: {root: repo, path: agents/README.md}
   repo.bridge: {root: repo, path: bridge/README.md}
   repo.jobs: {root: repo, path: jobs/README.md}
+  repo.memory: {root: repo, path: memory/README.md}
+  repo.memory.migrations: {root: repo, path: memory/migrations/README.md}
+  repo.memory.scripts: {root: repo, path: memory/scripts/README.md}
+  repo.integrations: {root: repo, path: integrations/README.md}
+  repo.integrations.litellm: {root: repo, path: integrations/litellm/README.md}
+  repo.integrations.openrouter: {root: repo, path: integrations/openrouter/README.md}
   host.agent-runtimes: {root: host-agents, path: README.md}
   host.agent-tools: {root: host-agent-tools, path: README.md}
   host.global-tools: {root: host-global-tools, path: README.md}
@@ -31,4 +37,6 @@ entrypoints:
   default: repo.bootstrap
   profiles: repo.agents
   deployment: repo.bridge
+  memory: repo.memory
+  integrations: repo.integrations
   runtime: host.agent-runtimes

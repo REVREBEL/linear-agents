@@ -7,6 +7,10 @@ on:
       - 'agents/README.md'
       - 'bridge/README.md'
       - '.agents/context.yaml'
+      - 'memory/**/README.md'
+      - 'memory/README.md'
+      - 'integrations/**/README.md'
+      - 'integrations/README.md'
       - 'AGENTS.md'
       - 'agents/README.md'
       - 'bridge/README.md'
@@ -23,6 +27,7 @@ on:
       - 'scripts/test_reconcile_host_root_readmes.py'
       - 'scripts/test_agent_context_bootstrap.py'
       - 'scripts/test_context_readme_frontmatter.py'
+      - 'scripts/test_context_domain_ownership.py'
       - 'scripts/test_context_profile_version.py'
       - 'scripts/reconcile-agent-runtimes.py'
       - 'scripts/review-research-promotion.py'
@@ -53,6 +58,8 @@ jobs:
         run: python scripts/test_agent_context_bootstrap.py
       - name: Test owning README context metadata
         run: python scripts/test_context_readme_frontmatter.py
+      - name: Test memory and integration ownership contexts
+        run: python scripts/test_context_domain_ownership.py
       - name: Validate Git-owned Ubuntu host README sources
         run: python scripts/reconcile-host-root-readmes.py --validate
       - name: Test controlled Ubuntu README reconciliation
