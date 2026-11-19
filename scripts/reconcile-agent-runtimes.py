@@ -123,13 +123,14 @@ def install(target, desired):
             stream.write(encoded)
             stream.flush()
             os.fsync(stream.fileno())
-        os.chmod(temporary, stat.S_IMODE(metadata.st_mode))
         temporary_metadata = os.stat(temporary)
         if (temporary_metadata.st_uid, temporary_metadata.st_gid) != (metadata.st_uid, metadata.st_gid):
             os.chown(temporary, metadata.st_uid, metadata.st_gid)
         temporary_metadata = os.stat(temporary)
         if (temporary_metadata.st_uid, temporary_metadata.st_gid) != (metadata.st_uid, metadata.st_gid):
             fail("Cannot preserve target ownership; run with authorized host file permissions")
+        # chown can clear set-ID bits, so restore the mode after ownership.
+        os.chmod(temporary, stat.S_IMODE(metadata.st_mode))
         os.replace(temporary, target)
     finally:
         if os.path.exists(temporary):
