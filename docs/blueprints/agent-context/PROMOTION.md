@@ -26,6 +26,10 @@ The template at [`templates/context/research-promotion.review.template.json`](..
 
 Note: This adapter does not infer real authorization from a candidate profile. Any eventual registry change must still pass `npm run registry:validate`, worker/CI review, admission and execution-policy enforcement, and explicit deployment procedures.
 
+## ABR-78 — external claims do not authorize a launch
+
+The [research authority boundary](RESEARCH_AUTHORITY.md) and dedicated CI checks enforce separation from executable Bridge paths. Research fields suggesting a signed binary, broad model allowlist or trusted execution host are **not** mapped into executable permission or attestation. Tests check both review-gated translation and a fabricated high-privilege catalog candidate that cannot register a Worker. A valid promotion proposal remains inert; any code-signature, model allowlist, isolation or deployment check must be performed independently by the actual runtime/host control that owns it. The promotion compiler does not verify cryptographic publisher signatures or authorize a job.
+
 ## Using the compiler
 
 From the checked-out `linear-agents` repository, supply a verified review JSON file via:
