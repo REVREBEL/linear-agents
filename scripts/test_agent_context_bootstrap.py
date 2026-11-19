@@ -22,6 +22,18 @@ class BootstrapManifestTests(unittest.TestCase):
         self.assertEqual(MANIFEST["entrypoints"]["default"], "repo.bootstrap")
         self.assertTrue((ROOT / ".agents/README.md").is_file())
 
+    def test_root_agents_md_bootstrap_guidance(self):
+        text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("## Context bootstrap before code changes", text)
+        self.assertIn(".agents/README.md", text)
+        self.assertIn(".agents/context.yaml", text)
+        self.assertIn("agent-context --topic", text)
+        self.assertIn("agent-context --path", text)
+        self.assertIn("agent-context --files-changed", text)
+        self.assertIn("manually", text)
+        self.assertIn("## Routing invariants", text)
+        self.assertIn("## Lifecycles and completion", text)
+
     def test_rejects_repo_path_traversal(self):
         changed = copy.deepcopy(MANIFEST)
         changed["documents"]["repo.agents"]["path"] = "../other-project/README.md"
