@@ -103,10 +103,19 @@ def visible_lines(data):
     fence, comment = None, False
     for number, raw in enumerate(data.splitlines(), 1):
         marker = FENCE.match(raw)
-        if marker and (fence is None or marker.group(1)[0] == fence):
-            fence = None if fence else marker.group(1)[0]
+        if marker:
+            delimiter = marker.group(1)
+            if fence is None:
+                # An opening fence may contain a language/info string.
+                fence = (delimiter[0], len(delimiter))
+            elif (delimiter[0] == fence[0] and len(delimiter) >= fence[1]
+                  and not raw[marker.end():].strip()):
+                # A closing fence must match type, be long enough, and
+                # contain only trailing whitespace. Inner shorter fences
+                # and code samples cannot terminate the outer code block.
+                fence = None
             continue
-        if fence:
+        if fence is not None:
             continue
         line = ""
         tail = raw
