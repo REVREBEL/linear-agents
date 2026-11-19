@@ -200,6 +200,19 @@ class PrReadmeDisciplineTests(unittest.TestCase):
         self.assertTrue(report["passed"])
         self.assertEqual(len(report["covered"]), 1)
 
+    def test_deleted_file_uses_merge_base_owner_not_new_base_readme(self):
+        self.git("checkout", "-q", "-b", "feature")
+        (self.repo / "bridge/server/runner.mjs").unlink()
+        self.update("bridge/README.md")
+        self.commit("remove runner and update owner")
+        head = self.rev()
+        self.git("checkout", "-q", "main")
+        self.write("bridge/server/README.md", "# Added after branch diverged\n")
+        self.commit("new base owner")
+        report = policy.check_pr(self.repo, self.rev(), head)
+        self.assertTrue(report["passed"], report)
+        self.assertEqual(report["covered"][0]["readme"], "bridge/README.md")
+
     def test_bad_git_base_or_head_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "Git diff cannot be verified"):
             policy.check_pr(self.repo, "not-a-real-commit", self.rev())
