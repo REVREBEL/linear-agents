@@ -16,7 +16,7 @@ This directory owns the **project-local context entrypoint**, not agent executio
 ## Ownership
 
 - `context.yaml` declares `contextVersion: 1`, logical document IDs, optional host-root aliases, and future entrypoints. Its relative repository paths are resolved from the **project root** (parent directory of `.agents/`), never an arbitrary command working directory.
-- The existing [`skills/`](skills/) directory remains independently owned. Adding context documentation does not replace, remove, or activate any skill. The proposed `agent-context` skill is [staged in the blueprint](../docs/blueprints/agent-context/bootstrap/.agents/skills/agent-context/SKILL.md) for ABR-80 (D1).
+- The existing [`skills/`](skills/) directory remains independently owned. Adding context documentation does not replace, remove, or activate any skill. The proposed `agent-context` skill is [staged in the blueprint](../docs/blueprints/agent-context/bootstrap/.agents/skills/agent-context/SKILL.md) for Milestone D1.
 - [`../templates/context/`](../templates/context/) holds portable README/context templates under Git review. [`../docs/blueprints/agent-context/`](../docs/blueprints/agent-context/) records the implementation plan and source-of-truth boundaries.
 
 ## Document readiness
