@@ -45,8 +45,9 @@ class QwenLocalPilotTests(unittest.TestCase):
             x["id"] for x in json.loads((ROOT / "agents/registry.json").read_text())["agents"]
         })
 
-    def test_staged_config_cannot_switch_to_remote_provider(self):
+    def test_staged_config_declares_local_provider_allowlist(self):
         config = json.loads(CONFIG.read_text())
+        self.assertEqual(config["enabled_providers"], ["ollama"])
         self.assertEqual(set(config["provider"]), {"ollama"})
         self.assertEqual(config["provider"]["ollama"]["npm"], "@ai-sdk/openai-compatible")
         self.assertEqual(config["provider"]["ollama"]["options"], {
