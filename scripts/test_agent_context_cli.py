@@ -92,7 +92,7 @@ class ContextCliTests(unittest.TestCase):
             capture_output=True, text=True,
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("unrecognized arguments", result.stderr)
+        self.assertIn("invalid choice", result.stderr)
 
 
 if __name__ == "__main__":
