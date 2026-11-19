@@ -58,7 +58,13 @@ Run `python3 scripts/test_agent_context_cli.py` and `python3 scripts/test_instal
 
 Supported commands include `agent-context --topic profiles`, `agent-context --path agents/registry.json`, `agent-context --files-changed`, `agent-context --topic profiles --format json`, `agent-context explain --topic profiles`, and `agent-context --path jobs/lifecycle/example.mjs --format json explain`. With no selector the default context entrypoint is retrieved. The `validate` command remains metadata-only, while `explain` shows provenance/reasons without document bodies. These commands work directly through `python3 scripts/agent_context_cli.py` before the approved C3 zipapp is installed.
 
-For full semantics and the post-merge verification contract see [C3 resolver documentation](../docs/blueprints/agent-context/RESOLVER.md). Run `python3 scripts/test_context_resolver.py`, plus existing CLI and installer tests. C4/C5 separately add stricter filesystem controls, opt-in partial output and cross-host acceptance testing. The resolver does not execute README instructions or grant Bridge dispatch permissions.
+For full semantics and the post-merge verification contract see [C3 resolver documentation](../docs/blueprints/agent-context/RESOLVER.md). Run `python3 scripts/test_context_resolver.py`, plus existing CLI and installer tests. C4 adds strict source-path protection and opt-in partial output for missing optional host documentation. C5 retains expanded cross-host acceptance testing. The resolver does not execute README instructions or grant Bridge dispatch permissions.
+
+## Strict filesystem and dependency boundaries (ABR-75 / C4)
+
+The C1 metadata validator and C3 resolver now reject symlinks in selected source and manifest/schema paths, unsafe traversal, missing declared required roots, malformed metadata, and unknown/cyclic dependencies. The default CLI returns **no incomplete bundle** when selected documentation is unavailable. `--allow-partial` is an explicit exception for missing **optional host-root READMEs only**; its Markdown/JSON output identifies missing IDs, root aliases, expected paths, inclusion reasons and errors. It cannot hide unsafe paths, a missing required root, malformed metadata or a drifted host file. `validate --allow-partial` is rejected.
+
+Run `python3 scripts/test_context_safety.py`, `python3 scripts/test_agent_context_cli.py`, `python3 scripts/test_context_resolver.py`, and `python3 scripts/test_context_contract.py`. See [C4 safety policy](../docs/blueprints/agent-context/SAFETY.md). After PR review and merge, update only the managed CLI using `scripts/install-agent-context.py --apply`, verify `--check`, then test both strict and opt-in partial modes against an approved checkout. The README content is never trimmed or executed.
 
 ## Host-only infrastructure
 
