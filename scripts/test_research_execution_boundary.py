@@ -103,6 +103,14 @@ writeFileSync(join(root, agentSource), 'import "../profiles/candidates/example.y
 assert.throws(() => auditResearchAuthority(root, [agentSource]), /research candidate profile/);
 writeFileSync(join(root, agentSource), 'import "../agent-registry.yaml";');
 assert.throws(() => auditResearchAuthority(root, [agentSource]), /research catalog/);
+const nestedSource = "agents/bridge/event-intelligence/event-intelligence-agent.ts";
+mkdirSync(join(root, "agents/bridge/event-intelligence"), {{ recursive: true }});
+writeFileSync(join(root, nestedSource), 'import "../../profiles/./candidates/beam.yaml";');
+assert.throws(() => auditResearchAuthority(root, [nestedSource]), /research candidate profile/);
+writeFileSync(join(root, nestedSource), "import '../../../templates/./context/README.md';");
+assert.throws(() => auditResearchAuthority(root, [nestedSource]), /README context bundle/);
+writeFileSync(join(root, nestedSource), 'import "../../bridge/runtime.mjs";');
+assert.equal(auditResearchAuthority(root, [nestedSource]), 1);
 console.log("forbidden runtime import variants rejected");
 """
         result = self.run_node(script, self.repo)
