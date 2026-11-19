@@ -1,6 +1,6 @@
 # Reusable agent-context templates
 
-These files are source-controlled **templates**, not deployed agent configuration. The context root manifest and resolver are staged for later implementation milestones (B and C). The two agent-profile formats below are intentionally incompatible.
+These files are source-controlled **templates**, not deployed agent configuration. The project-root `.agents/README.md` and `.agents/context.yaml` bootstrap metadata is now tracked in Git (ABR-66), but the shared resolver, host-root README rollout and harness integrations remain later milestones. The two agent-profile formats below are intentionally incompatible.
 
 ## Ownership
 
