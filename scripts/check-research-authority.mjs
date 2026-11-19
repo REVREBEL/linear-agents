@@ -14,6 +14,10 @@ const EXECUTABLE_ROOTS = [
   "linear-antigravity-worker/", "linear-chatgpt-worker/",
   "linear-gemini-worker/", "linear-trae-worker/", "linear-mock-worker/",
 ];
+const ADDITIONAL_SOURCES = [
+  "scripts/agent-worker-registry.mjs",
+  "scripts/validate-agent-registry.mjs",
+];
 const SOURCE_SUFFIX = /\.(?:mjs|cjs|js|ts|tsx|py)$/i;
 const EXCLUDED = /(?:^|\/)(?:__tests__\/|test\/|tests\/)|(?:\.test|\.spec)\.(?:mjs|cjs|js|ts|tsx|py)$/i;
 const DENIED = [
@@ -26,17 +30,20 @@ const DENIED = [
 ];
 
 const fail = message => { throw new Error("Research authority boundary: " + message); };
-const allowed = name => EXECUTABLE_ROOTS.some(prefix => name.startsWith(prefix))
+const allowed = name => (EXECUTABLE_ROOTS.some(prefix => name.startsWith(prefix))
+  || ADDITIONAL_SOURCES.includes(name))
   && SOURCE_SUFFIX.test(name) && !EXCLUDED.test(name);
 
 export function trackedExecutableSources(root = REPO_ROOT) {
   const paths = execFileSync("git", ["-C", root, "ls-files", "-z", "--",
-    ...EXECUTABLE_ROOTS], { encoding: "utf8" })
+    ...EXECUTABLE_ROOTS, ...ADDITIONAL_SOURCES], { encoding: "utf8" })
     .split("\0").filter(allowed).sort();
   for (const required of [
     "bridge/server/agent-bridge-runtime.mjs",
     "jobs/admission/job-preflight.mjs",
     "jobs/admission/job-admission.mjs",
+    "scripts/agent-worker-registry.mjs",
+    "scripts/validate-agent-registry.mjs",
   ]) if (!paths.includes(required)) fail("Missing required executable audit target: " + required);
   return paths;
 }
