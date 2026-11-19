@@ -28,6 +28,25 @@ def validate(instance, schema, label):
         raise ValueError(f"{label} at {location}: {first.message}")
 
 
+def guard_research_schema_version(schema):
+    """Require an explicit schema migration before defining per-entry profileVersion."""
+    if "profileVersion" in schema.get("properties", {}):
+        raise ValueError(
+            "profileVersion is not part of the approved AgentRegistryEntry schema; "
+            "introduce it only in a separately reviewed schema/migration change"
+        )
+
+
+def validate_research_profile(instance, schema, label):
+    """Block a silent profileVersion field even though the source schema allows extras."""
+    if isinstance(instance, dict) and "profileVersion" in instance:
+        raise ValueError(
+            f"{label}: undeclared profileVersion requires a reviewed "
+            "research schema migration"
+        )
+    validate(instance, schema, label)
+
+
 def main():
     schema_path = TEMPLATES / "agent-profile.entry.schema.json"
     mirror_path = ROOT / "agents/agent-registry-schema.json"
@@ -38,13 +57,14 @@ def main():
         )
     profile_schema = load_json(schema_path)
     Draft202012Validator.check_schema(profile_schema)
+    guard_research_schema_version(profile_schema)
 
     # Read all JSON templates, not only the entry schema.
     for path in sorted(TEMPLATES.glob("*.json")):
         load_json(path)
 
     profile_example = load_yaml(TEMPLATES / "agent-profile.v2.template.yaml")
-    validate(profile_example, profile_schema, "research profile template")
+    validate_research_profile(profile_example, profile_schema, "research profile template")
     assert profile_example["execution"]["quotaPolicy"]["maxRetryAttempts"] == 0
     assert profile_example["execution"]["sessionContinuityFlag"].startswith("--session ")
     assert "--prompt" not in profile_example["runtime"]["commandTemplate"]
@@ -64,7 +84,7 @@ def main():
         if len(set(identifiers)) != len(identifiers):
             raise ValueError(f"{path}: duplicate agent ids")
         for i, item in enumerate(profiles):
-            validate(item, profile_schema, f"{path.relative_to(ROOT)} agents[{i}]")
+            validate_research_profile(item, profile_schema, f"{path.relative_to(ROOT)} agents[{i}]")
         total += len(profiles)
 
     # ABR-62: check historical snapshot integrity without freezing future Git
@@ -100,7 +120,7 @@ def main():
         )
     for path in candidate_paths:
         item = load_yaml(path)
-        validate(item, profile_schema, f"candidate {path.name}")
+        validate_research_profile(item, profile_schema, f"candidate {path.name}")
         if item != current_profiles[path.stem]:
             raise ValueError(f"Research candidate differs from catalog entry: {path.name}")
 
@@ -147,8 +167,8 @@ def main():
         raise ValueError(f"Duplicate research entry schema: {duplicate}")
     print(f"Validated {total} research profile examples, independent executable "
           "registry entry and live Registry v2, schema-mirror parity, "
-          "cross-contract rejection, README frontmatter, JSON templates, "
-          "and context manifest.")
+          "cross-contract rejection, per-profile version gate, "
+          "README frontmatter, JSON templates, and context manifest.")
 
 
 if __name__ == "__main__":
