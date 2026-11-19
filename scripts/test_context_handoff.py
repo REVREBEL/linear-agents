@@ -242,7 +242,10 @@ class HandoffContractTests(unittest.TestCase):
     def test_missing_documents_cannot_claim_nonoptional_source(self):
         (self.roots[0] / "README.md").unlink()
         bundle = self.create(allow_partial=True)
-        bundle["contextBundle"]["missingDocuments"][0]["id"] = "not-a-real-host"
+        bundle["contextBundle"]["missingDocuments"].append(
+            copy.deepcopy(bundle["contextBundle"]["missingDocuments"][0])
+        )
+        bundle["contextBundle"]["missingDocuments"][-1]["id"] = "not-a-real-host"
         bundle["contextSha256"] = handoff.hash_object(bundle["contextBundle"])
         bundle["handoffSha256"] = handoff.hash_object({
             k: v for k, v in bundle.items() if k != "handoffSha256"
