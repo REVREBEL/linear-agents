@@ -119,7 +119,7 @@ def _owners_for_path(raw, index, manifest, root_paths):
 
 def _changed_files(repo_root):
     """Include tracked/index changes and untracked, non-ignored paths."""
-    edited = git(repo_root, "diff", "--name-only", "-z", "HEAD", "--")
+    edited = git(repo_root, "diff", "--no-renames", "--name-only", "-z", "HEAD", "--")
     untracked = git(repo_root, "ls-files", "--others", "--exclude-standard", "-z", "--")
     names = {value.decode("utf-8") for value in (edited + untracked).split(b"\0") if value}
     for name in names:
