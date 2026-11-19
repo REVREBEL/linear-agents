@@ -1,0 +1,65 @@
+id: qwen-local
+displayName: Qwen Local (Ollama / OpenCode)
+description: >-
+  Pilot candidate for the on-premises qwen3.5:9b-opencode model using an isolated
+  OpenCode headless session and the local Ollama API. Candidate metadata is
+  advisory, not a registered Linear identity or an executable dispatch grant.
+kind: cli_agent
+provider: Ollama
+model: ollama/qwen3.5:9b-opencode
+runtime:
+  transport: headless_cli
+  executionHost: ubuntu_agent_server
+  binaryPath: /usr/local/bin/opencode
+  commandTemplate: opencode run --model ollama/qwen3.5:9b-opencode --format json {{PROMPT}}
+  workspaceRoot: /home/bridge/worktrees/{{SESSION_ID}}
+linearBridge:
+  workerHost: linear-qwen-local.invalid
+  tunnelHost: qwen-local-agent.invalid
+  supportedEvents: [session_created, session_prompted]
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Goal-based
+  domain: On-premises code inspection and bounded local programming tasks
+  top_skills:
+    - Local repository analysis
+    - TypeScript and Python code assistance
+    - Unit-test diagnosis
+routing:
+  complexity_tier: Medium
+  semantic_description: >-
+    Proposed local-only code-agent pilot using Ollama; no remote provider
+    fallback or execution permission is implied by this research profile.
+  supported_intents:
+    - repo_qa
+    - implement_feature
+    - fix_bug
+    - generate_tests
+execution:
+  autonomy_level: Supervised
+  memory_scope: session_isolated
+  sessionContinuityFlag: "--session {{SESSION_ID}}"
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 0
+    maxRetryAttempts: 0
+    exhaustionPattern: connection_refused|model_unavailable
+permissions:
+  sourceWrite: false
+  directoryMoves: false
+  gitCommit: false
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: ephemeral_session
+  envStripPatterns:
+    - BRIDGE_SHARED_SECRET
+    - LINEAR_API_KEY
+    - GITHUB_TOKEN
+    - OPENAI_API_KEY
+    - OPENROUTER_API_KEY
+    - ANTHROPIC_API_KEY
+  mcpToolAllowlist: []
+  handoff_targets: [human_supervisor]
