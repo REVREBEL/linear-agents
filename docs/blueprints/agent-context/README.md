@@ -96,6 +96,10 @@ The Git-owned [canonical project skill](../../../.agents/skills/agent-context/SK
 
 The [D2 authority contract](RESEARCH_AUTHORITY.md) separates candidate research/profile data, code-signature/model/host claims, and context bundles from real Registry v2/Worker identity, authenticated Bridge job admission, and runtime enforcement. A focused CI gate checks that executable Bridge and Worker sources do not import research/context proposals; fake-candidate tests demonstrate that catalog permission claims cannot mint Worker identities, while reviewed promotion remains non-installing. This milestone does not assert that cryptographic code-signature validation or live model allowlist enforcement has been added to a runtime.
 
+## Same-PR nearest-owner README discipline (ABR-79 / D3)
+
+[README_DISCIPLINE.md](README_DISCIPLINE.md) documents the new PR-wide CI check for behavioral source changes. It selects the nearest existing tracked README from each file's directory ancestry, requires a same-PR effective README update, and explains narrow research/profile data, test and documentation exemptions. New folders without an owner are reported for D4 coverage rather than triggering a repository-wide rewrite. The checker uses PR merge-base/head Git history, does not change Bridge runtime, and cannot grant execution privileges.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.

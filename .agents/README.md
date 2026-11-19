@@ -57,6 +57,10 @@ The [C5 acceptance suite](../docs/blueprints/agent-context/ACCEPTANCE.md) verifi
 
 The canonical project skill [`skills/agent-context/SKILL.md`](skills/agent-context/SKILL.md) is discoverable by **Codex, OpenCode, Qwen Code and Mistral Vibe** under the existing `.agents/skills/` location. Root [`AGENTS.md`](../AGENTS.md) provides the common coding/review entrypoint; Qwen Code also uses [`QWEN.md`](../QWEN.md) for its persistent project instructions. Each invokes the same reviewed `scripts/agent_context_cli.py` or installed `agent-context` executable, with no shadow copies or additional runner privileges. See [harness integration contract](../docs/blueprints/agent-context/HARNESSES.md) for native invocation syntax and tested boundaries.
 
+## Incremental README discipline (ABR-79 / D3)
+
+The [D3 policy](../docs/blueprints/agent-context/README_DISCIPLINE.md) and CI workflow enforce nearest **physical** tracked README changes whenever a PR modifies behavior, configuration, contracts, dependencies, security or deployment code. Research/profile data-only files and tests/docs receive justified, file-specific exemptions; a mixed PR still needs the README for each behavioral source. Unowned files remain D4 coverage advisories. Context dependencies remain reading requirements, not duplicate README-update obligations.
+
 ## Update discipline
 
 Update this README and its manifest together when document IDs, aliases, source paths, dependencies, or bootstrap semantics change. Update nearest owning READMEs in the same PR as behavioral, configuration, security, routing, or deployment changes. Context metadata does **not** authorize filesystem access, credential use, code execution, or deployments.

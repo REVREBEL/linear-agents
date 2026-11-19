@@ -1,0 +1,29 @@
+name: Owning README Discipline
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  same-pr-readme:
+    name: Nearest-owner README updated with behavioral source
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate README discipline regression tests
+        run: python scripts/test_pr_readme_updates.py
+      - name: Check effective PR changes and nearest tracked README owners
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/check-pr-readme-updates.py --base "$PR_BASE_SHA" --head "$PR_HEAD_SHA"
