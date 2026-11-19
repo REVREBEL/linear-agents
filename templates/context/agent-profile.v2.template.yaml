@@ -1,0 +1,52 @@
+# NotebookLM profile-format template, based on the attached AgentRegistryEntry schema.
+# This is a research/candidate definition, not a registered or deployable agent.
+id: example-local-agent
+displayName: Example Local Coding Agent
+description: >-
+  Illustrative locally hosted coding candidate; all model capabilities,
+  worker bindings, and executable settings require verification.
+kind: cli_agent
+provider: Ollama
+model: ollama/example-model
+runtime:
+  transport: headless_cli
+  executionHost: ubuntu_agent_server
+  binaryPath: /usr/local/bin/opencode
+  commandTemplate: 'opencode run --model ollama/example-model --format json {{PROMPT}}'
+  workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+linearBridge:
+  workerHost: linear-example.invalid
+  tunnelHost: example-agent.invalid
+  supportedEvents: [session_created, session_prompted]
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Goal-based
+  domain: Localized repository maintenance and tests
+  top_skills: [Source inspection, Unit test authoring]
+routing:
+  complexity_tier: Medium
+  semantic_description: Bounded code edits in approved workspaces
+  supported_intents: [fix_bug, generate_tests]
+  # task_ratings: {}  # Populate only when evidence is available.
+execution:
+  autonomy_level: Supervised
+  memory_scope: session_isolated
+  sessionContinuityFlag: '--session {{SESSION_ID}}'
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 10000
+    maxRetryAttempts: 0
+    exhaustionPattern: connection_refused|out_of_memory
+permissions:
+  sourceWrite: false
+  directoryMoves: false
+  gitCommit: false
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: ephemeral_session
+  envStripPatterns: [BRIDGE_SHARED_SECRET, LINEAR_API_KEY, GITHUB_TOKEN]
+  mcpToolAllowlist: []
+  handoff_targets: [human_supervisor]
