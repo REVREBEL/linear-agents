@@ -63,7 +63,7 @@ export function parseOpenCodeEvent(line) {
     const sessionId = typeof event.sessionID === "string" ? event.sessionID : event.sessionId;
     // Do not log arbitrary tool inputs, content blocks, or account details.
     return {
-      sessionId: /^ses_[a-zA-Z0-9]+$/.test(sessionId || "") ? sessionId : null,
+      sessionId: typeof sessionId === "string" && sessionId.length <= 128 && /^ses_[a-zA-Z0-9]+$/.test(sessionId) ? sessionId : null,
       error: event.type === "error" ? "OpenCode reported an error" : null,
       type: typeof event.type === "string" ? event.type : null,
       summary: event.type === "text" && typeof event.part?.text === "string" ? event.part.text.slice(0, 3500) : null,

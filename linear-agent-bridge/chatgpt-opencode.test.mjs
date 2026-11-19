@@ -57,6 +57,11 @@ test("JSON stream extracts a durable OpenCode session and final assistant text",
   assert.deepEqual(await run, { sessionId: "ses_abc123", exitCode: 0, summary: "Tests passed" });
   assert.deepEqual(sessions, ["ses_abc123"]);
 });
+test("OpenCode provider session IDs are bounded before checkpointing", async () => {
+  assert.equal(parseOpenCodeEvent(JSON.stringify({ type: "step_start", sessionID: "ses_" + "a".repeat(200) })).sessionId, null);
+  assert.equal(parseOpenCodeEvent(JSON.stringify({ type: "step_start", sessionID: "ses_valid123" })).sessionId, "ses_valid123");
+});
+
 test("no text or error events cannot be misreported as completed", async () => {
   for (const output of [
     JSON.stringify({ type: "step_start", sessionID: "ses_abc" }) + "\n",

@@ -96,7 +96,7 @@ export function createActiveTaskMemory(root) {
           state, status,
           lastJobKey: prior?.lastJobKey || null,
           lastAgent: prior?.lastAgent || null, lastWorkspace: prior?.lastWorkspace || null,
-          lastSessionId: prior?.lastSessionId || null, lastSeenAt: prior?.lastSeenAt || null,
+          lastSessionId: prior?.lastSessionId || null, lastProviderSessionId: prior?.lastProviderSessionId || null, lastSeenAt: prior?.lastSeenAt || null,
           lastVerifiedResult: prior?.lastVerifiedResult || null,
           progress: prior?.progress || [], lastProgressAt: prior?.lastProgressAt || null,
           promotion: prior?.promotion || null,
@@ -123,10 +123,18 @@ export function createActiveTaskMemory(root) {
       .replace(/((?:token|password|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi, "$1[REDACTED]")
       .replace(/[\r\n]+/g, " ").slice(0, 240);
     const entry = { at: new Date().toISOString(), kind, summary: clean, jobKey };
-    return update(repo, issue, prior => ({
-      progress: [...(prior?.progress || []), entry].slice(-20),
-      lastProgressAt: entry.at,
-    }));
+    try {
+      return await update(repo, issue, prior => {
+        if (jobKey && prior?.lastJobKey !== jobKey) return { expectedRevision: -1 };
+        return {
+          progress: [...(prior?.progress || []), entry].slice(-20),
+          lastProgressAt: entry.at,
+        };
+      });
+    } catch (error) {
+      if (error.code === "ECONFLICT") return null;
+      throw error;
+    }
   }
   function recoveryPreamble(record) {
     if (!record) return "";
@@ -143,6 +151,7 @@ export function createActiveTaskMemory(root) {
       "Previous agent: " + (record.lastAgent || "unknown"),
       "Previous state: " + (record.state || "unknown"),
       "Previous session: " + (record.lastSessionId || "unknown"),
+      "Previous provider session: " + (record.lastProviderSessionId || "unknown"),
       "Last recorded result: " + (record.lastVerifiedResult || "not verified"),
       "Next action: " + (record.nextAction || "none"),
       "Expires at: " + (record.expiresAt || "none"),
