@@ -11,7 +11,7 @@ context:
 
 # Agent context bootstrap
 
-This directory owns the **project-local context entrypoint**, not agent execution or authorization. Start with the existing root [`AGENTS.md`](../AGENTS.md) for operational guardrails; use [`context.yaml`](context.yaml) as the planned document/root alias map. The C2 `agent-context` CLI bootstrap provides **metadata validation only**. Recursive context selection, full-source retrieval and harness integrations remain separate C3–C5 and D milestones; the manifest is never executable authority.
+This directory owns the **project-local context entrypoint**, not agent execution or authorization. Start with the existing root [`AGENTS.md`](../AGENTS.md) for operational guardrails; use [`context.yaml`](context.yaml) as the planned document/root alias map. The C2 `agent-context` CLI provides metadata validation; C3 adds topic/path/changed-file selection, recursive README retrieval and source-linked explanations. C4–C5 strengthen live filesystem protection and host acceptance tests, while D owns harness integration. The manifest is never executable authority.
 
 ## Ownership
 
@@ -23,7 +23,7 @@ This directory owns the **project-local context entrypoint**, not agent executio
 
 The `repo.bootstrap`, `repo.agents`, `repo.bridge`, and `repo.jobs` document paths currently exist in Git. The owning `agents/` and `bridge/` READMEs now declare their `context` frontmatter under ABR-68 (B3), including references to optional host roots. The three optional host-root README paths have reviewed Git **sources** under `templates/context/host-roots/` (ABR-69, B4). Each real host must apply those sources explicitly after review; the README paths must not be assumed installed on every machine.
 
-Future resolvers should return full source-attributed README content for requested documents, fail visibly when required dependencies are unavailable, and never treat README text or research profiles as executable authority. Onboarding a new host must not commit native CLI sessions, credentials, or private state.
+The C3 resolver returns full source-attributed README content for requested documents and visibly rejects unavailable selected dependencies. Future C4/C5 milestones strengthen path hardening and portable host coverage. README text and research profiles are never executable authority. Onboarding a new host must not commit native CLI sessions, credentials, or private state.
 
 ## Memory and integration owners (ABR-70)
 
@@ -35,11 +35,15 @@ The reusable Git source set `../templates/context/` is published only through th
 
 ## Context metadata schemas (ABR-72)
 
-This manifest and its README headers now follow the versioned `templates/context/context-manifest.schema.json` and `context-frontmatter.schema.json` contracts. The Git-owned `scripts/validate-context-contract.py` checks document ID uniqueness, declared dependencies/cycles, safe relative paths and platform-aware root override semantics. A named `AGENT_CONTEXT_*_ROOT` environment override takes priority over an optional platform default, then the declared root default; the path must be native absolute and validation does not create missing host directories. The [schema policy](../docs/blueprints/agent-context/CONTEXT_SCHEMA.md) documents portability and boundaries. The resolver itself remains a later milestone.
+This manifest and its README headers now follow the versioned `templates/context/context-manifest.schema.json` and `context-frontmatter.schema.json` contracts. The Git-owned `scripts/validate-context-contract.py` checks document ID uniqueness, declared dependencies/cycles, safe relative paths and platform-aware root override semantics. A named `AGENT_CONTEXT_*_ROOT` environment override takes priority over an optional platform default, then the declared root default; the path must be native absolute and validation does not create missing host directories. The [schema policy](../docs/blueprints/agent-context/CONTEXT_SCHEMA.md) documents portability and boundaries. The C3 resolver provides read-only documentation retrieval; remaining C4/C5 hardening and harness integrations are separate milestones.
 
 ## Portable context CLI (ABR-73 / C2)
 
-Use `python3 scripts/agent_context_cli.py validate` from the repository (or `--repo-root PATH validate` from another working directory) for the v1 manifest and 13 README source contracts. After review/merge, the guarded `scripts/install-agent-context.py --apply` installs a deterministic `/opt/agent-tools/bin/agent-context` zipapp on Ubuntu; verify with `--check` and then `agent-context --version`. The command runs with host Python dependencies and does not run or dispatch agents. `--topic`, `--path`, `--files-changed` and output formats arrive in C3.
+Use `python3 scripts/agent_context_cli.py validate` from the repository (or `--repo-root PATH validate` from another working directory) for the v1 manifest and 13 README source contracts. After review/merge, the guarded `scripts/install-agent-context.py --apply` installs a deterministic `/opt/agent-tools/bin/agent-context` zipapp on Ubuntu; verify with `--check` and then `agent-context --version`. The command uses host Python dependencies and does not run or dispatch agents. C3 adds `--topic`, `--path`, `--files-changed`, `--format markdown|json` and `explain` to the same CLI.
+
+## README context retrieval (ABR-74 / C3)
+
+The shared [`context_resolver.py`](../scripts/context_resolver.py) now selects declared owning documents and recursively includes dependencies in deterministic order. Run `python3 scripts/agent_context_cli.py --topic profiles` or `--path agents/registry.json` from Git, or use `--files-changed` to resolve README owners for Git changes (reporting files with no owner). `--format json` gives untruncated machine-readable content; `explain --topic profiles` reports inclusion reasons and Git provenance without the bodies. After merge, explicitly install the reviewed C3 zipapp to the same `/opt/agent-tools/bin/agent-context` path. See [C3 resolver reference](../docs/blueprints/agent-context/RESOLVER.md).
 
 ## Update discipline
 
