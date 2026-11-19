@@ -34,6 +34,16 @@ class BootstrapManifestTests(unittest.TestCase):
         self.assertIn("## Routing invariants", text)
         self.assertIn("## Lifecycles and completion", text)
 
+    def test_accepts_portable_host_root_defaults(self):
+        changed = copy.deepcopy(MANIFEST)
+        root = changed["roots"]["host-agents"]
+        root.pop("default")
+        root["platformDefaults"] = {"linux": "/opt/agents", "win32": "C:\\\\agents"}
+        validator.validate_bootstrap_manifest(changed, "test")
+        root.pop("platformDefaults")
+        root["default"] = "C:\\\\agents"
+        validator.validate_bootstrap_manifest(changed, "test")
+
     def test_rejects_repo_path_traversal(self):
         changed = copy.deepcopy(MANIFEST)
         changed["documents"]["repo.agents"]["path"] = "../other-project/README.md"
