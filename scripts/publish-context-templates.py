@@ -29,6 +29,9 @@ REQUIRED = {
     "profile-mapping.md", "host-roots/README.md",
     "host-roots/agents/README.md", "host-roots/agent-tools/README.md",
     "host-roots/global-tools/README.md",
+    "agent-registry.catalog.template.yaml",
+    "agent-runtimes.staged.json",
+    "research-promotion.review.template.json",
 }
 
 
@@ -105,7 +108,14 @@ def reviewed_sources():
             refuse(f"Unsafe source template: {name}")
         if name in files:
             refuse(f"Duplicate source template: {name}")
-        files[name] = source.read_bytes()
+        # Read the committed HEAD blob, not the working-tree bytes. Git's
+        # assume-unchanged and skip-worktree flags can mask local edits from
+        # diff; the explicit comparison rejects such edits and prevents a
+        # manifest from attributing unreviewed content to a Git revision.
+        committed = git("show", f"HEAD:{tracked}")
+        if source.read_bytes() != committed:
+            refuse(f"Source template differs from committed Git content: {name}")
+        files[name] = committed
     missing = REQUIRED - set(files)
     if missing:
         refuse(f"Required context source templates missing: {sorted(missing)}")
