@@ -72,6 +72,10 @@ Run `python3 scripts/test_context_safety.py`, `python3 scripts/test_agent_contex
 
 Run `python3 scripts/test_context_cross_root.py` locally. The Agent Context GitHub Actions workflow runs the suite independently on Ubuntu, macOS and Windows with pinned dependencies and Git source line endings preserved. See [C5 acceptance contract](../docs/blueprints/agent-context/ACCEPTANCE.md). C5 tests documentation retrieval only and does not install a new CLI, change profiles, or run services.
 
+## Shared coding-agent skill integration (ABR-77 / D1)
+
+`test_agent_context_harnesses.py` validates that root `AGENTS.md`, Qwen's `QWEN.md` and the canonical `.agents/skills/agent-context/SKILL.md` point to **one** reviewed resolver. It exercises that resolver against the cross-root dependency graph with temporary Git-reviewed host documentation, including complete content and hashes. The same test runs in the CI native Ubuntu/macOS/Windows matrix. See [the harness contract](../docs/blueprints/agent-context/HARNESSES.md) for Codex, OpenCode, Qwen Code and Mistral Vibe skill invocation; no duplicated skill installation, host CLI reinstallation or agent process launch is part of D1.
+
 ## Host-only infrastructure
 
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.

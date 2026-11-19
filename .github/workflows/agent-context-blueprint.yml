@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - '.agents/README.md'
+      - '.agents/skills/agent-context/**'
+      - 'QWEN.md'
       - 'agents/README.md'
       - 'bridge/README.md'
       - '.agents/context.yaml'
@@ -29,6 +31,7 @@ on:
       - 'scripts/test_context_resolver.py'
       - 'scripts/test_context_safety.py'
       - 'scripts/test_context_cross_root.py'
+      - 'scripts/test_agent_context_harnesses.py'
       - 'scripts/install-agent-context.py'
       - 'scripts/test_agent_context_cli.py'
       - 'scripts/test_install_agent_context.py'
@@ -79,6 +82,8 @@ jobs:
         run: python scripts/test_context_safety.py
       - name: Test C5 cross-root deterministic resolution
         run: python scripts/test_context_cross_root.py
+      - name: Test shared agent-context skill harness wiring
+        run: python scripts/test_agent_context_harnesses.py
       - name: Validate reviewed Agent Context CLI artifact
         run: python scripts/install-agent-context.py --validate
       - name: Test guarded Agent Context CLI installation
@@ -127,3 +132,7 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: python scripts/test_context_cross_root.py
+      - name: Native OS shared coding-harness context entrypoints
+        env:
+          PYTHONUTF8: '1'
+        run: python scripts/test_agent_context_harnesses.py

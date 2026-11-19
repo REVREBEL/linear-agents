@@ -88,6 +88,10 @@ The [C4 safety contract](SAFETY.md) hardens the C1/C3 validators and resolver ag
 
 The [C5 test contract](ACCEPTANCE.md) verifies complete, source-linked context retrieval across Git `agents/` and the three optional host roots, even when each root is overridden to a disposable directory. Checks cover deterministic order/JSON/Markdown, original README bytes, Git SHA/content hashes, missing host files, real dependency cycles, changed-file ownership, and native Linux/macOS/Windows paths. CI runs the same isolated suite on all three OS runners. This milestone adds tests and documentation, not new agent execution or a service deployment.
 
+## Shared coding-harness context entrypoint (ABR-77)
+
+The Git-owned [canonical project skill](../../../.agents/skills/agent-context/SKILL.md) and root [AGENTS.md](../../../AGENTS.md) now direct coding/review agents to the already-reviewed `agent-context` resolver before edits. [QWEN.md](../../../QWEN.md) provides Qwen Code's project instruction entrypoint without copying the skill. Codex, OpenCode, Qwen Code and Mistral Vibe discover the same `.agents/skills/agent-context/SKILL.md`; native invocations and limitations are documented in [HARNESSES.md](HARNESSES.md). The CI harness tests exercise actual read-only retrieval and source provenance, not runtime model launches or additional dispatch authority.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.
