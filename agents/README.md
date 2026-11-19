@@ -40,6 +40,8 @@ Do not copy a live `/opt/agents/` tree into this repository.
 | `bridge/<agent>/` | Bridge-owned agents, including event intelligence and reviewer | Only through validated bridge dispatch |
 | Provider directories (`nvidia/`, `parallel/`, etc.) | Provider-specific JSON research snapshots | None |
 
+The [ABR-64 proposal compiler](../docs/blueprints/agent-context/PROMOTION.md) checks provenance, explicit approval metadata, Worker source configuration and non-escalating policy before emitting a separately reviewable Registry v2 proposal. The compiler **does not** install or activate an agent.
+
 Do not promote research profiles into `registry.json` without verifying model IDs, endpoints, provider availability, runtime executable, host permissions, and test results. A profile's presence never means that its CLI is installed or the agent is online. Do not relocate worker directories without separately updating package workspaces, registry paths, Wrangler configuration, and tests.
 
 Research adapters should live in `integrations/<provider>/` once reviewed; job lifecycle and dispatch state belong in `jobs/`, not in the model profile catalog. The bridge's live routing still uses the existing runtime contract; the experimental `routing/environment-router.ts` is not a production switch.
