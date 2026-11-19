@@ -1,5 +1,7 @@
 # NotebookLM research profile → Bridge executable Registry v2
 
+The research schema is authoritative at [`agent-profile.entry.schema.json`](agent-profile.entry.schema.json), mirrored byte-for-byte at `agents/agent-registry-schema.json` for existing tooling. The executable Registry v2 has its own source schema at `agents/registry.schema.json`; neither is a subtype of the other. Examples and CI must validate both independently and reject cross-contract substitution.
+
 This mapping is **conceptual and review-gated**. The two formats have independent schemas and must not be silently merged. `AgentRegistryEntry` from the attached `agent-registry-schema.json` is not the same as `#/$defs/agent` from the live `agents/registry.schema.json`.
 
 | NotebookLM research field | Bridge `agents/registry.json` | Review/translation requirement |
