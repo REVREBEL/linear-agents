@@ -74,10 +74,14 @@ The [Context v1 schema policy](CONTEXT_SCHEMA.md) establishes the formal JSON Sc
 
 ## Portable Context CLI bootstrap (ABR-73)
 
-The source-controlled `scripts/agent_context_cli.py` exposes `--help`, `--version` and `validate` using the reviewed C1 contracts; it discovers a project manifest from the working directory or an explicit root. A guarded `scripts/install-agent-context.py` builds a deterministic, source-verified single-file Python zipapp for deliberate post-merge installation at `/opt/agent-tools/bin/agent-context`, with backup and read-only check modes. This milestone provides only the CLI entrypoint and validation path. C3–C5 own document selection, recursive retrieval, provenance, rendering, and stronger live filesystem checks.
+The source-controlled `scripts/agent_context_cli.py` exposes `--help`, `--version` and `validate` using the reviewed C1 contracts; it discovers a project manifest from the working directory or an explicit root. A guarded `scripts/install-agent-context.py` builds a deterministic, source-verified single-file Python zipapp for deliberate post-merge installation at `/opt/agent-tools/bin/agent-context`, with backup and read-only check modes. C2 introduced the CLI entrypoint and validation path. ABR-74 (C3) adds selection, recursive retrieval, provenance and rendering; C4/C5 continue live filesystem hardening and acceptance tests.
+
+## Source-linked context resolution (ABR-74)
+
+The [C3 resolver contract](RESOLVER.md) implements `--topic`, `--path`, `--files-changed`, `--format markdown|json`, `validate` and `explain` through the same portable `agent-context` CLI. Dependencies are traversed recursively, emitted once in deterministic dependency-first order and accompanied by actual source paths, Git SHAs, content hashes and reasons. README bodies are preserved without trimming. The Git-reviewed C3 zipapp source now includes `scripts/context_resolver.py`; its installer recognizes the C2 two-module format for controlled upgrades. C4/C5 separately own stronger path isolation and independent cross-platform acceptance tests.
 
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.
 
-Do not invoke the proposed `agent-context` command until the resolver is implemented. The `context.yaml` format and metadata are a proposed contract, not already supported CLI options.
+After reviewing and installing the C3 executable, use the supported selection and explanation commands shown in [RESOLVER.md](RESOLVER.md). These options retrieve documentation only and do not authorize agent execution, production changes or access to credentials.
