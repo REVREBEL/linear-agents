@@ -198,7 +198,7 @@ def main():
     sources, meta = validated_sources()
     artifact = archive_bytes(sources, meta)
     if args.validate:
-        print(f"Validated Agent Context C2 zipapp: {len(sources)} source modules, "
+        print(f"Validated Agent Context zipapp: {len(sources)} source modules, "
               f"commit {meta['sourceCommit'][:12]}, SHA-256 {sha256(artifact)[:12]}")
         return 0
     if args.check:
