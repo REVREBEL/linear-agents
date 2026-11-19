@@ -40,6 +40,29 @@ class ContextCliTests(unittest.TestCase):
             cli.find_repo_root(cwd=ROOT / "jobs", environ={}), ROOT.resolve()
         )
 
+    def test_nearest_manifest_wins_even_when_nested_schema_is_missing(self):
+        # Reproduce the review finding: a nested project has a manifest
+        # but lacks its C1 schema, while its ancestor is a valid project.
+        with tempfile.TemporaryDirectory(prefix="context-nested-", dir=ROOT) as folder:
+            nested = Path(folder) / "subproject"
+            (nested / ".agents").mkdir(parents=True)
+            (nested / ".agents/context.yaml").write_text(
+                "contextVersion: invalid\\n", encoding="utf-8"
+            )
+            child = nested / "src" / "module"
+            child.mkdir(parents=True)
+            self.assertEqual(cli.find_repo_root(cwd=child, environ={}), nested.resolve())
+            env = os.environ.copy()
+            env.pop("AGENT_CONTEXT_REPO_ROOT", None)
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "validate"],
+                cwd=child, env=env, capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 2, result.stdout)
+            self.assertIn("agent-context:", result.stderr)
+            self.assertIn(str(nested), result.stderr)
+            self.assertNotIn("Validated Agent Context", result.stdout)
+
     def test_environment_selects_existing_repo(self):
         self.assertEqual(cli.find_repo_root(
             cwd=Path(tempfile.gettempdir()),
