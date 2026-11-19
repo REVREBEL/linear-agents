@@ -220,6 +220,39 @@ class HandoffContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unresolved context dependency"):
             handoff.verify_handoff(bundle)
 
+    def test_rejects_out_of_order_dependency_documents(self):
+        bundle = self.snapshot()
+        docs = bundle["contextBundle"]["documents"]
+        docs[0], docs[-1] = docs[-1], docs[0]
+        with self.assertRaisesRegex(ValueError, "not dependency-first"):
+            handoff.verify_handoff(bundle)
+
+    def test_pinned_frontmatter_guards_dependency_forgery(self):
+        bundle = self.snapshot()
+        changed = bundle["contextBundle"]["documents"][-1]
+        changed["requires"] = []
+        bundle["contextSha256"] = handoff.hash_object(bundle["contextBundle"])
+        bundle["handoffSha256"] = handoff.hash_object({
+            k: v for k, v in bundle.items() if k != "handoffSha256"
+        })
+        handoff.verify_handoff(bundle)
+        with self.assertRaisesRegex(ValueError, "metadata differs"):
+            handoff.verify_handoff(bundle, repo_root=ROOT, check_source=True)
+
+    def test_missing_documents_cannot_claim_nonoptional_source(self):
+        (self.roots[0] / "README.md").unlink()
+        bundle = self.create(allow_partial=True)
+        bundle["contextBundle"]["missingDocuments"][0]["id"] = "not-a-real-host"
+        bundle["contextSha256"] = handoff.hash_object(bundle["contextBundle"])
+        bundle["handoffSha256"] = handoff.hash_object({
+            k: v for k, v in bundle.items() if k != "handoffSha256"
+        })
+        handoff.verify_handoff(bundle, allow_partial=True)
+        with self.assertRaisesRegex(ValueError, "not an optional host"):
+            handoff.verify_handoff(
+                bundle, repo_root=ROOT, check_source=True, allow_partial=True
+            )
+
     def test_duplicate_context_ids_rejected(self):
         bundle = self.snapshot()
         bundle["contextBundle"]["documents"].append(copy.deepcopy(
