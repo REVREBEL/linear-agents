@@ -17,7 +17,7 @@ from jsonschema.exceptions import SchemaError
 from context_contract import validate_context_contract
 from context_resolver import render_context, resolve_context
 
-CLI_VERSION = "0.2.0"
+CLI_VERSION = "0.3.0"
 
 
 def find_repo_root(explicit=None, *, cwd=None, environ=None):
@@ -70,6 +70,10 @@ def build_parser():
         help="resolve owners of Git changed and untracked files",
     )
     parser.add_argument(
+        "--allow-partial", action="store_true",
+        help="explicitly report and omit only missing optional host READMEs",
+    )
+    parser.add_argument(
         "--format", choices=("markdown", "json"), default="markdown",
         help="render complete README text as Markdown or JSON (default: markdown)",
     )
@@ -86,8 +90,9 @@ def main(argv=None):
     try:
         root = find_repo_root(args.repo_root)
         if args.command == "validate":
-            if args.topic is not None or args.path is not None or args.files_changed:
-                raise ValueError("validate does not accept document selection options")
+            if (args.topic is not None or args.path is not None
+                    or args.files_changed or args.allow_partial):
+                raise ValueError("validate does not accept document selection or partial options")
             result = validate_context_contract(root)
             print(
                 f"Validated Agent Context v{result['manifest']['contextVersion']}: "
@@ -98,6 +103,7 @@ def main(argv=None):
         bundle = resolve_context(
             root, topic=args.topic, path=args.path, files_changed=args.files_changed,
             explain=(args.command == "explain"),
+            allow_partial=args.allow_partial,
         )
         sys.stdout.write(render_context(
             bundle, output_format=args.format, explain=(args.command == "explain")
