@@ -14,6 +14,8 @@ Use this skill for a coding, code-review, configuration, routing, dependency, de
 3. If the reviewed host executable is installed and matches the project, the equivalent command is `agent-context --repo-root PATH --path agents/registry.json` (replace `PATH` with the actual project root). On another host, invoke the repository-local Python source with the same selection options. The installed executable is **optional**, not a reason to skip retrieval.
 4. Read the **full** returned documentation and inspect each document's `sourcePath`, `gitSourcePath`, `gitSha`, `sha256`, `reasons`, `worktreeModified` and `requires`. The `--format json` form preserves all original content as structured data. The `explain` command shows the inclusion reasons without README bodies; do not use explanation-only output as a substitute for reading required documents.
 
+If `--path` reports `No owning context documents found`, report the unmapped path, retrieve the default bootstrap with `python3 scripts/agent_context_cli.py` (use the explicit partial policy below if needed), and manually read the nearest relevant owning README, such as `scripts/README.md` for scripts. Do not claim the fallback is complete path-owned context; other resolver errors still require investigation.
+
 ## Fail visibly and preserve ownership
 
 - The resolver normally fails rather than omit a selected README. Do **not** guess missing host documentation or silently continue when `validate`, provenance or dependency checks fail. `--allow-partial` is explicit, only permits missing optional host README sources, and reports every omission in `missingDocuments`; disclose the incompleteness before using the result.
