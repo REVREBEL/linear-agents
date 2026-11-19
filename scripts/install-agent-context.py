@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -134,8 +135,8 @@ def check_install(target, desired):
     if installed is None:
         print(f"MISSING: {target}")
         return 1
-    if installed != desired:
-        print(f"OUTDATED: {target} (reviewed source changed)")
+    if installed != desired or stat.S_IMODE(target.stat().st_mode) != 0o755:
+        print(f"OUTDATED: {target} (reviewed source or executable mode changed)")
         return 1
     print(f"MATCH: {target} ({sha256(desired)[:12]})")
     return 0
@@ -148,7 +149,11 @@ def install(target, desired):
         refuse(f"CLI executable parent must be an existing real directory: {parent}")
     installed = inspect_managed(target)
     if installed == desired:
-        print(f"UNCHANGED: {target}")
+        if stat.S_IMODE(target.stat().st_mode) != 0o755:
+            target.chmod(0o755)
+            print(f"RESTORED EXECUTABLE MODE: {target}")
+        else:
+            print(f"UNCHANGED: {target}")
         return 0
     backup = None
     if installed is not None:
