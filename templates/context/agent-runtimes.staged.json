@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "status": "staged-not-integrated",
+  "launcher": "/opt/agent-tools/bin/agent-exec",
+  "defaultNodeHome": "/opt/global-tools/volta",
+  "agentIdentity": "bridge",
+  "agents": {
+    "opencode": {
+      "command": "/opt/agent-tools/bin/opencode",
+      "home": "/opt/agents/opencode",
+      "kind": "native",
+      "service": "opencode-central.service",
+      "invocation": "requires-adapter",
+      "enabledForDispatch": false
+    },
+    "gemini": {
+      "command": "/opt/global-tools/volta/bin/gemini",
+      "home": "/opt/agents/gemini",
+      "kind": "volta",
+      "invocation": "requires-adapter",
+      "enabledForDispatch": false
+    },
+    "kilo": {
+      "command": "/opt/global-tools/volta/bin/kilo",
+      "home": "/opt/agents/kilo",
+      "kind": "volta",
+      "invocation": "requires-adapter",
+      "enabledForDispatch": false
+    },
+    "codex": {
+      "command": "/opt/global-tools/volta/bin/codex",
+      "home": "/opt/agents/codex",
+      "kind": "volta",
+      "invocation": "requires-adapter",
+      "enabledForDispatch": false
+    }
+  }
+}
