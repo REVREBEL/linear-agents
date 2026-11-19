@@ -7,7 +7,7 @@ import re
 import yaml
 from jsonschema import Draft202012Validator
 
-from context_contract import validate_context_contract
+from context_contract import _native_absolute, validate_context_contract
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = ROOT / "templates/context"
@@ -69,10 +69,20 @@ def validate_bootstrap_manifest(manifest, label):
             env, default, required = (
                 config.get("environment"), config.get("default"), config.get("required")
             )
+            platform_defaults = config.get("platformDefaults", {})
+            valid_default = default is None or (
+                _native_absolute(default, "linux") or _native_absolute(default, "win32")
+            )
+            valid_platforms = (
+                isinstance(platform_defaults, dict)
+                and all(platform in ("linux", "darwin", "win32")
+                        and _native_absolute(value, platform)
+                        for platform, value in platform_defaults.items())
+            )
             if (not isinstance(env, str) or
                 re.fullmatch(r"[A-Z][A-Z0-9_]*", env) is None or
-                not isinstance(default, str) or not Path(default).is_absolute() or
-                not isinstance(required, bool)):
+                not isinstance(required, bool) or not valid_default or
+                not valid_platforms or (default is None and not platform_defaults)):
                 raise ValueError(f"{label}: invalid optional host root {name}")
     for doc_id, locator in documents.items():
         if not isinstance(doc_id, str) or not re.fullmatch(r"[a-z][a-z0-9.-]+", doc_id):
