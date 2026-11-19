@@ -80,6 +80,12 @@ Run `python3 scripts/test_context_cross_root.py` locally. The Agent Context GitH
 
 `test_agent_context_harnesses.py` validates that root `AGENTS.md`, Qwen's `QWEN.md` and the canonical `.agents/skills/agent-context/SKILL.md` point to **one** reviewed resolver. It exercises that resolver against the cross-root dependency graph with temporary Git-reviewed host documentation, including complete content and hashes. The same test runs in the CI native Ubuntu/macOS/Windows matrix. See [the harness contract](../docs/blueprints/agent-context/HARNESSES.md) for Codex, OpenCode, Qwen Code and Mistral Vibe skill invocation; no duplicated skill installation, host CLI reinstallation or agent process launch is part of D1.
 
+## Same-PR owning README enforcement (ABR-79 / D3)
+
+`check-pr-readme-updates.py` enforces an incremental behavioral-source documentation policy against the **effective Git PR diff** (`--base BASE_SHA --head HEAD_SHA`). For each changed code, configuration, schema, migration or project-local agent skill file, it selects the nearest **tracked local README** by directory ancestry and requires that README to be changed in the same PR. Renames, deletions and removed README owners are handled explicitly. Research/candidate YAML data, test-only changes and ordinary documentation/static files have fixed, logged exemption reasons; an exemption cannot waive a mixed PR's behavioral changes. Paths without a local README are printed as D4 coverage advisories, not silently assigned to the repository root.
+
+The [README discipline policy](../docs/blueprints/agent-context/README_DISCIPLINE.md) defines ownership, exemptions and scope. Run `python3 scripts/test_pr_readme_updates.py` for fixture regressions, and `python3 scripts/check-pr-readme-updates.py --base BASE_SHA --head HEAD_SHA` to check an actual PR. The dedicated GitHub Actions workflow runs on every PR with read-only permissions and the full Git graph. This is CI/source documentation enforcement only; no native agent, host installation or service changes.
+
 ## Host-only infrastructure
 
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.
