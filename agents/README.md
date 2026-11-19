@@ -19,6 +19,10 @@ The research `runtime.commandTemplate` is an untrusted proposal, **not executabl
 
 The version-like filename `agent-registry-v2.yaml` is a *research snapshot name*, distinct from the active executable `schemaVersion: 2`. The [context template README](../templates/context/README.md) explains the two examples and mirror policy.
 
+## Research profile version gate (ABR-65)
+
+The approved `AgentRegistryEntry` does not define per-entry `profileVersion`. The blueprint validator and promotion-proposal compiler reject silent additions until a separately reviewed schema migration explicitly defines version semantics, compatibility and tests. Catalog `version: 1.0.0` remains catalog metadata, not an agent schema version. See [the version migration policy](../docs/blueprints/agent-context/PROFILE_VERSION_POLICY.md).
+
 ## Ubuntu runtime boundary
 
 - `/opt/agents/` is the canonical host location for runtime CLI profiles.
