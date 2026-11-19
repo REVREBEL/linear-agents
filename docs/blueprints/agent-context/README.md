@@ -80,6 +80,10 @@ The source-controlled `scripts/agent_context_cli.py` exposes `--help`, `--versio
 
 The [C3 resolver contract](RESOLVER.md) implements `--topic`, `--path`, `--files-changed`, `--format markdown|json`, `validate` and `explain` through the same portable `agent-context` CLI. Dependencies are traversed recursively, emitted once in deterministic dependency-first order and accompanied by actual source paths, Git SHAs, content hashes and reasons. README bodies are preserved without trimming. The Git-reviewed C3 zipapp source now includes `scripts/context_resolver.py`; its installer recognizes the C2 two-module format for controlled upgrades. C4/C5 separately own stronger path isolation and independent cross-platform acceptance tests.
 
+## Required roots and partial-output safety (ABR-75)
+
+The [C4 safety contract](SAFETY.md) hardens the C1/C3 validators and resolver against symlink escapes, traversal, malformed metadata, required-root absence and silently omitted documentation. Context resolution is strict by default; `--allow-partial` only permits explicitly reported missing optional host-root documents, preserving every returned README in full and recording each omission's ID, path and reason. This does not grant filesystem or execution permissions to a research profile or agent.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.
