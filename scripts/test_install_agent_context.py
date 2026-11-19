@@ -100,8 +100,9 @@ class AgentContextInstallerTests(unittest.TestCase):
     def test_refuse_tampered_managed_zipapp(self):
         installer.install(self.target, self.artifact)
         data = self.target.read_bytes()
-        self.target.write_bytes(data.replace(b"agent-context 0.1.0", b"agent-context 9.9.9"))
-        with self.assertRaisesRegex(ValueError, "Modified managed|digest mismatch"):
+        self.assertIn(b'CLI_VERSION = "0.1.0"', data)
+        self.target.write_bytes(data.replace(b'CLI_VERSION = "0.1.0"', b'CLI_VERSION = "9.9.9"'))
+        with self.assertRaisesRegex(ValueError, "Unmanaged|Modified managed|digest mismatch"):
             installer.install(self.target, self.artifact)
 
     def test_refuse_symlink_executable(self):
