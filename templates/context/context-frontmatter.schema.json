@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "README context frontmatter v1",
+  "type": "object",
+  "required": ["context"],
+  "properties": {
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "title", "topics", "requires", "applies_to", "update_on"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9.-]+$"},
+        "version": {"const": 1},
+        "title": {"type": "string", "minLength": 1},
+        "topics": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "requires": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9.-]+$"}, "uniqueItems": true},
+        "applies_to": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "update_on": {"type": "array", "items": {"enum": ["behavior", "contracts", "configuration", "dependencies", "security", "deployment"]}, "uniqueItems": true}
+      }
+    }
+  },
+  "additionalProperties": true
+}
