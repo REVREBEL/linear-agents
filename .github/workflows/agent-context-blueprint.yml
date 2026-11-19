@@ -12,6 +12,8 @@ on:
       - 'agents/registry.schema.json'
       - 'scripts/validate-context-blueprint.py'
       - 'scripts/reconcile-agent-runtimes.py'
+      - 'scripts/review-research-promotion.py'
+      - 'scripts/test_review_research_promotion.py'
       - 'scripts/test_reconcile_agent_runtimes.py'
       - '.github/workflows/agent-context-blueprint.yml'
   workflow_dispatch:
@@ -38,3 +40,5 @@ jobs:
         run: python scripts/reconcile-agent-runtimes.py --validate
       - name: Test staged host inventory reconciliation
         run: python scripts/test_reconcile_agent_runtimes.py
+      - name: Test reviewed research-profile promotion
+        run: python scripts/test_review_research_promotion.py
