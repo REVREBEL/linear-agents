@@ -1,0 +1,40 @@
+# Research catalog wrapper; 'version' here is catalog version, NOT Bridge schemaVersion.
+# Each agents[] item validates against agent-profile.entry.schema.json.
+version: '1.0.0'
+lastUpdated: '2026-11-18T00:00:00-08:00' # Replace when publishing.
+totalAgents: 1
+catalogDescription: Research and candidate agent profiles; not live dispatch configuration.
+agents:
+  - id: example-local-agent
+    displayName: Example Local Coding Agent
+    description: Illustrative entry; verify every runtime field before promotion.
+    kind: cli_agent
+    provider: Ollama
+    model: ollama/example-model
+    runtime:
+      transport: headless_cli
+      executionHost: ubuntu_agent_server
+    linearBridge:
+      workerHost: linear-example.invalid
+      tunnelHost: example-agent.invalid
+      supportedEvents: [session_created]
+    taxonomy:
+      agent_type: Goal-based
+      domain: Local coding tests
+    routing:
+      complexity_tier: Medium
+      supported_intents: [generate_tests]
+    execution:
+      autonomy_level: Supervised
+      memory_scope: session_isolated
+    permissions:
+      sourceWrite: false
+      directoryMoves: false
+      gitCommit: false
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Low
+      credential_model: ephemeral_session
+      envStripPatterns: []
