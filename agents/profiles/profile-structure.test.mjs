@@ -9,7 +9,8 @@ const read = (path) => readFileSync(new URL(path, root), 'utf8');
 test('research YAML profiles remain separate from executable worker packages', () => {
   const dir = new URL('agents/profiles/candidates/', root);
   const profiles = readdirSync(dir).filter((name) => name.endsWith('.yaml'));
-  assert.equal(profiles.length, 14);
+  assert.equal(profiles.length, 15);
+  assert.ok(profiles.includes('colab-notebook-agent.yaml'), 'Colab candidate is part of the 15-profile research catalog');
   for (const name of profiles) assert.ok(readFileSync(new URL(name, dir), 'utf8').trim(), name);
 });
 
