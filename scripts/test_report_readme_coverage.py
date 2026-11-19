@@ -115,6 +115,40 @@ class ReadmeCoverageTests(unittest.TestCase):
         self.rev = self.git("rev-parse", "HEAD")
         self.assertEqual(self.run_report()["brokenReferenceCount"], 0)
 
+    def test_nested_shorter_fence_does_not_close_outer_code(self):
+        tick = chr(96)
+        content = (
+            tick * 4 + "markdown\n"
+            + tick * 3 + "python\n"
+            + "[example](missing-inside.py)\n"
+            + tick * 3 + "\n"
+            + tick * 4 + "\n"
+            + "[real](missing-outside.py)\n"
+        )
+        self.write("module/README.md", content)
+        self.commit()
+        self.rev = self.git("rev-parse", "HEAD")
+        items = self.run_report()["brokenReferences"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["target"], "missing-outside.py")
+        self.assertEqual(items[0]["line"], 6)
+
+    def test_fence_closing_requires_empty_tail_and_matching_type(self):
+        tick = chr(96)
+        content = (
+            tick * 3 + "md\n"
+            + "~~~\n"
+            + tick * 3 + "still code\n"
+            + "[hidden](missing-hidden.py)\n"
+            + tick * 3 + " \n"
+            + "[visible](missing-visible.py)\n"
+        )
+        self.write("module/README.md", content)
+        self.commit()
+        self.rev = self.git("rev-parse", "HEAD")
+        items = self.run_report()["brokenReferences"]
+        self.assertEqual([i["target"] for i in items], ["missing-visible.py"])
+
     def test_html_and_encoded_local_references(self):
         self.write("module/sub/space name.md", "# Space\n")
         self.write("module/README.md",
