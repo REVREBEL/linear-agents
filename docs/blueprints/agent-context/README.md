@@ -100,6 +100,10 @@ The [D2 authority contract](RESEARCH_AUTHORITY.md) separates candidate research/
 
 [README_DISCIPLINE.md](README_DISCIPLINE.md) documents the new PR-wide CI check for behavioral source changes. It selects the nearest existing tracked README from each file's directory ancestry, requires a same-PR effective README update, and explains narrow research/profile data, test and documentation exemptions. New folders without an owner are reported for D4 coverage rather than triggering a repository-wide rewrite. The checker uses PR merge-base/head Git history, does not change Bridge runtime, and cannot grant execution privileges.
 
+## README coverage and broken-reference inventory (ABR-83 / D4)
+
+The [D4 audit guide](README_COVERAGE.md) and [reviewed baseline](README_COVERAGE_BASELINE.md) report tracked folders lacking their own README, behavioral source under those folders, and broken local links in README/project-context documentation. A new [advisory GitHub Actions report](../../../.github/workflows/readme-coverage-inventory.yml) publishes complete Markdown/JSON artifacts for each PR and main-branch push. Existing gaps are listed, not repaired automatically or promoted to a blocking CI requirement. The existing D3 same-PR policy remains unchanged.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.
