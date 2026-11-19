@@ -30,6 +30,12 @@ def validate(instance, schema, label):
 
 def main():
     schema_path = TEMPLATES / "agent-profile.entry.schema.json"
+    mirror_path = ROOT / "agents/agent-registry-schema.json"
+    if schema_path.read_bytes() != mirror_path.read_bytes():
+        raise ValueError(
+            "Research schema drift: templates/context/agent-profile.entry.schema.json "
+            "must exactly match the agents/agent-registry-schema.json compatibility mirror"
+        )
     profile_schema = load_json(schema_path)
     Draft202012Validator.check_schema(profile_schema)
 
@@ -48,6 +54,7 @@ def main():
         TEMPLATES / "agent-registry.catalog.template.yaml",
         BLUEPRINT / "references/agent-registry-v2.yaml",
         BLUEPRINT / "references/agent-registry.yaml",
+        ROOT / "agents/agent-registry.yaml",
     ):
         catalog = load_yaml(path)
         profiles = catalog["agents"]
@@ -67,8 +74,16 @@ def main():
         "$defs": runtime_schema["$defs"],
         "$ref": "#/$defs/agent",
     }
-    validate(load_json(TEMPLATES / "bridge-runtime-registry.v2-entry.template.json"),
-             runtime_entry_schema, "Bridge runtime entry template")
+    runtime_example = load_json(TEMPLATES / "bridge-runtime-registry.v2-entry.template.json")
+    validate(runtime_example, runtime_entry_schema, "Bridge runtime entry template")
+    validate(load_json(ROOT / "agents/registry.json"), runtime_schema,
+             "Live declarative Bridge Registry v2")
+
+    # Neither profile format is a subtype of the other.
+    if Draft202012Validator(runtime_entry_schema).is_valid(profile_example):
+        raise ValueError("Research entry incorrectly satisfies executable registry schema")
+    if Draft202012Validator(profile_schema).is_valid(runtime_example):
+        raise ValueError("Executable registry entry incorrectly satisfies research schema")
 
     context_schema = load_json(TEMPLATES / "context-frontmatter.schema.json")
     Draft202012Validator.check_schema(context_schema)
@@ -93,8 +108,10 @@ def main():
     duplicate = BLUEPRINT / "references/agent-registry-schema.json"
     if duplicate.exists():
         raise ValueError(f"Duplicate research entry schema: {duplicate}")
-    print(f"Validated {total} research profile examples, Bridge runtime entry, "
-          "README frontmatter, JSON templates, and context manifest.")
+    print(f"Validated {total} research profile examples, independent executable "
+          "registry entry and live Registry v2, schema-mirror parity, "
+          "cross-contract rejection, README frontmatter, JSON templates, "
+          "and context manifest.")
 
 
 if __name__ == "__main__":

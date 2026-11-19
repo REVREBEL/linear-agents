@@ -15,7 +15,7 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 ## Package contents
 
 - `templates/context/agent-profile.v2.template.yaml`: **corrected** complete candidate profile template conforming to the uploaded per-entry schema.
-- `templates/context/agent-profile.entry.schema.json`: **single canonical copy** of the uploaded `agent-registry-schema.json`, used by research templates and validation.
+- `templates/context/agent-profile.entry.schema.json`: **canonical, editable research-entry schema**, validated byte-for-byte against the pre-existing compatibility mirror at `agents/agent-registry-schema.json`; only the template copy is maintained as schema source.
 - `templates/context/agent-registry.catalog.template.yaml`: example catalog wrapper; the attached schema validates *entries*, not the wrapper.
 - `templates/context/bridge-runtime-registry.v2-entry.template.json`: separate *Bridge-specific* runtime registry example, originally misidentified as the NotebookLM profile template.
 - `templates/context/profile-mapping.md`: review-gated mapping between research profiles and executable Agent Registry v2.
@@ -24,7 +24,7 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 - `.agents/README.md`, `.agents/context.yaml`, `.agents/skills/agent-context/SKILL.md`, `AGENTS.bootstrap.md`: project bootstrap and shared CLI skill contract.
 - `agents.README.context-starter.md`, `bridge/README.context-starter.md`: fragments to **merge** with existing READMEs, not replacements.
 - `IMPLEMENTATION_TASKS.md`: milestones and tests (PostgreSQL UI excluded).
-- `references/`: exact attached 14- and 15-agent research catalog snapshots for historical comparison. The shared entry schema is referenced from `templates/context/agent-profile.entry.schema.json` to prevent divergent copies.
+- `references/`: exact attached 14- and 15-agent research catalog snapshots for historical comparison. The existing `agents/agent-registry-schema.json` remains a checked compatibility mirror of `templates/context/agent-profile.entry.schema.json`; validation rejects divergence.
 
 ## Template defaults and historical CLI examples
 

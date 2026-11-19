@@ -6,6 +6,17 @@ This repository's `agents/` directory contains **source-controlled agent definit
 
 The authoritative boundaries between Git definitions, native agent runtime homes, shared agent-specific tools and general Ubuntu toolchains are documented in [the Agent Context ownership contract](../docs/blueprints/agent-context/OWNERSHIP.md). Follow that contract before changing profile execution semantics, host setup, tool installation or dispatch.
 
+## Independent profile contracts (ABR-61)
+
+| Contract | Shape and authority | Validation |
+| --- | --- | --- |
+| **NotebookLM research profile** | Each `AgentRegistryEntry` is an *individual* candidate. Source-of-truth schema: [`templates/context/agent-profile.entry.schema.json`](../templates/context/agent-profile.entry.schema.json). The co-located `agents/agent-registry-schema.json` is a compatibility mirror for existing research tools and must remain byte-identical. | Research profile / each catalog `agents[]` item only. The catalog wrapper's `version: 1.0.0` is **not** a profile schema version. |
+| **Bridge executable Registry v2** | `agents/registry.json` (`schemaVersion: 2`) and `agents/registry.schema.json`. Contains executable identities and declarative `worker`, `linear`, `profile`, `runtimeContract`, and `executionPolicy` metadata. | Validate the **full registry document** against `agents/registry.schema.json`; executable policy is enforced independently by running Bridge code. |
+
+The research `runtime.commandTemplate` is an untrusted proposal, **not executable argv**. `kind`, transport, host, event, autonomy, memory and credential values differ between the contracts. Do not copy research profile entries directly into `registry.json`, infer deployment availability from research values, or let profile metadata grant privileges. Use the [review-gated mapping](../templates/context/profile-mapping.md) and verify every Bridge-only identity, path and Worker binding before promoting.
+
+The version-like filename `agent-registry-v2.yaml` is a *research snapshot name*, distinct from the active executable `schemaVersion: 2`. The [context template README](../templates/context/README.md) explains the two examples and mirror policy.
+
 ## Ubuntu runtime boundary
 
 - `/opt/agents/` is the canonical host location for runtime CLI profiles.
