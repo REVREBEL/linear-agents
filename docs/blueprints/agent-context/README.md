@@ -78,11 +78,15 @@ The source-controlled `scripts/agent_context_cli.py` exposes `--help`, `--versio
 
 ## Source-linked context resolution (ABR-74)
 
-The [C3 resolver contract](RESOLVER.md) implements `--topic`, `--path`, `--files-changed`, `--format markdown|json`, `validate` and `explain` through the same portable `agent-context` CLI. Dependencies are traversed recursively, emitted once in deterministic dependency-first order and accompanied by actual source paths, Git SHAs, content hashes and reasons. README bodies are preserved without trimming. The Git-reviewed C3 zipapp source now includes `scripts/context_resolver.py`; its installer recognizes the C2 two-module format for controlled upgrades. C4/C5 separately own stronger path isolation and independent cross-platform acceptance tests.
+The [C3 resolver contract](RESOLVER.md) implements `--topic`, `--path`, `--files-changed`, `--format markdown|json`, `validate` and `explain` through the same portable `agent-context` CLI. Dependencies are traversed recursively, emitted once in deterministic dependency-first order and accompanied by actual source paths, Git SHAs, content hashes and reasons. README bodies are preserved without trimming. The Git-reviewed C3 zipapp source now includes `scripts/context_resolver.py`; its installer recognizes the C2 two-module format for controlled upgrades. C4 hardens path isolation and optional partial results; C5 independently verifies cross-root and native cross-platform acceptance.
 
 ## Required roots and partial-output safety (ABR-75)
 
 The [C4 safety contract](SAFETY.md) hardens the C1/C3 validators and resolver against symlink escapes, traversal, malformed metadata, required-root absence and silently omitted documentation. Context resolution is strict by default; `--allow-partial` only permits explicitly reported missing optional host-root documents, preserving every returned README in full and recording each omission's ID, path and reason. This does not grant filesystem or execution permissions to a research profile or agent.
+
+## Cross-root acceptance and deterministic retrieval (ABR-76)
+
+The [C5 test contract](ACCEPTANCE.md) verifies complete, source-linked context retrieval across Git `agents/` and the three optional host roots, even when each root is overridden to a disposable directory. Checks cover deterministic order/JSON/Markdown, original README bytes, Git SHA/content hashes, missing host files, real dependency cycles, changed-file ownership, and native Linux/macOS/Windows paths. CI runs the same isolated suite on all three OS runners. This milestone adds tests and documentation, not new agent execution or a service deployment.
 
 ## Ownership and use
 
