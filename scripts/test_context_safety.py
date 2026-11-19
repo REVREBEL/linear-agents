@@ -114,6 +114,15 @@ class ContextSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsafe symlink"):
             self.resolve(path=str(alias / "config.toml"), allow_partial=True)
 
+    def test_symlinked_parent_of_relative_selection_is_rejected(self):
+        repo = self.base / "repo"
+        repo.mkdir()
+        (repo / "shortcut").symlink_to(self.base / "private", target_is_directory=True)
+        index = {"repo.test": {"applies_to": ["**"]}}
+        manifest = {"documents": {"repo.test": {"root": "repo"}}}
+        with self.assertRaisesRegex(ValueError, "Unsafe symlink"):
+            resolver._owners_for_path("shortcut/private.txt", index, manifest, {"repo": repo})
+
     def test_absolute_selection_rejects_parent_traversal(self):
         path = str(self.host_roots["agents"] / ".." / "agent-tools" / "README.md")
         with self.assertRaisesRegex(ValueError, "Unsafe absolute context selection"):
