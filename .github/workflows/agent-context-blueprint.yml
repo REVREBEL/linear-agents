@@ -7,6 +7,7 @@ on:
       - 'templates/context/**'
       - 'agents/agent-registry-schema.json'
       - 'agents/agent-registry.yaml'
+      - 'agents/profiles/candidates/**'
       - 'agents/registry.json'
       - 'agents/registry.schema.json'
       - 'scripts/validate-context-blueprint.py'
