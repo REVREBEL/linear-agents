@@ -153,7 +153,8 @@ def classification(path):
 
 def check_pr(repo, base, head):
     changes = diff_changes(repo, base, head)
-    before = tracked_readmes(repo, base)
+    merge_base = git(repo, "merge-base", base, head).decode("ascii").strip()
+    before = tracked_readmes(repo, merge_base)
     after = tracked_readmes(repo, head)
     touched = {
         candidate for change in changes
