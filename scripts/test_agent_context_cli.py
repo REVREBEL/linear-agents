@@ -18,7 +18,7 @@ class ContextCliTests(unittest.TestCase):
     def test_help_and_version_are_portable(self):
         for args, text in (
             (["--help"], "validate"),
-            (["--version"], "agent-context 0.2.0"),
+            (["--version"], "agent-context 0.3.0"),
         ):
             with self.subTest(args=args):
                 outcome = subprocess.run(
