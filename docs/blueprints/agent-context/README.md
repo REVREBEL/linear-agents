@@ -28,6 +28,10 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 - `IMPLEMENTATION_TASKS.md`: milestones and tests (PostgreSQL UI excluded).
 - `references/`: exact attached 14- and 15-agent research catalog snapshots for historical comparison. The existing `agents/agent-registry-schema.json` remains a checked compatibility mirror of `templates/context/agent-profile.entry.schema.json`; validation rejects divergence.
 
+## Host runtime inventory (ABR-63)
+
+[Staged Ubuntu harness inventory and reconciliation](RUNTIME_INVENTORY.md) documents the verified installed CLI paths, the Git-owned source at `templates/context/agent-runtimes.staged.json`, and the guarded `scripts/reconcile-agent-runtimes.py` command. This is **not** an executable agent registry and does not enable dispatch. Applying the reviewed staged snapshot to `/opt/agents/registry/agent-runtimes.json` is a separate, deliberate host operation following review and merge.
+
 ## Template defaults and historical CLI examples
 
 The profile template deliberately uses `maxRetryAttempts: 0` (no automatic retries until a provider retry policy is tested). It uses the installed OpenCode CLI's `--session` continuation flag; historical research catalogs mention `--session-id`, which is not the installed OpenCode v1.19.5 syntax. Keep research snapshots unchanged as evidence rather than treating their command strings as executable.
