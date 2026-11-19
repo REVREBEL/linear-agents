@@ -1,8 +1,8 @@
 # REVREBEL Linear Agent Bridge - Master Agent Registry Catalog
 # Schema reference: agent-registry-schema.json
 version: "1.0.0"
-lastUpdated: "2026-11-12T13:10:00-08:00"
-totalAgents: 14
+lastUpdated: "2026-11-12T14:58:00-08:00"
+totalAgents: 15
 catalogDescription: "Consolidated model profiles, execution bindings, routing parameters, and security policies for all candidate and local bridge agents."
 
 agents:
@@ -293,6 +293,89 @@ agents:
       - north-mini-code
       - flint
 
+  - id: colab-notebook-agent
+    displayName: Google Colab Notebook Agent
+    description: Cloud notebook agent operating via Google Colab MCP (Model Context
+      Protocol) and Colab CLI on headless Ubuntu. Automates Python script execution,
+      interactive .ipynb cell generation, data pipeline verification, and GPU-accelerated
+      model benchmarking (T4/A100) in an ephemeral, containerized cloud sandbox.
+    kind: cli_agent
+    provider: Google / Colab
+    model: google/colab-mcp-kernel
+    runtime:
+      transport: headless_cli
+      executionHost: ubuntu_agent_server
+      binaryPath: /usr/local/bin/opencode
+      commandTemplate: opencode run --mcp-config /etc/agent-bridge/colab-mcp.json --prompt
+        {{PROMPT}}
+      workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+    linearBridge:
+      workerHost: linear-colab.revrebel.io
+      tunnelHost: colab-agent.revrebel.io
+      supportedEvents:
+      - session_created
+      - session_prompted
+      completionMode: worker_callback
+    taxonomy:
+      agent_type: Goal-based
+      domain: Heavy compute data analytics, GPU model benchmarking, and interactive
+        notebook generation
+      top_skills:
+      - Interactive Jupyter/Colab notebook synthesis
+      - GPU/TPU accelerated model benchmarking
+      - Data analysis & visualization (matplotlib, pandas)
+      - Ephemeral sandbox test execution
+    routing:
+      complexity_tier: High
+      semantic_description: Interactive notebook creation, GPU-accelerated evaluations,
+        RevPAR/ADR revenue analytics, and isolated data pipeline prototyping without
+        local host hardware constraints.
+      supported_intents:
+      - generate_analysis_notebook
+      - benchmark_models
+      - run_gpu_evaluations
+      - validate_data_pipeline
+      - execute_python_sandbox
+      task_ratings:
+        notebook_generation: 4.9
+        data_analytics: 4.8
+        gpu_evaluations: 4.9
+        code_refactoring: 3.8
+    execution:
+      autonomy_level: Executor
+      memory_scope: session_isolated
+      sessionContinuityFlag: --session-id {{SESSION_ID}}
+      quotaPolicy:
+        resumable: true
+        defaultRetryDelayMs: 300000
+        maxRetryAttempts: 3
+        exhaustionPattern: RESOURCE_EXHAUSTED|Colab runtime limit exceeded|backend disconnected
+    permissions:
+      sourceWrite: true
+      directoryMoves: false
+      gitCommit: true
+      gitPush: false
+      autoMerge: false
+      deployment: false
+    security:
+      blast_radius: Low
+      credential_model: ephemeral_session
+      envStripPatterns:
+      - BRIDGE_SHARED_SECRET
+      - LINEAR_API_KEY
+      - GITHUB_TOKEN
+      - DATABASE_URL
+      mcpToolAllowlist:
+      - colab/create_notebook
+      - colab/add_cell
+      - colab/execute_cell
+      - colab/download_notebook
+      - github/list_commits
+      - github/get_diff
+      handoff_targets:
+      - gemma-4-31b
+      - flint
+      - human_supervisor
   - id: crouton-alpha
     displayName: Stealth Crouton Alpha
     description: Experimental preview model featuring a 1,048,576 token context window

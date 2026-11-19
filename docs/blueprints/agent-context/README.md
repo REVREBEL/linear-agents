@@ -8,6 +8,8 @@ This is a portable source-based context system proposal. It contains templates, 
 
 ## Corrected profile contract
 
+**ABR-62 catalog decision:** `agents/agent-registry.yaml` is now the **canonical current 15-entry research catalog**, with a matching profile in `agents/profiles/candidates/` for each ID. The two preserved catalogs under `references/` are historical snapshots: 14 entries at 13:10 PST and 15 entries at 14:58 PST on 2026-11-12. Only `colab-notebook-agent` was added; existing 14 entries have identical parsed content. Neither profile catalog is executable dispatch configuration.
+
 The uploaded `agent-registry-schema.json` defines **one research profile entry**, with top-level `id`, `displayName`, `description`, `kind`, `provider`, `model`, `runtime`, `linearBridge`, `taxonomy`, `routing`, `execution`, `permissions`, and `security`. The uploaded `agent-registry-v2.yaml` is a catalog of 15 profiles; `agent-registry.yaml` is an older catalog of 14. The added ID in the first catalog is `colab-notebook-agent`. Both catalogs declare `version: 1.0.0` and both satisfy the uploaded entry schema.
 
 The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, independent executable registry format**, with fields such as `profile`, `runtimeContract`, and `executionPolicy`. Its schema is `agents/registry.schema.json` in the Git repository. Its compatibility contract remains separate. Do not replace it with an uploaded research YAML file or use a thin `$ref` to it as a substitute for the user's profile schema.

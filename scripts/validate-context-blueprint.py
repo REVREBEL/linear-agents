@@ -67,6 +67,43 @@ def main():
             validate(item, profile_schema, f"{path.relative_to(ROOT)} agents[{i}]")
         total += len(profiles)
 
+    # ABR-62: check historical snapshot integrity without freezing future Git
+    # research catalog changes to the 2026-11-12 snapshot.
+    current_catalog = load_yaml(ROOT / "agents/agent-registry.yaml")
+    approved_catalog = load_yaml(BLUEPRINT / "references/agent-registry-v2.yaml")
+    historical_catalog = load_yaml(BLUEPRINT / "references/agent-registry.yaml")
+
+    approved_profiles = {item["id"]: item for item in approved_catalog["agents"]}
+    historical_profiles = {item["id"]: item for item in historical_catalog["agents"]}
+    if set(approved_profiles) - set(historical_profiles) != {"colab-notebook-agent"}:
+        raise ValueError("Historical snapshots no longer reflect the Colab-only addition")
+    if set(historical_profiles) - set(approved_profiles):
+        raise ValueError("Approved historical snapshot removed an existing research profile")
+    for name, item in historical_profiles.items():
+        if approved_profiles[name] != item:
+            raise ValueError(f"Historical profile was modified in the newer snapshot: {name}")
+
+    # The current research catalog may advance under later reviewed commits;
+    # it must remain a consistent source of truth for individual candidates.
+    current_profiles = {item["id"]: item for item in current_catalog["agents"]}
+    if len(current_profiles) != current_catalog["totalAgents"]:
+        raise ValueError("Canonical research catalog has duplicate IDs or wrong totalAgents")
+
+    # One individually editable candidate per approved catalog profile.
+    candidate_paths = sorted((ROOT / "agents/profiles/candidates").glob("*.yaml"))
+    candidate_names = {path.stem for path in candidate_paths}
+    if candidate_names != set(current_profiles):
+        raise ValueError(
+            "Candidate YAML inventory differs from canonical research catalog: "
+            f"missing={sorted(set(current_profiles) - candidate_names)}; "
+            f"unexpected={sorted(candidate_names - set(current_profiles))}"
+        )
+    for path in candidate_paths:
+        item = load_yaml(path)
+        validate(item, profile_schema, f"candidate {path.name}")
+        if item != current_profiles[path.stem]:
+            raise ValueError(f"Research candidate differs from catalog entry: {path.name}")
+
     # The executable Bridge registry has a different schema from research entries.
     runtime_schema = load_json(ROOT / "agents/registry.schema.json")
     runtime_entry_schema = {
