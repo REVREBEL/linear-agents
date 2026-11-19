@@ -38,7 +38,7 @@ The name `agent-registry-v2.yaml` refers to a **research snapshot**, not the exe
 
 - `/opt/agents/` presently holds runtime homes such as `opencode/`, `codex/`, `qwen/`, `gemini/`, `kilo/`, `trae/` and `memu/`.
 - `/opt/agent-tools/` currently includes `bin/`, `agents/` and `systemd/`; `/opt/global-tools/` includes shared tool-manager directories.
-- `/opt/agents/registry/agent-runtimes.json` is staged with dispatch disabled. Its configured toolchain paths must be reconciled against the installed host under ABR-63 rather than treated as valid defaults.
+- `/opt/agents/registry/agent-runtimes.json` remains a **disabled** host-local copy. ABR-63 defines its reviewed intended snapshot in `templates/context/agent-runtimes.staged.json` and a guarded host reconciliation command in `scripts/reconcile-agent-runtimes.py`. The historical host file retains stale values until reviewed source is explicitly applied. See [the verified inventory](RUNTIME_INVENTORY.md).
 - Host-root `README.md` files and context frontmatter will be added in ABR-69; do not claim they exist before that task.
 
 ## Acceptance and follow-up
