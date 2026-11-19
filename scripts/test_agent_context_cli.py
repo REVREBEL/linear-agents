@@ -1,5 +1,6 @@
 """ABR-73: verify portable CLI bootstrap without agent or service startup."""
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -113,7 +114,7 @@ class ContextCliTests(unittest.TestCase):
             capture_output=True, text=True,
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("unrecognized arguments", result.stderr)
+        self.assertIn("invalid choice", result.stderr)
 
     def test_validate_rejects_selection_flags(self):
         result = subprocess.run(
@@ -124,12 +125,25 @@ class ContextCliTests(unittest.TestCase):
         self.assertIn("validate does not accept", result.stderr)
 
     def test_explain_reports_source_reasons(self):
-        env = os.environ.copy()
-        env.pop("AGENT_CONTEXT_REPO_ROOT", None)
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT), "explain", "--topic", "jobs", "--format", "json"],
-            capture_output=True, text=True, cwd=ROOT, env=env,
-        )
+        with tempfile.TemporaryDirectory() as folder:
+            env = os.environ.copy()
+            env.pop("AGENT_CONTEXT_REPO_ROOT", None)
+            for key, name in (
+                ("AGENT_CONTEXT_AGENTS_ROOT", "agents"),
+                ("AGENT_CONTEXT_AGENT_TOOLS_ROOT", "agent-tools"),
+                ("AGENT_CONTEXT_GLOBAL_TOOLS_ROOT", "global-tools"),
+            ):
+                target = Path(folder) / name
+                target.mkdir()
+                shutil.copy2(
+                    ROOT / "templates/context/host-roots" / name / "README.md",
+                    target / "README.md",
+                )
+                env[key] = str(target)
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "explain", "--topic", "jobs", "--format", "json"],
+                capture_output=True, text=True, cwd=ROOT, env=env,
+            )
         self.assertEqual(result.returncode, 0, result.stderr)
         import json
         bundle = json.loads(result.stdout)
