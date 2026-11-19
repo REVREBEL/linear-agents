@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -55,6 +56,32 @@ class TemplatePublisherTests(unittest.TestCase):
         backups = list(self.dest.parent.glob("context.backup-*"))
         self.assertEqual(len(backups), 1)
         self.assertEqual((backups[0] / "README.md").read_bytes(), self.files["README.md"])
+
+    def test_update_exchanges_complete_snapshots_atomically(self):
+        publisher.publish(self.dest, self.files, self.expected)
+        fresh = dict(self.files)
+        fresh["README.md"] += b"\nUpdated snapshot\n"
+        updated = publisher.snapshot(fresh, "b" * 40)
+        exchange = publisher.exchange_directories
+        def observe(staging, target):
+            self.assertEqual((target / "README.md").read_bytes(), self.files["README.md"])
+            self.assertEqual((staging / "README.md").read_bytes(), fresh["README.md"])
+            exchange(staging, target)
+            self.assertEqual((target / "README.md").read_bytes(), fresh["README.md"])
+            self.assertEqual((staging / "README.md").read_bytes(), self.files["README.md"])
+        with mock.patch.object(publisher, "exchange_directories", side_effect=observe):
+            publisher.publish(self.dest, fresh, updated)
+        self.assertEqual(publisher.check_install(self.dest, updated), 0)
+
+    def test_failed_exchange_preserves_live_snapshot(self):
+        publisher.publish(self.dest, self.files, self.expected)
+        fresh = dict(self.files)
+        fresh["README.md"] += b"\nUpdated snapshot\n"
+        updated = publisher.snapshot(fresh, "b" * 40)
+        with mock.patch.object(publisher, "exchange_directories", side_effect=OSError("unsupported")):
+            with self.assertRaises(OSError):
+                publisher.publish(self.dest, fresh, updated)
+        self.assertEqual(publisher.check_install(self.dest, self.expected), 0)
 
     def test_refuse_unmanaged_existing_directory(self):
         self.dest.mkdir(parents=True)
