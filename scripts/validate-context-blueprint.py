@@ -67,6 +67,38 @@ def main():
             validate(item, profile_schema, f"{path.relative_to(ROOT)} agents[{i}]")
         total += len(profiles)
 
+    # ABR-62: the Git research catalog is canonical; approved snapshots remain immutable.
+    current_catalog = load_yaml(ROOT / "agents/agent-registry.yaml")
+    approved_catalog = load_yaml(BLUEPRINT / "references/agent-registry-v2.yaml")
+    historical_catalog = load_yaml(BLUEPRINT / "references/agent-registry.yaml")
+    if current_catalog != approved_catalog:
+        raise ValueError("Canonical research catalog differs from the approved 15-agent snapshot")
+
+    current_profiles = {item["id"]: item for item in current_catalog["agents"]}
+    prior_profiles = {item["id"]: item for item in historical_catalog["agents"]}
+    if set(current_profiles) - set(prior_profiles) != {"colab-notebook-agent"}:
+        raise ValueError("Research catalog change set is not the reviewed Colab-only addition")
+    if set(prior_profiles) - set(current_profiles):
+        raise ValueError("Approved research reconciliation deleted historical agents")
+    for name, item in prior_profiles.items():
+        if current_profiles[name] != item:
+            raise ValueError(f"Existing research profile changed unexpectedly: {name}")
+
+    # One individually editable candidate per approved catalog profile.
+    candidate_paths = sorted((ROOT / "agents/profiles/candidates").glob("*.yaml"))
+    candidate_names = {path.stem for path in candidate_paths}
+    if candidate_names != set(current_profiles):
+        raise ValueError(
+            "Candidate YAML inventory differs from canonical research catalog: "
+            f"missing={sorted(set(current_profiles) - candidate_names)}; "
+            f"unexpected={sorted(candidate_names - set(current_profiles))}"
+        )
+    for path in candidate_paths:
+        item = load_yaml(path)
+        validate(item, profile_schema, f"candidate {path.name}")
+        if item != current_profiles[path.stem]:
+            raise ValueError(f"Research candidate differs from catalog entry: {path.name}")
+
     # The executable Bridge registry has a different schema from research entries.
     runtime_schema = load_json(ROOT / "agents/registry.schema.json")
     runtime_entry_schema = {
