@@ -11,7 +11,7 @@ context:
 
 # Agent context bootstrap
 
-This directory owns the **project-local context entrypoint**, not agent execution or authorization. Start with the existing root [`AGENTS.md`](../AGENTS.md) for operational guardrails; use [`context.yaml`](context.yaml) as the planned document/root alias map. The C2 `agent-context` CLI provides metadata validation; C3 adds topic/path/changed-file selection, recursive README retrieval and source-linked explanations. C4–C5 strengthen live filesystem protection and host acceptance tests, while D owns harness integration. The manifest is never executable authority.
+This directory owns the **project-local context entrypoint**, not agent execution or authorization. Start with the existing root [`AGENTS.md`](../AGENTS.md) for operational guardrails; use [`context.yaml`](context.yaml) as the planned document/root alias map. The C2 `agent-context` CLI provides metadata validation; C3 adds topic/path/changed-file selection, recursive README retrieval and source-linked explanations. C4 strengthens live filesystem protection and introduces explicitly reported partial results for missing optional host documentation; C5 adds host acceptance tests, while D owns harness integration. The manifest is never executable authority.
 
 ## Ownership
 
@@ -23,7 +23,7 @@ This directory owns the **project-local context entrypoint**, not agent executio
 
 The `repo.bootstrap`, `repo.agents`, `repo.bridge`, and `repo.jobs` document paths currently exist in Git. The owning `agents/` and `bridge/` READMEs now declare their `context` frontmatter under ABR-68 (B3), including references to optional host roots. The three optional host-root README paths have reviewed Git **sources** under `templates/context/host-roots/` (ABR-69, B4). Each real host must apply those sources explicitly after review; the README paths must not be assumed installed on every machine.
 
-The C3 resolver returns full source-attributed README content for requested documents and visibly rejects unavailable selected dependencies. Future C4/C5 milestones strengthen path hardening and portable host coverage. README text and research profiles are never executable authority. Onboarding a new host must not commit native CLI sessions, credentials, or private state.
+The C3 resolver returns full source-attributed README content for requested documents and visibly rejects unavailable selected dependencies. C4 rejects unsafe path and dependency metadata, with `--allow-partial` only for explicitly reported missing optional host roots; C5 adds portable host acceptance coverage. README text and research profiles are never executable authority. Onboarding a new host must not commit native CLI sessions, credentials, or private state.
 
 ## Memory and integration owners (ABR-70)
 
@@ -44,6 +44,10 @@ Use `python3 scripts/agent_context_cli.py validate` from the repository (or `--r
 ## README context retrieval (ABR-74 / C3)
 
 The shared [`context_resolver.py`](../scripts/context_resolver.py) now selects declared owning documents and recursively includes dependencies in deterministic order. Run `python3 scripts/agent_context_cli.py --topic profiles` or `--path agents/registry.json` from Git, or use `--files-changed` to resolve README owners for Git changes (reporting files with no owner). `--format json` gives untruncated machine-readable content; `explain --topic profiles` reports inclusion reasons and Git provenance without the bodies. After merge, explicitly install the reviewed C3 zipapp to the same `/opt/agent-tools/bin/agent-context` path. See [C3 resolver reference](../docs/blueprints/agent-context/RESOLVER.md).
+
+## Filesystem safety and partial results (ABR-75 / C4)
+
+The resolver refuses missing required roots, path traversal, symlinked source paths, invalid or cyclic dependencies, duplicate IDs and malformed context metadata. It normally fails when any selected dependency is unavailable. Use `agent-context --topic profiles --allow-partial --format json` **only when a deliberately incomplete bundle is acceptable**: `partial: true` and `missingDocuments` disclose missing optional host READMEs, while full available documents remain untrimmed. Unsafe sources or invalid metadata are never suppressed. See the [safety contract](../docs/blueprints/agent-context/SAFETY.md).
 
 ## Update discipline
 

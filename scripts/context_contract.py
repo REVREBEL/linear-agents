@@ -6,6 +6,7 @@ resolution, CLI invocation, provider credentials, or runtime activation.
 import json
 import os
 import re
+import stat
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import posixpath
 
@@ -24,6 +25,64 @@ HOST_DOCUMENT_ROOTS = {
     "host.global-tools": "host-global-tools",
 }
 PLATFORMS = frozenset({"linux", "darwin", "win32"})
+
+
+class ContextSourceUnavailable(ValueError):
+    """An optional context document/root is absent, not unsafe or malformed."""
+
+
+def reject_symlink_components(path, label):
+    """Reject symlinks and non-directory ancestors without following either.
+
+    A truly missing ancestor is permitted here because optional roots can be
+    absent. An existing regular file *above* the requested path is not absence:
+    pathlib's exists()/is_dir() can mask ENOTDIR and falsely enable partial
+    retrieval. Check each component with lstat from the filesystem root.
+    """
+    value = Path(path).absolute()
+    components = [*reversed(value.parents), value]
+    for position, component in enumerate(components):
+        try:
+            mode = os.lstat(component).st_mode
+        except FileNotFoundError:
+            # Everything below a missing ancestor is also genuinely absent.
+            break
+        except NotADirectoryError as exc:
+            raise ValueError(
+                f"Invalid non-directory context path component in {label}: {component}"
+            ) from exc
+        if stat.S_ISLNK(mode):
+            raise ValueError(f"Unsafe symlink in context {label}: {component}")
+        if position < len(components) - 1 and not stat.S_ISDIR(mode):
+            raise ValueError(
+                f"Invalid non-directory context path component in {label}: {component}"
+            )
+
+
+def require_context_source(path, root, doc_id, *, optional=False):
+    """Return a real file within a real declared root; classify absence only.
+
+    Only a genuinely absent optional host source may be reported as partial.
+    Invalid paths, symlink components and other safety failures always raise.
+    """
+    directory = Path(root).absolute()
+    source = Path(path).absolute()
+    reject_symlink_components(directory, f"root for {doc_id}")
+    reject_symlink_components(source, f"source for {doc_id}")
+    if not source.is_relative_to(directory):
+        raise ValueError(f"Context source escapes declared root for {doc_id}: {source}")
+    if directory.exists() and not directory.is_dir():
+        raise ValueError(f"Context root is not a directory for {doc_id}: {directory}")
+    if source.exists() and not source.is_file():
+        raise ValueError(f"Context source is not a regular file for {doc_id}: {source}")
+    if not directory.is_dir() or not source.is_file():
+        detail = f"Context source missing for {doc_id}: {source}"
+        if optional:
+            raise ContextSourceUnavailable(detail)
+        raise ValueError(detail)
+    if not source.resolve().is_relative_to(directory.resolve()):
+        raise ValueError(f"Context source escapes declared root for {doc_id}: {source}")
+    return source
 
 
 class UniqueMappingLoader(yaml.SafeLoader):
@@ -140,6 +199,10 @@ def validate_context_contract(repo_root, manifest=None):
     """
     base = Path(repo_root).resolve()
     templates = base / "templates/context"
+    # Even the manifest and schemas must not be provided through symlinks.
+    for name in (".agents/context.yaml", "templates/context/context-manifest.schema.json",
+                 "templates/context/context-frontmatter.schema.json"):
+        require_context_source(base / name, base, name)
     manifest_schema = json.loads(
         (templates / "context-manifest.schema.json").read_text(encoding="utf-8")
     )
@@ -178,12 +241,15 @@ def validate_context_contract(repo_root, manifest=None):
             resolved = target.resolve()
             if not resolved.is_relative_to(base) or not target.is_file():
                 raise ValueError(f"Missing or escaping repository context document: {doc_id}")
+            reject_symlink_components(target, f"repository README {doc_id}")
         elif doc_id in HOST_SOURCE_DOCS:
             # The three reviewed host README sources are fixed counterparts
             # of their manifest aliases, not arbitrary host paths.
             if root != HOST_DOCUMENT_ROOTS[doc_id] or path != "README.md":
                 raise ValueError(f"Host source-backed context alias mismatch: {doc_id}")
-            target = base / HOST_SOURCE_DOCS[doc_id]
+            target = require_context_source(
+                base / HOST_SOURCE_DOCS[doc_id], base, doc_id
+            )
         else:
             # Other optional host-only documents need not exist at schema time.
             if roots[root]["required"]:

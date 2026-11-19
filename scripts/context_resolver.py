@@ -13,7 +13,8 @@ import subprocess
 import sys
 
 from context_contract import (
-    HOST_SOURCE_DOCS, read_frontmatter, select_host_root,
+    ContextSourceUnavailable, HOST_SOURCE_DOCS, read_frontmatter,
+    reject_symlink_components, require_context_source, select_host_root,
     validate_context_contract, validate_relative_document_path,
 )
 
@@ -35,18 +36,19 @@ def _roots(repo_root, manifest, platform, environ):
     for alias, config in manifest["roots"].items():
         if alias == "repo":
             continue
-        root_paths[alias] = Path(select_host_root(config, platform, environ))
+        directory = Path(select_host_root(config, platform, environ))
+        reject_symlink_components(directory, f"declared root {alias}")
+        if directory.exists() and not directory.is_dir():
+            raise ValueError(f"Invalid context directory for root {alias}: {directory}")
+        if config["required"] and not directory.is_dir():
+            raise ValueError(f"Required context root absent: {alias}: {directory}")
+        root_paths[alias] = directory
     return root_paths
 
 
-def _bounded_file(path, root, doc_id):
-    """Accept only a normal README under its declared root."""
-    if root.is_symlink() or not root.is_dir():
-        raise ValueError(f"Context root missing or unsafe for {doc_id}: {root}")
-    target = path.resolve()
-    if not target.is_relative_to(root.resolve()) or path.is_symlink() or not path.is_file():
-        raise ValueError(f"Context source missing or escaping root for {doc_id}: {path}")
-    return path
+def _bounded_file(path, root, doc_id, *, optional=False):
+    """Accept only a real, symlink-free README under its declared root."""
+    return require_context_source(path, root, doc_id, optional=optional)
 
 
 def _doc_location(repo_root, manifest, root_paths, doc_id):
@@ -94,9 +96,14 @@ def _owners_for_path(raw, index, manifest, root_paths):
         raise ValueError("Context selection path must be nonempty")
     possible = []
     if os.path.isabs(raw):
-        input_path = Path(raw).resolve()
+        if "\x00" in raw or ".." in Path(raw).parts:
+            raise ValueError(f"Unsafe absolute context selection path: {raw!r}")
+        # Do not resolve through an alias or a private symlink. Existing
+        # symlinks on any path component are not valid owner-selection paths.
+        input_path = Path(raw).absolute()
+        reject_symlink_components(input_path, "selection path")
         for alias, root in root_paths.items():
-            real_root = root.resolve()
+            real_root = root.absolute()
             if input_path.is_relative_to(real_root):
                 relative = input_path.relative_to(real_root).as_posix()
                 # A host root directory is owned by its root README. Reuse
@@ -105,7 +112,9 @@ def _owners_for_path(raw, index, manifest, root_paths):
                     relative = "README.md"
                 possible.append((alias, relative))
     else:
-        possible.append(("repo", validate_relative_document_path(raw)))
+        relative = validate_relative_document_path(raw)
+        reject_symlink_components(root_paths["repo"] / relative, "selection path")
+        possible.append(("repo", relative))
     if not possible:
         raise ValueError(f"Context path outside declared roots: {raw}")
     scores = {}
@@ -195,7 +204,12 @@ def _dependency_order(seed_reasons, index):
 
 def _source_entry(repo_root, manifest, root_paths, doc_id, metadata, head, reasons, *, explain):
     root, target = _doc_location(repo_root, manifest, root_paths, doc_id)
-    _bounded_file(target, root, doc_id)
+    locator = manifest["documents"][doc_id]
+    optional = (
+        locator["root"] != "repo"
+        and not manifest["roots"][locator["root"]]["required"]
+    )
+    _bounded_file(target, root, doc_id, optional=optional)
     # Host README files must exactly match their reviewed Git source before
     # attributing a Git SHA to the installed bytes.
     if manifest["documents"][doc_id]["root"] == "repo":
@@ -231,8 +245,9 @@ def _source_entry(repo_root, manifest, root_paths, doc_id, metadata, head, reaso
     return entry
 
 
-def resolve_context(repo_root, *, topic=None, path=None, files_changed=False, explain=False, platform=None, environ=None):
-    """Resolve complete documents with deterministic paths and reasons."""
+def resolve_context(repo_root, *, topic=None, path=None, files_changed=False,
+                    explain=False, allow_partial=False, platform=None, environ=None):
+    """Resolve complete documents; partial output requires explicit opt-in."""
     base = Path(repo_root).resolve()
     contract = validate_context_contract(base)
     manifest = contract["manifest"]
@@ -249,16 +264,34 @@ def resolve_context(repo_root, *, topic=None, path=None, files_changed=False, ex
     )
     order, reasons = _dependency_order(selected, index)
     head = git(base, "rev-parse", "HEAD").decode("ascii").strip()
-    documents = [
-        _source_entry(base, manifest, roots, doc_id, index[doc_id], head, reasons, explain=explain)
-        for doc_id in order
-    ]
+    documents, missing_documents = [], []
+    for doc_id in order:
+        try:
+            entry = _source_entry(
+                base, manifest, roots, doc_id, index[doc_id], head, reasons,
+                explain=explain,
+            )
+        except ContextSourceUnavailable as exc:
+            if not allow_partial:
+                raise
+            root, target = _doc_location(base, manifest, roots, doc_id)
+            missing_documents.append({
+                "id": doc_id,
+                "root": manifest["documents"][doc_id]["root"],
+                "sourcePath": str(target),
+                "reasons": reasons[doc_id],
+                "error": str(exc),
+            })
+            continue
+        documents.append(entry)
     return {
         "contextVersion": manifest["contextVersion"],
         "project": manifest["project"],
         "gitHeadSha": head,
         "selection": selection,
         "unmatchedPaths": unmatched,
+        "partial": bool(missing_documents),
+        "missingDocuments": missing_documents,
         "documents": documents,
     }
 
@@ -276,6 +309,7 @@ def render_context(bundle, *, output_format="markdown", explain=False):
         f"- Git HEAD: `{bundle['gitHeadSha']}`",
         f"- Selection: `{bundle['selection']['mode']}` — `{bundle['selection']['value']}`",
         f"- Documents: {len(bundle['documents'])}",
+        f"- Partial: `{str(bundle['partial']).lower()}`",
         "",
     ]
     for item in bundle["documents"]:
@@ -292,6 +326,15 @@ def render_context(bundle, *, output_format="markdown", explain=False):
         if not explain:
             lines.append(item["content"])
             lines.append("")
+    if bundle["missingDocuments"]:
+        lines.extend(["## Missing optional context documents (explicit partial output)", ""])
+        for item in bundle["missingDocuments"]:
+            lines.extend([
+                f"- `{item['id']}` — `{item['sourcePath']}`",
+                f"  - Error: {item['error']}",
+                "  - Requested because: " + "; ".join(item["reasons"]),
+            ])
+        lines.append("")
     if bundle["unmatchedPaths"]:
         lines.extend(["## Changed paths without context owners", ""])
         lines.extend(f"- `{path}`" for path in bundle["unmatchedPaths"])

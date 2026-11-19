@@ -1,4 +1,5 @@
 """ABR-73: verify portable CLI bootstrap without agent or service startup."""
+import json
 import os
 import shutil
 from pathlib import Path
@@ -18,7 +19,7 @@ class ContextCliTests(unittest.TestCase):
     def test_help_and_version_are_portable(self):
         for args, text in (
             (["--help"], "validate"),
-            (["--version"], "agent-context 0.2.0"),
+            (["--version"], "agent-context 0.3.0"),
         ):
             with self.subTest(args=args):
                 outcome = subprocess.run(
@@ -123,6 +124,53 @@ class ContextCliTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn("validate does not accept", result.stderr)
+
+    def test_validate_rejects_partial_option(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "validate", "--allow-partial"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("validate does not accept", result.stderr)
+
+    def test_missing_host_doc_requires_explicit_cli_opt_in(self):
+        with tempfile.TemporaryDirectory() as folder:
+            env = os.environ.copy()
+            env.pop("AGENT_CONTEXT_REPO_ROOT", None)
+            for key, name in (
+                ("AGENT_CONTEXT_AGENTS_ROOT", "agents"),
+                ("AGENT_CONTEXT_AGENT_TOOLS_ROOT", "agent-tools"),
+                ("AGENT_CONTEXT_GLOBAL_TOOLS_ROOT", "global-tools"),
+            ):
+                host = Path(folder) / name
+                env[key] = str(host)
+                if name != "agents":
+                    host.mkdir()
+                    shutil.copy2(
+                        ROOT / "templates/context/host-roots" / name / "README.md",
+                        host / "README.md",
+                    )
+            args = [
+                sys.executable, str(SCRIPT), "--repo-root", str(ROOT),
+                "--topic", "profiles", "--format", "json",
+            ]
+            denied = subprocess.run(
+                args, cwd=folder, env=env, capture_output=True, text=True,
+            )
+            allowed = subprocess.run(
+                [*args, "--allow-partial"], cwd=folder, env=env,
+                capture_output=True, text=True,
+            )
+        self.assertEqual(denied.returncode, 2, denied.stdout)
+        self.assertIn("Context source missing", denied.stderr)
+        self.assertEqual(allowed.returncode, 0, allowed.stderr)
+        bundle = json.loads(allowed.stdout)
+        self.assertTrue(bundle["partial"])
+        self.assertEqual(
+            [item["id"] for item in bundle["missingDocuments"]],
+            ["host.agent-runtimes"],
+        )
+        self.assertTrue(all("content" in doc for doc in bundle["documents"]))
 
     def test_explain_reports_source_reasons(self):
         with tempfile.TemporaryDirectory() as folder:
