@@ -147,6 +147,36 @@ class ContextSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Invalid context directory"):
             self.resolve(topic="profiles", allow_partial=True)
 
+    def test_non_directory_ancestor_of_optional_root_is_never_partial(self):
+        blocker = self.base / "regular-file"
+        blocker.write_text("not a directory")
+        self.environ["AGENT_CONTEXT_AGENTS_ROOT"] = str(blocker / "agents")
+        for allow_partial in (False, True):
+            with self.subTest(allow_partial=allow_partial):
+                with self.assertRaisesRegex(ValueError, "non-directory context path component"):
+                    self.resolve(topic="profiles", allow_partial=allow_partial)
+
+    def test_non_directory_ancestor_of_optional_readme_is_not_missing(self):
+        blocker = self.host_roots["agents"] / "regular-file"
+        blocker.write_text("not a directory")
+        with self.assertRaisesRegex(ValueError, "non-directory context path component"):
+            require_context_source(
+                blocker / "README.md", self.host_roots["agents"],
+                "host.agent-runtimes", optional=True,
+            )
+
+    def test_genuinely_missing_nested_optional_root_can_be_partial(self):
+        self.environ["AGENT_CONTEXT_AGENTS_ROOT"] = str(
+            self.base / "not-created" / "agents"
+        )
+        bundle = self.resolve(topic="profiles", allow_partial=True)
+        self.assertTrue(bundle["partial"])
+        self.assertEqual(
+            [item["id"] for item in bundle["missingDocuments"]],
+            ["host.agent-runtimes"],
+        )
+        self.assertTrue(all("content" in item for item in bundle["documents"]))
+
     def test_existing_directory_instead_of_readme_is_not_partial(self):
         target = self.host_roots["agents"] / "README.md"
         target.unlink()
