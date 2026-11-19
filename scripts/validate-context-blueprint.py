@@ -233,6 +233,9 @@ def main():
         TEMPLATES / "host-root.README.template.md",
         BLUEPRINT / "bootstrap/.agents/README.md",
         ROOT / ".agents/README.md",
+        TEMPLATES / "host-roots/agents/README.md",
+        TEMPLATES / "host-roots/agent-tools/README.md",
+        TEMPLATES / "host-roots/global-tools/README.md",
         BLUEPRINT / "bootstrap/agents.README.context-starter.md",
         BLUEPRINT / "bootstrap/bridge.README.context-starter.md",
     ):
@@ -262,6 +265,14 @@ def main():
         raise ValueError("Root bootstrap README has an undeclared document dependency")
 
     validate_active_readme_metadata(active_manifest, context_schema)
+    # B4: reviewed host-root README sources must agree with the declared host
+    # aliases, but host installation itself is optional until post-merge apply.
+    from importlib import util
+    host_script = ROOT / "scripts/reconcile-host-root-readmes.py"
+    spec = util.spec_from_file_location("host_root_readme_validator", host_script)
+    host_module = util.module_from_spec(spec)
+    spec.loader.exec_module(host_module)
+    host_module.reviewed_sources()
 
     # One canonical copy of the uploaded research entry schema.
     duplicate = BLUEPRINT / "references/agent-registry-schema.json"
