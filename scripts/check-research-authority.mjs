@@ -29,6 +29,22 @@ const DENIED = [
   ["host staged registry", /agent-runtimes\.staged\.json/i],
 ];
 
+// Canonicalize static relative file specifiers from the executable's directory.
+// Checking raw source text alone misses forms such as ../../profiles/./candidates
+// when the actual Git target is agents/profiles/candidates/.
+const LITERAL_PATH = /(["'\x60])((?:\\[\s\S]|(?!\1)[^\\])*)\1/g;
+function resolvedRelativeReferences(sourcePath, source) {
+  const references = [];
+  for (const match of source.matchAll(LITERAL_PATH)) {
+    const literal = match[2];
+    if (!/^\.\.?\//.test(literal) || literal.includes("\${")) continue;
+    references.push(path.posix.normalize(
+      path.posix.join(path.posix.dirname(sourcePath), literal)
+    ));
+  }
+  return references;
+}
+
 const fail = message => { throw new Error("Research authority boundary: " + message); };
 const allowed = name => (EXECUTABLE_ROOTS.some(prefix => name.startsWith(prefix))
   || ADDITIONAL_SOURCES.includes(name))
@@ -55,8 +71,10 @@ export function auditResearchAuthority(root = REPO_ROOT, filePaths = trackedExec
     if (!allowed(name) || path.isAbsolute(name) || name.split("/").includes(".."))
       fail("Unsafe audit path: " + name);
     const source = readFileSync(path.join(root, name), "utf8");
+    const resolvedReferences = resolvedRelativeReferences(name, source);
     for (const [label, pattern] of DENIED) {
-      if (pattern.test(source)) hits.push(name + " imports/references " + label);
+      if (pattern.test(source) || resolvedReferences.some(ref => pattern.test(ref)))
+        hits.push(name + " imports/references " + label);
     }
   }
   if (hits.length) fail(hits.join("; "));
