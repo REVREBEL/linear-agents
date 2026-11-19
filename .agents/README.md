@@ -23,7 +23,7 @@ This directory owns the **project-local context entrypoint**, not agent executio
 
 The `repo.bootstrap`, `repo.agents`, `repo.bridge`, and `repo.jobs` document paths currently exist in Git. The owning `agents/` and `bridge/` READMEs now declare their `context` frontmatter under ABR-68 (B3), including references to optional host roots. The three optional host-root README paths have reviewed Git **sources** under `templates/context/host-roots/` (ABR-69, B4). Each real host must apply those sources explicitly after review; the README paths must not be assumed installed on every machine.
 
-The C3 resolver returns full source-attributed README content for requested documents and visibly rejects unavailable selected dependencies. C4 rejects unsafe path and dependency metadata, with `--allow-partial` only for explicitly reported missing optional host roots; C5 adds portable host acceptance coverage. README text and research profiles are never executable authority. Onboarding a new host must not commit native CLI sessions, credentials, or private state.
+The C3 resolver returns full source-attributed README content for requested documents and visibly rejects unavailable selected dependencies. C4 rejects unsafe path and dependency metadata, with `--allow-partial` only for explicitly reported missing optional host roots; C5 adds native Linux/macOS/Windows cross-root acceptance tests. README text and research profiles are never executable authority. Onboarding a new host must not commit native CLI sessions, credentials, or private state.
 
 ## Memory and integration owners (ABR-70)
 
@@ -48,6 +48,10 @@ The shared [`context_resolver.py`](../scripts/context_resolver.py) now selects d
 ## Filesystem safety and partial results (ABR-75 / C4)
 
 The resolver refuses missing required roots, path traversal, symlinked source paths, invalid or cyclic dependencies, duplicate IDs and malformed context metadata. It normally fails when any selected dependency is unavailable. Use `agent-context --topic profiles --allow-partial --format json` **only when a deliberately incomplete bundle is acceptable**: `partial: true` and `missingDocuments` disclose missing optional host READMEs, while full available documents remain untrimmed. Unsafe sources or invalid metadata are never suppressed. See the [safety contract](../docs/blueprints/agent-context/SAFETY.md).
+
+## Cross-root acceptance (ABR-76 / C5)
+
+The [C5 acceptance suite](../docs/blueprints/agent-context/ACCEPTANCE.md) verifies the full `repo.agents` / `repo.bridge` and `host.agent-runtimes`, `host.agent-tools`, `host.global-tools` graph with deterministic dependency order, exact Git-linked README content, root overrides, missing-file reporting, real fixture dependency cycles and portable path behavior. GitHub Actions runs `scripts/test_context_cross_root.py` on Ubuntu, macOS and Windows. No native CLI profile or running Bridge agent is part of these tests.
 
 ## Update discipline
 
