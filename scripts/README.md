@@ -37,6 +37,21 @@ If `templates/context/host-roots/agent-tools/README.md` changes, reconcile its *
 
 Run `python3 scripts/validate-context-contract.py` to validate the current Git checkout and `python3 scripts/test_context_contract.py` to run the negative/portability cases. The blueprint validator and GitHub Actions run the same contract. C1 validates declarations only: C2–C5 separately own path resolution, CLI commands, actual host-root availability and retrieval. See [the versioned contract](../docs/blueprints/agent-context/CONTEXT_SCHEMA.md).
 
+## Portable Agent Context CLI and installer (ABR-73 / C2)
+
+`agent_context_cli.py` is the **portable, reviewed CLI entrypoint**. At C2 it exposes `--help`, `--version`, and **read-only** `validate` (the v1 metadata contract from `context_contract.py`). The retrieval selectors `--topic`, `--path`, `--files-changed`, rendering formats, and provenance handoffs belong to C3–C5; this CLI does not yet implement them or run an agent.
+
+Run directly on any supported development host with Python 3.10+ and `PyYAML`/`jsonschema` installed: `python3 scripts/agent_context_cli.py validate` from the repository, or `python3 scripts/agent_context_cli.py --repo-root /path/to/checkout validate` from anywhere. The CLI searches the current directory and parents for a manifest; `AGENT_CONTEXT_REPO_ROOT` is an explicit fallback and `--repo-root` takes precedence. Invalid explicit roots fail rather than silently selecting another checkout.
+
+`install-agent-context.py` packages the **committed Git** copies of `agent_context_cli.py` and `context_contract.py` into a reproducible, single-file Python zipapp at `/opt/agent-tools/bin/agent-context` (external Python dependencies remain host-managed). It rejects uncommitted source changes, including Git `assume-unchanged` masking, and refuses unmanaged executables or unexpected edits. Installation replaces only that executable atomically; existing managed versions are backed up.
+
+- `python3 scripts/install-agent-context.py --validate` — read-only Git integrity / zipapp build check.
+- `python3 scripts/install-agent-context.py --check` — read-only comparison to the installed CLI.
+- `python3 scripts/install-agent-context.py --apply` — **explicitly install after the PR is merged**, from the reviewed Git checkout on Ubuntu.
+- `agent-context --version` and `agent-context --repo-root /path/to/checkout validate` — verify the executable works outside the project directory after installation.
+
+Run `python3 scripts/test_agent_context_cli.py` and `python3 scripts/test_install_agent_context.py` for isolation, source provenance, CLI and deployment tests. See [Context schema](../docs/blueprints/agent-context/CONTEXT_SCHEMA.md) and [Context implementation blueprint](../docs/blueprints/agent-context/README.md). This does not install third-party packages, modify runtime profiles, create credentials, enable dispatch, or restart services.
+
 ## Host-only infrastructure
 
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.
