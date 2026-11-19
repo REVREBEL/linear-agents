@@ -17,6 +17,10 @@ These files are source-controlled **templates**, not deployed agent configuratio
 
 The compatibility mirror at `agents/agent-registry-schema.json` exists because `agents/agent-registry.yaml` references a co-located research schema. It is **not** a third schema to edit independently. Update both copies in the same reviewed change until an explicit migration removes the legacy mirror. The validation script rejects mismatches and duplicate copies under blueprint `references/`.
 
+## Research entry versioning (ABR-65)
+
+The attached `AgentRegistryEntry` research schema has **no** `profileVersion`. Current validation and the research-promotion proposal compiler reject an injected field even though the original JSON Schema permits additional properties. Adding per-entry versioning requires an explicit schema/mirror migration, compatible catalog/candidate updates and revised negative tests. See [the version policy](../../docs/blueprints/agent-context/PROFILE_VERSION_POLICY.md). Catalog `version: 1.0.0`, executable Registry `schemaVersion: 2` and README `context.version: 1` are unrelated.
+
 ## Research catalog source
 
 `agents/agent-registry.yaml` is the current, canonical **15-profile research catalog**. Each entry is also in `agents/profiles/candidates/<id>.yaml`; the current catalog and candidates must match **each other**. At ABR-62 adoption they also match the approved 15-agent snapshot at `docs/blueprints/agent-context/references/agent-registry-v2.yaml`. That snapshot and the earlier 14-entry snapshot are immutable history; future reviewed catalog revisions may advance independently. Neither file indicates that a provider, model, Colab endpoint or Worker is installed or reachable.
