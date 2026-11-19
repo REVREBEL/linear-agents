@@ -174,5 +174,26 @@ class AgentContextResolverTests(unittest.TestCase):
             self.assertEqual(resolver._changed_files(base), ["new.txt", "tracked.txt"])
 
 
+    def test_git_changed_file_discovery_includes_both_sides_of_rename(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            (base / "memory").mkdir()
+            (base / "integrations").mkdir()
+            (base / "memory" / "file.txt").write_text("content")
+            subprocess.run(["git", "-C", folder, "init", "-q"], check=True)
+            subprocess.run(["git", "-C", folder, "add", "."], check=True)
+            subprocess.run([
+                "git", "-C", folder, "-c", "user.email=fixture@example.com",
+                "-c", "user.name=Fixture", "commit", "-qm", "initial",
+            ], check=True)
+            subprocess.run([
+                "git", "-C", folder, "mv", "memory/file.txt", "integrations/file.txt",
+            ], check=True)
+            self.assertEqual(
+                resolver._changed_files(base),
+                ["integrations/file.txt", "memory/file.txt"],
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
