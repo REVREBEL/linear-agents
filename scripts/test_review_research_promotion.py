@@ -106,8 +106,8 @@ class PromotionTests(unittest.TestCase):
         self.assertEqual((self.root / "agents/registry.json").read_bytes(), before)
 
     def test_rejects_unapproved_or_same_person(self):
-        self.deny("independent", lambda r: r["approval"].update(reviewer="submitter"))
-        self.deny("independent", lambda r: r["approval"].update(decision="pending"))
+        self.deny("Independent", lambda r: r["approval"].update(reviewer="submitter"))
+        self.deny("Independent", lambda r: r["approval"].update(decision="pending"))
 
     def test_rejects_changed_source_or_catalog_drift(self):
         self.deny("source changed", lambda r: r.update(researchSha256="0" * 64))
