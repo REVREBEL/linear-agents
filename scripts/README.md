@@ -27,7 +27,7 @@ This script does **not** deploy a Worker, enable an agent, modify a CLI profile,
 - `python3 scripts/publish-context-templates.py --check` — read-only comparison of the installed managed snapshot against Git, including per-file SHA-256 hashes and `.managed-context.json`.
 - `python3 scripts/publish-context-templates.py --apply` — explicitly install the approved snapshot **from a merged, reviewed checkout on Ubuntu**. Initial installation creates the missing context directory; updates atomically exchange complete Linux directories and retain the prior version as `context.backup-*`. Unmanaged/modified content and unsafe symlinks cause an error rather than an overwrite.
 
-The publisher copies only the 15 required tracked Markdown, YAML and JSON template sources (and any additionally reviewed tracked template file). It does not copy `/opt/agents` runtime state, authenticate a provider, authorize Linear dispatch, or restart any service. Run `python3 scripts/test_publish_context_templates.py` for isolated tests and verify a post-merge installation with `--check`.
+The publisher copies only the 16 required tracked Markdown, YAML and JSON template sources (and any additionally reviewed tracked template file). It does not copy `/opt/agents` runtime state, authenticate a provider, authorize Linear dispatch, or restart any service. Run `python3 scripts/test_publish_context_templates.py` for isolated tests and verify a post-merge installation with `--check`.
 
 If `templates/context/host-roots/agent-tools/README.md` changes, reconcile its **separately managed** host README via `python3 scripts/reconcile-host-root-readmes.py --apply`, then `--check`. See the [template ownership and publishing guide](../templates/context/README.md).
 
