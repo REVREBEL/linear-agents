@@ -5,6 +5,7 @@
 installs an atomic directory snapshot. Never loads or changes native agent state.
 """
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -198,6 +199,19 @@ def check_install(target, expected):
     return 0
 
 
+def exchange_directories(left, right):
+    """Atomically swap two existing directories on Linux or fail closed."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        refuse("Atomic directory exchange requires Linux renameat2 support")
+    renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    renameat2.restype = ctypes.c_int
+    if renameat2(-100, os.fsencode(left), -100, os.fsencode(right), 2) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error), str(left), str(right))
+
+
 def publish(target, files, expected):
     """Atomically swap an intact managed directory, retaining old versions."""
     current = inspect_install(target)
@@ -221,19 +235,25 @@ def publish(target, files, expected):
         staging.chmod(0o755)
         if current is not None:
             backup = target.with_name(f"context.backup-{time.time_ns()}")
-            os.rename(target, backup)
-        try:
+            # The live path always points to a complete snapshot. After the
+            # exchange staging contains the previous version; never delete it
+            # if moving it to the backup name fails.
+            exchange_directories(staging, target)
+            old_snapshot = staging
+            staging = None
+            try:
+                os.rename(old_snapshot, backup)
+            except OSError as error:
+                raise OSError(f"New snapshot installed; previous snapshot retained at {old_snapshot}: {error}") from error
+        else:
             os.rename(staging, target)
-        except OSError:
-            if backup is not None:
-                os.rename(backup, target)
-            raise
+            staging = None
         print(f"INSTALLED: {target} ({expected['sourceTreeSha256'][:12]})")
         if backup is not None:
             print(f"PREVIOUS VERSION: {backup}")
         return 0
     finally:
-        if staging.exists():
+        if staging is not None and staging.exists():
             shutil.rmtree(staging)
 
 
