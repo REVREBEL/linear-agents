@@ -24,7 +24,7 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 - `.agents/README.md`, `.agents/context.yaml`, `.agents/skills/agent-context/SKILL.md`, `AGENTS.bootstrap.md`: project bootstrap and shared CLI skill contract.
 - `agents.README.context-starter.md`, `bridge/README.context-starter.md`: fragments to **merge** with existing READMEs, not replacements.
 - `IMPLEMENTATION_TASKS.md`: milestones and tests (PostgreSQL UI excluded).
-- `references/`: exact attached 14- and 15-agent research catalog snapshots for historical comparison. The shared entry schema is referenced from `templates/context/agent-profile.entry.schema.json` to prevent divergent copies.
+- `references/`: exact attached 14- and 15-agent research catalog snapshots for historical comparison. The existing `agents/agent-registry-schema.json` remains a checked compatibility mirror of `templates/context/agent-profile.entry.schema.json`; validation rejects divergence.
 
 ## Template defaults and historical CLI examples
 
