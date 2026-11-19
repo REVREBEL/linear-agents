@@ -46,7 +46,7 @@ class AgentContextInstallerTests(unittest.TestCase):
     def test_installed_zipapp_runs_outside_git_checkout(self):
         binary = self.make_archive()
         for args, expected in (
-            (["--version"], "agent-context 0.1.0"),
+            (["--version"], "agent-context 0.2.0"),
             (["--repo-root", str(ROOT), "validate"], "13 source-backed README contracts"),
         ):
             with self.subTest(args=args):
