@@ -12,7 +12,7 @@ runtime:
   transport: headless_cli
   executionHost: ubuntu_agent_server
   binaryPath: /usr/local/bin/opencode
-  commandTemplate: 'opencode run --model ollama/example-model --format json {{PROMPT}}'
+  commandTemplate: "opencode run --model ollama/example-model --format json {{PROMPT}}"
   workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
 linearBridge:
   workerHost: linear-example.invalid
@@ -31,11 +31,12 @@ routing:
 execution:
   autonomy_level: Supervised
   memory_scope: session_isolated
+  # Installed OpenCode uses --session; legacy catalog snapshots use unverified --session-id.
   sessionContinuityFlag: '--session {{SESSION_ID}}'
   quotaPolicy:
     resumable: false
     defaultRetryDelayMs: 10000
-    maxRetryAttempts: 0
+    maxRetryAttempts: 0  # Safe template default: no retries until provider retry policy is verified.
     exhaustionPattern: connection_refused|out_of_memory
 permissions:
   sourceWrite: false
