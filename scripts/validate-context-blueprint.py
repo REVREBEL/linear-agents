@@ -181,9 +181,9 @@ def validate_domain_readme_metadata(manifest, schema):
             raise ValueError(f"{doc_id}: invalid or missing context manifest alias")
         path = ROOT / relative_path
         body = path.read_text(encoding="utf-8")
-        if not body.startswith("---\\n") or "\\n---\\n" not in body[4:]:
+        if not body.startswith("---\n") or "\n---\n" not in body[4:]:
             raise ValueError(f"{relative_path}: missing context frontmatter")
-        metadata = yaml.safe_load(body[4:].split("\\n---\\n", 1)[0])
+        metadata = yaml.safe_load(body[4:].split("\n---\n", 1)[0])
         validate(metadata, schema, relative_path)
         context = metadata["context"]
         if context["id"] != doc_id:
