@@ -21,7 +21,7 @@ This directory owns the **project-local context entrypoint**, not agent executio
 
 ## Document readiness
 
-The `repo.bootstrap`, `repo.agents`, `repo.bridge`, and `repo.jobs` document paths currently exist in Git. The owning `agents/` and `bridge/` READMEs will receive `context` frontmatter in ABR-68 (B3). The three optional host-root README paths are **future documents** owned by ABR-69 (B4) and must not be assumed available on every machine.
+The `repo.bootstrap`, `repo.agents`, `repo.bridge`, and `repo.jobs` document paths currently exist in Git. The owning `agents/` and `bridge/` READMEs now declare their `context` frontmatter under ABR-68 (B3), including references to optional host roots. The three optional host-root README paths are **future documents** owned by ABR-69 (B4) and must not be assumed available on every machine.
 
 Future resolvers should return full source-attributed README content for requested documents, fail visibly when required dependencies are unavailable, and never treat README text or research profiles as executable authority. Onboarding a new host must not commit native CLI sessions, credentials, or private state.
 
