@@ -152,19 +152,29 @@ def inspect_install(target):
             or not isinstance(installed.get("files"), dict)):
         refuse("Unrecognized installed context template manifest")
     listed = installed["files"]
-    actual = set()
+    actual, actual_dirs = set(), set()
     for root, dirs, filenames in os.walk(target, followlinks=False):
         for folder in dirs:
             path = Path(root) / folder
             if path.is_symlink():
                 refuse(f"Unsafe symlink directory: {path}")
+            actual_dirs.add(path.relative_to(target).as_posix())
         for filename in filenames:
             path = Path(root) / filename
             if path.is_symlink() or not path.is_file():
                 refuse(f"Unsafe managed file: {path}")
             actual.add(path.relative_to(target).as_posix())
-    if actual != set(listed) | {MANIFEST}:
-        refuse(f"Unmanaged or missing files in {target}: {sorted(actual ^ (set(listed) | {MANIFEST}))}")
+    expected_files = set(listed) | {MANIFEST}
+    expected_dirs = set()
+    for name in listed:
+        rel = normalize_file(name)
+        for parent in rel.parents:
+            if str(parent) != ".":
+                expected_dirs.add(parent.as_posix())
+    if actual != expected_files or actual_dirs != expected_dirs:
+        refuse(f"Unmanaged or missing files/directories in {target}: "
+               f"files={sorted(actual ^ expected_files)}, "
+               f"directories={sorted(actual_dirs ^ expected_dirs)}")
     for name, meta in listed.items():
         normalize_file(name)
         path = target / name
