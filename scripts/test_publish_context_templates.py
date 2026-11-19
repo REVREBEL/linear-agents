@@ -79,6 +79,14 @@ class TemplatePublisherTests(unittest.TestCase):
             publisher.publish(self.dest, self.files, self.expected)
         self.assertEqual(extra.read_text(), "never delete")
 
+    def test_refuse_unmanaged_empty_directory(self):
+        publisher.publish(self.dest, self.files, self.expected)
+        empty = self.dest / "unmanaged-folder"
+        empty.mkdir()
+        with self.assertRaisesRegex(ValueError, "Unmanaged or missing"):
+            publisher.publish(self.dest, self.files, self.expected)
+        self.assertTrue(empty.is_dir())
+
     def test_refuse_symlink_target_or_parent(self):
         self.dest.parent.mkdir()
         self.dest.symlink_to(self.base, target_is_directory=True)
