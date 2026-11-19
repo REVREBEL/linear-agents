@@ -98,6 +98,20 @@ class AgentContextInstallerTests(unittest.TestCase):
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_bytes(), self.artifact)
 
+    def test_c2_two_module_managed_zipapp_upgrades_to_c3(self):
+        prior_sources = {
+            name: self.sources[name] for name in installer.LEGACY_MODULES
+        }
+        prior_metadata = installer.build_metadata(prior_sources, "a" * 40)
+        prior_artifact = installer.archive_bytes(prior_sources, prior_metadata)
+        installer.install(self.target, prior_artifact)
+        self.assertEqual(installer.check_install(self.target, self.artifact), 1)
+        installer.install(self.target, self.artifact)
+        self.assertEqual(installer.check_install(self.target, self.artifact), 0)
+        backups = list(self.bin_dir.glob("agent-context.backup-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), prior_artifact)
+
     def test_refuse_existing_unmanaged_file(self):
         self.target.write_text("#!/bin/sh\necho not managed\n")
         with self.assertRaisesRegex(ValueError, "Unmanaged executable"):
@@ -107,8 +121,8 @@ class AgentContextInstallerTests(unittest.TestCase):
     def test_refuse_tampered_managed_zipapp(self):
         installer.install(self.target, self.artifact)
         data = self.target.read_bytes()
-        self.assertIn(b'CLI_VERSION = "0.1.0"', data)
-        self.target.write_bytes(data.replace(b'CLI_VERSION = "0.1.0"', b'CLI_VERSION = "9.9.9"'))
+        self.assertIn(b'CLI_VERSION = "0.2.0"', data)
+        self.target.write_bytes(data.replace(b'CLI_VERSION = "0.2.0"', b'CLI_VERSION = "9.9.9"'))
         with self.assertRaisesRegex(ValueError, "Unmanaged|Modified managed|digest mismatch"):
             installer.install(self.target, self.artifact)
 
