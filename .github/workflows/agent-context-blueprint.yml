@@ -24,6 +24,8 @@ on:
       - 'agents/registry.schema.json'
       - 'scripts/validate-context-blueprint.py'
       - 'scripts/reconcile-host-root-readmes.py'
+      - 'scripts/publish-context-templates.py'
+      - 'scripts/test_publish_context_templates.py'
       - 'scripts/test_reconcile_host_root_readmes.py'
       - 'scripts/test_agent_context_bootstrap.py'
       - 'scripts/test_context_readme_frontmatter.py'
@@ -64,6 +66,10 @@ jobs:
         run: python scripts/reconcile-host-root-readmes.py --validate
       - name: Test controlled Ubuntu README reconciliation
         run: python scripts/test_reconcile_host_root_readmes.py
+      - name: Validate tracked and versioned context templates
+        run: python scripts/publish-context-templates.py --validate
+      - name: Test idempotent context template publication
+        run: python scripts/test_publish_context_templates.py
       - name: Test research profile-version migration gate
         run: python scripts/test_context_profile_version.py
       - name: Validate disabled-only host runtime inventory source

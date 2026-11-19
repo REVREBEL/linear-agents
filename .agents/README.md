@@ -29,6 +29,10 @@ Future resolvers should return full source-attributed README content for request
 
 The context manifest also maps the Git-owned memory and integration READMEs: `repo.memory`, `repo.memory.migrations`, `repo.memory.scripts`, `repo.integrations`, `repo.integrations.litellm`, and `repo.integrations.openrouter`. These document active implementation boundaries but are not runtime instructions or an installed resolver.
 
+## Shared context template publication (ABR-71)
+
+The reusable Git source set `../templates/context/` is published only through the reviewed `scripts/publish-context-templates.py` installer. After merge, run `--apply` explicitly on Ubuntu and verify `--check` against `/opt/agent-tools/templates/context/`. The managed snapshot includes `.managed-context.json` for version/hash provenance and is not a runtime configuration or an available `agent-context` command.
+
 ## Update discipline
 
 Update this README and its manifest together when document IDs, aliases, source paths, dependencies, or bootstrap semantics change. Update nearest owning READMEs in the same PR as behavioral, configuration, security, routing, or deployment changes. Context metadata does **not** authorize filesystem access, credential use, code execution, or deployments.
