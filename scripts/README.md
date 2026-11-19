@@ -31,6 +31,12 @@ The publisher copies only the 15 required tracked Markdown, YAML and JSON templa
 
 If `templates/context/host-roots/agent-tools/README.md` changes, reconcile its **separately managed** host README via `python3 scripts/reconcile-host-root-readmes.py --apply`, then `--check`. See the [template ownership and publishing guide](../templates/context/README.md).
 
+## Agent Context metadata validation (ABR-72)
+
+`context_contract.py` implements reviewed **v1 metadata-only** validation of `.agents/context.yaml` and source-owned README YAML headers using `templates/context/context-manifest.schema.json` and `context-frontmatter.schema.json`. It validates unique document IDs and YAML keys, safe root-relative paths, documented dependencies and cycles; the pure `select_host_root` helper supports `linux`, `darwin` and `win32` environment/platform-default precedence without accessing the target filesystem.
+
+Run `python3 scripts/validate-context-contract.py` to validate the current Git checkout and `python3 scripts/test_context_contract.py` to run the negative/portability cases. The blueprint validator and GitHub Actions run the same contract. C1 validates declarations only: C2–C5 separately own path resolution, CLI commands, actual host-root availability and retrieval. See [the versioned contract](../docs/blueprints/agent-context/CONTEXT_SCHEMA.md).
+
 ## Host-only infrastructure
 
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.

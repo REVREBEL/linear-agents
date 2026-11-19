@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://revrebel.io/schemas/agent-context-manifest.v1.schema.json",
+  "title": "Agent Context root/document alias manifest v1 (ABR-72)",
+  "description": "Project-local context alias contract; validates metadata only and does not load or authorize runtime execution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contextVersion",
+    "project",
+    "roots",
+    "documents",
+    "entrypoints"
+  ],
+  "properties": {
+    "contextVersion": {
+      "const": 1
+    },
+    "project": {
+      "type": "string",
+      "minLength": 1
+    },
+    "roots": {
+      "type": "object",
+      "minProperties": 1,
+      "required": [
+        "repo"
+      ],
+      "properties": {
+        "repo": {
+          "$ref": "#/$defs/repoRoot"
+        }
+      },
+      "patternProperties": {
+        "^(?!repo$)[a-z][a-z0-9-]*$": {
+          "$ref": "#/$defs/hostRoot"
+        }
+      },
+      "additionalProperties": false
+    },
+    "documents": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/documentId"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/documentLocator"
+      }
+    },
+    "entrypoints": {
+      "type": "object",
+      "minProperties": 1,
+      "required": [
+        "default"
+      ],
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/documentId"
+      }
+    }
+  },
+  "$defs": {
+    "documentId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]+$"
+    },
+    "repoRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "required"
+      ],
+      "properties": {
+        "path": {
+          "const": "."
+        },
+        "required": {
+          "const": true
+        }
+      }
+    },
+    "hostRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment",
+        "required"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "default"
+          ]
+        },
+        {
+          "required": [
+            "platformDefaults"
+          ]
+        }
+      ],
+      "properties": {
+        "environment": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "default": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "platformDefaults": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "linux": {
+              "type": "string",
+              "minLength": 1
+            },
+            "darwin": {
+              "type": "string",
+              "minLength": 1
+            },
+            "win32": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "documentLocator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "path"
+      ],
+      "properties": {
+        "root": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

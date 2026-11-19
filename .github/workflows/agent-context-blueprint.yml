@@ -23,6 +23,9 @@ on:
       - 'agents/registry.json'
       - 'agents/registry.schema.json'
       - 'scripts/validate-context-blueprint.py'
+      - 'scripts/context_contract.py'
+      - 'scripts/validate-context-contract.py'
+      - 'scripts/test_context_contract.py'
       - 'scripts/reconcile-host-root-readmes.py'
       - 'scripts/publish-context-templates.py'
       - 'scripts/test_publish_context_templates.py'
@@ -56,6 +59,10 @@ jobs:
         run: python -m pip install --disable-pip-version-check 'PyYAML==6.0.2' 'jsonschema==4.23.0'
       - name: Validate context and profile templates
         run: python scripts/validate-context-blueprint.py
+      - name: Validate Context v1 alias and frontmatter contracts
+        run: python scripts/validate-context-contract.py
+      - name: Test Context v1 metadata and cross-platform aliases
+        run: python scripts/test_context_contract.py
       - name: Test project-local context bootstrap
         run: python scripts/test_agent_context_bootstrap.py
       - name: Test owning README context metadata

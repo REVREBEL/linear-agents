@@ -68,6 +68,10 @@ Git READMEs in [`memory/`](../../../memory/README.md) and [`integrations/`](../.
 
 The Git-owned [`templates/context/`](../../../templates/context/README.md) tree now has a versioned publisher at `scripts/publish-context-templates.py` for managed copies under `/opt/agent-tools/templates/context/`. The publisher verifies SHA-256 descriptors and recorded source revision, refuses unmanaged drift, and keeps a previous installed snapshot when a reviewed version changes. `--validate` and `--check` are read-only; host installation requires explicit post-merge `--apply`. The installed files remain inert templates; Milestone C owns the actual resolver.
 
+## Context metadata and root aliases (ABR-72)
+
+The [Context v1 schema policy](CONTEXT_SCHEMA.md) establishes the formal JSON Schemas for README YAML frontmatter and `.agents/context.yaml` root/document aliases, including cross-platform environment and OS-specific root defaults. The reusable Python validator rejects duplicate IDs, unsafe paths, missing references and dependency cycles while reading only Git-owned source READMEs. The `jobs/README.md` now has validated context frontmatter. This adds no running resolver or CLI agent privileges.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.

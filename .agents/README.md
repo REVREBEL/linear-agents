@@ -33,6 +33,10 @@ The context manifest also maps the Git-owned memory and integration READMEs: `re
 
 The reusable Git source set `../templates/context/` is published only through the reviewed `scripts/publish-context-templates.py` installer. After merge, run `--apply` explicitly on Ubuntu and verify `--check` against `/opt/agent-tools/templates/context/`. The managed snapshot includes `.managed-context.json` for version/hash provenance and is not a runtime configuration or an available `agent-context` command.
 
+## Context metadata schemas (ABR-72)
+
+This manifest and its README headers now follow the versioned `templates/context/context-manifest.schema.json` and `context-frontmatter.schema.json` contracts. The Git-owned `scripts/validate-context-contract.py` checks document ID uniqueness, declared dependencies/cycles, safe relative paths and platform-aware root override semantics. A named `AGENT_CONTEXT_*_ROOT` environment override takes priority over an optional platform default, then the declared root default; the path must be native absolute and validation does not create missing host directories. The [schema policy](../docs/blueprints/agent-context/CONTEXT_SCHEMA.md) documents portability and boundaries. The resolver itself remains a later milestone.
+
 ## Update discipline
 
 Update this README and its manifest together when document IDs, aliases, source paths, dependencies, or bootstrap semantics change. Update nearest owning READMEs in the same PR as behavioral, configuration, security, routing, or deployment changes. Context metadata does **not** authorize filesystem access, credential use, code execution, or deployments.

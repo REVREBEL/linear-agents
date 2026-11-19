@@ -24,7 +24,8 @@ SCHEMA_VERSION = 1
 TYPES = {".md", ".json", ".yaml", ".yml"}
 REQUIRED = {
     "README.md", "README.template.md", "host-root.README.template.md",
-    "context-frontmatter.schema.json", "agent-profile.entry.schema.json",
+    "context-frontmatter.schema.json", "context-manifest.schema.json",
+    "agent-profile.entry.schema.json",
     "agent-profile.v2.template.yaml", "bridge-runtime-registry.v2-entry.template.json",
     "profile-mapping.md", "host-roots/README.md",
     "host-roots/agents/README.md", "host-roots/agent-tools/README.md",

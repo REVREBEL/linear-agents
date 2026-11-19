@@ -26,8 +26,8 @@ class TemplatePublisherTests(unittest.TestCase):
         self.files, self.expected = publisher.reviewed_sources()
 
     def test_git_sources_are_versioned_and_complete(self):
-        self.assertGreaterEqual(len(self.files), 15)
-        self.assertEqual(len(publisher.REQUIRED), 15)
+        self.assertGreaterEqual(len(self.files), 16)
+        self.assertEqual(len(publisher.REQUIRED), 16)
         self.assertTrue(publisher.REQUIRED.issubset(self.files))
         self.assertEqual(len(self.expected["sourceCommit"]), 40)
         self.assertEqual(self.expected["templateSet"], "agent-context")
