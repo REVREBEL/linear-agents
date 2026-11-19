@@ -67,7 +67,7 @@ class AgentContextInstallerTests(unittest.TestCase):
             ("AGENT_CONTEXT_GLOBAL_TOOLS_ROOT", "global-tools"),
         ):
             root = self.root / folder
-            root.mkdir()
+            root.mkdir(exist_ok=True)
             shutil.copy2(
                 ROOT / "templates/context/host-roots" / folder / "README.md",
                 root / "README.md",
