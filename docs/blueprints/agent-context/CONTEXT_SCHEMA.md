@@ -25,7 +25,7 @@ Non-repository roots use stable symbolic aliases, an `environment` variable **na
 
 For example, the root `host-agents` may retain its reviewed Linux `default: /opt/agents` while a developer sets `AGENT_CONTEXT_AGENTS_ROOT` on another host. Alternatively, a project may add `platformDefaults.win32` as a **reviewed, machine-appropriate absolute Windows path**; quote Windows backslashes carefully in YAML. The canonical Agent Bridge manifest intentionally does not invent Windows or Mac installations. Optional roots may be absent on a machine; a missing directory does not authorize a new directory creation.
 
-The C1 `select_host_root` helper **selects an absolute path string only**. It does not check availability or resolve contents. C2–C5 own CLI behavior, real root discovery, symlink and filesystem safety, and source-linked retrieval.
+The C1 `select_host_root` helper **selects an absolute path string only**. It does not check availability or resolve contents. C2 provides a portable, validation-only CLI entrypoint and repository discovery; C3–C5 own recursive document retrieval, root availability checks, stronger filesystem safety, and source-linked output.
 
 ## Document aliases, frontmatter and dependencies
 

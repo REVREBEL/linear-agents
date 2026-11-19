@@ -24,6 +24,10 @@ on:
       - 'agents/registry.schema.json'
       - 'scripts/validate-context-blueprint.py'
       - 'scripts/context_contract.py'
+      - 'scripts/agent_context_cli.py'
+      - 'scripts/install-agent-context.py'
+      - 'scripts/test_agent_context_cli.py'
+      - 'scripts/test_install_agent_context.py'
       - 'scripts/validate-context-contract.py'
       - 'scripts/test_context_contract.py'
       - 'scripts/reconcile-host-root-readmes.py'
@@ -63,6 +67,12 @@ jobs:
         run: python scripts/validate-context-contract.py
       - name: Test Context v1 metadata and cross-platform aliases
         run: python scripts/test_context_contract.py
+      - name: Verify portable Agent Context CLI
+        run: python scripts/test_agent_context_cli.py
+      - name: Validate reviewed Agent Context CLI artifact
+        run: python scripts/install-agent-context.py --validate
+      - name: Test guarded Agent Context CLI installation
+        run: python scripts/test_install_agent_context.py
       - name: Test project-local context bootstrap
         run: python scripts/test_agent_context_bootstrap.py
       - name: Test owning README context metadata

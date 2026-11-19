@@ -1,6 +1,6 @@
-# ABR-66: tracked bootstrap declaration only; the agent-context CLI is not yet installed.
+# Context v1 metadata declaration. ABR-73 provides CLI validation; C3 adds retrieval.
 # Paths under the "repo" root are relative to this project's root (the .agents/ parent).
-# Optional host roots may be absent until ABR-69 and are not loaded by this manifest.
+# Host roots are optional; existence and source retrieval belong to C3-C5.
 contextVersion: 1
 project: agent-bridge
 roots:
