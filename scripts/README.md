@@ -9,6 +9,12 @@ This directory contains **versioned project commands and their tests**. It is no
 - `*.test.mjs` are the regression suites invoked by `package.json`.
 - Remaining command helpers are retained where `package.json`, the bridge or integration tests reference them.
 
+## Staged CLI inventory reconciliation (ABR-63)
+
+`reconcile-agent-runtimes.py` reads the reviewed **Git** source at `templates/context/agent-runtimes.staged.json` and checks the independent, non-dispatching **host** snapshot at `/opt/agents/registry/agent-runtimes.json`. The default and `--check` modes are read-only; `--validate` checks the reviewed source, `--probe` inspects path presence only, and `--render` prints the desired JSON. `--apply` explicitly backs up and atomically replaces only an existing, disabled, schema-v1 staged file after review/merge. Run `python3 scripts/test_reconcile_agent_runtimes.py` for the isolated backup/drift/safety regression tests. See [the host inventory guide](../docs/blueprints/agent-context/RUNTIME_INVENTORY.md).
+
+This script does **not** deploy a Worker, enable an agent, modify a CLI profile, or repair the separate `agent-exec` wrapper managed under ABR-54.
+
 ## Host-only infrastructure
 
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.
