@@ -5,6 +5,9 @@ on:
     paths:
       - '.agents/README.md'
       - '.agents/context.yaml'
+      - 'agents/README.md'
+      - 'bridge/README.md'
+      - 'jobs/README.md'
       - 'docs/blueprints/agent-context/**'
       - 'templates/context/**'
       - 'agents/agent-registry-schema.json'
