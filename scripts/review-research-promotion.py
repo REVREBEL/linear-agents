@@ -157,6 +157,12 @@ def verify_worker(root, target, record):
     return config.relative_to(root).as_posix()
 
 
+def require_unversioned_research(research, schema):
+    """Do not allow research profile versioning without a reviewed migration."""
+    if "profileVersion" in research or "profileVersion" in schema.get("properties", {}):
+        refuse("profileVersion requires a separately reviewed research schema migration")
+
+
 def load_research(root, candidate_id):
     if not re.fullmatch(r"[a-z][a-z0-9-]+", candidate_id):
         refuse("Invalid candidate ID")
@@ -167,6 +173,7 @@ def load_research(root, candidate_id):
     research = yaml.safe_load(path.read_text(encoding="utf-8"))
     schema = json.loads((root / "templates/context/agent-profile.entry.schema.json").read_text())
     Draft202012Validator(schema).validate(research)
+    require_unversioned_research(research, schema)
     catalog = yaml.safe_load((root / "agents/agent-registry.yaml").read_text())
     matches = [a for a in catalog["agents"] if a.get("id") == candidate_id]
     if research.get("id") != candidate_id or len(matches) != 1 or matches[0] != research:
