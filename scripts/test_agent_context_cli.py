@@ -17,7 +17,7 @@ class ContextCliTests(unittest.TestCase):
     def test_help_and_version_are_portable(self):
         for args, text in (
             (["--help"], "validate"),
-            (["--version"], "agent-context 0.1.0"),
+            (["--version"], "agent-context 0.2.0"),
         ):
             with self.subTest(args=args):
                 outcome = subprocess.run(
@@ -107,13 +107,34 @@ class ContextCliTests(unittest.TestCase):
         self.assertIn("agent-context:", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
-    def test_unsupported_commands_are_not_implemented_prematurely(self):
+    def test_unknown_selector_is_rejected(self):
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), "--topic", "profiles"],
+            [sys.executable, str(SCRIPT), "--not-an-option", "profiles"],
             capture_output=True, text=True,
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("invalid choice", result.stderr)
+        self.assertIn("unrecognized arguments", result.stderr)
+
+    def test_validate_rejects_selection_flags(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "validate", "--topic", "profiles"],
+            capture_output=True, text=True, cwd=ROOT,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("validate does not accept", result.stderr)
+
+    def test_explain_reports_source_reasons(self):
+        env = os.environ.copy()
+        env.pop("AGENT_CONTEXT_REPO_ROOT", None)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "explain", "--topic", "jobs", "--format", "json"],
+            capture_output=True, text=True, cwd=ROOT, env=env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        import json
+        bundle = json.loads(result.stdout)
+        self.assertTrue(any(item["id"] == "repo.jobs" for item in bundle["documents"]))
+        self.assertTrue(all("content" not in item for item in bundle["documents"]))
 
 
 if __name__ == "__main__":
