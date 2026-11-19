@@ -62,6 +62,15 @@ class HandoffContractTests(unittest.TestCase):
             self.envelope = self.create()
         return copy.deepcopy(self.envelope)
 
+    @staticmethod
+    def rehash(envelope):
+        envelope["contextSha256"] = handoff.hash_object(envelope["contextBundle"])
+        envelope["handoffSha256"] = handoff.hash_object({
+            key: value for key, value in envelope.items()
+            if key != "handoffSha256"
+        })
+        return envelope
+
     def run_cli(self, *args):
         env = os.environ.copy()
         env.pop("AGENT_CONTEXT_REPO_ROOT", None)
@@ -251,10 +260,80 @@ class HandoffContractTests(unittest.TestCase):
             k: v for k, v in bundle.items() if k != "handoffSha256"
         })
         handoff.verify_handoff(bundle, allow_partial=True)
-        with self.assertRaisesRegex(ValueError, "not an optional host"):
+        with self.assertRaisesRegex(ValueError, "Selected context documents or dependency closure incomplete"):
             handoff.verify_handoff(
                 bundle, repo_root=ROOT, check_source=True, allow_partial=True
             )
+
+
+    def test_selected_leaf_cannot_be_dropped_with_recomputed_hashes(self):
+        bundle = self.snapshot()
+        docs = bundle["contextBundle"]["documents"]
+        docs[:] = [doc for doc in docs if doc["id"] != "repo.bridge"]
+        self.rehash(bundle)
+        # This was accepted by the former source verifier, despite partial=false.
+        handoff.verify_handoff(bundle)
+        with self.assertRaisesRegex(ValueError, "dependency closure incomplete"):
+            handoff.verify_handoff(bundle, repo_root=ROOT, check_source=True)
+
+    def test_selected_repo_leaf_cannot_be_disguised_as_partial(self):
+        bundle = self.snapshot()
+        docs = bundle["contextBundle"]["documents"]
+        removed = next(doc for doc in docs if doc["id"] == "repo.bridge")
+        docs.remove(removed)
+        bundle["contextBundle"]["missingDocuments"].append({
+            "id": removed["id"], "root": removed["root"],
+            "sourcePath": removed["sourcePath"], "reasons": removed["reasons"],
+            "error": "claimed unavailable",
+        })
+        bundle["contextBundle"]["partial"] = True
+        self.rehash(bundle)
+        with self.assertRaisesRegex(ValueError, "not an optional host"):
+            handoff.verify_handoff(
+                bundle, allow_partial=True, check_source=True, repo_root=ROOT
+            )
+
+    def test_pinned_seed_reasons_cannot_be_forged(self):
+        bundle = self.snapshot()
+        bundle["contextBundle"]["documents"][-1]["reasons"] = ["topic: deployment"]
+        self.rehash(bundle)
+        with self.assertRaisesRegex(ValueError, "inclusion reasons"):
+            handoff.verify_handoff(bundle, repo_root=ROOT, check_source=True)
+
+    def test_unmatched_paths_require_pinned_selection_evidence(self):
+        bundle = self.snapshot()
+        bundle["contextBundle"]["unmatchedPaths"] = ["injected/unknown.txt"]
+        self.rehash(bundle)
+        with self.assertRaisesRegex(ValueError, "unmatched-path evidence"):
+            handoff.verify_handoff(bundle, repo_root=ROOT, check_source=True)
+
+    def test_other_selectors_replay_from_pinned_source(self):
+        cases = (
+            {"path": "agents/profiles/test.yaml"},
+            {"path": str(self.roots[0] / "README.md")},
+            {},
+        )
+        for selection in cases:
+            with self.subTest(selection=selection):
+                bundle = handoff.create_handoff(
+                    ROOT, "REVREBEL/linear-agents", self.message,
+                    environ=self.env, **selection,
+                )
+                handoff.verify_handoff(bundle, repo_root=ROOT, check_source=True)
+
+    def test_changed_files_selector_replays_owners_and_unmatched_paths(self):
+        paths = ["agents/profiles/agent.yaml", "unknown/context.txt"]
+        with mock.patch("context_resolver._changed_files", return_value=paths):
+            bundle = handoff.create_handoff(
+                ROOT, "REVREBEL/linear-agents", self.message,
+                files_changed=True, environ=self.env,
+            )
+        self.assertEqual(bundle["contextBundle"]["unmatchedPaths"], [paths[1]])
+        handoff.verify_handoff(bundle, repo_root=ROOT, check_source=True)
+        bundle["contextBundle"]["selection"]["value"] = paths[:1]
+        self.rehash(bundle)
+        with self.assertRaisesRegex(ValueError, "unmatched-path evidence"):
+            handoff.verify_handoff(bundle, repo_root=ROOT, check_source=True)
 
     def test_duplicate_context_ids_rejected(self):
         bundle = self.snapshot()

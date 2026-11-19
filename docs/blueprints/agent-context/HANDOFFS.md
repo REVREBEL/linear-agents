@@ -30,7 +30,7 @@ README modifications not committed to Git, missing document bodies and inconsist
 
 `python3 scripts/agent-context-handoff.py verify --input /tmp/context-handoff.md --repo-root /path/to/checkout --check-source`
 
-The receiver checks version, fields, dependency references, full README bodies and hashes. With --check-source it additionally verifies each README's exact bytes from the pinned Git commit, original last-modifying SHA, and manifest ownership using Git objects. The checkout can be located elsewhere and the original host READMEs need not exist. If the pinned commit is unavailable, verification fails rather than silently switching to the current HEAD.
+The receiver checks version, fields, dependency references, full README bodies and hashes. With --check-source it reconstructs the complete seed selection from the pinned Git manifest and all source-owned README frontmatter, then verifies the exact dependency closure, document order, inclusion reasons, and unmatched-path evidence. Every selected document must be present or explicitly missing under the optional-host partial policy; a removed leaf is rejected even if an attacker recomputes the envelope hashes. It also checks each present README's exact pinned Git bytes, last-modifying SHA, and manifest ownership using Git objects. The checkout can be located elsewhere and the original host READMEs need not exist. If the pinned commit is unavailable, verification fails rather than silently switching to the current HEAD.
 
 Hashes are *integrity checks*, not cryptographic signatures or proof of sender identity; source-linked content does not authorize Bridge execution, credentials, model changes or profile permissions.
 

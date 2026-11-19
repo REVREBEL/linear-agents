@@ -7,14 +7,18 @@ entire JSON artifact. It is data, not a runtime authorization or signature.
 import argparse
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import subprocess
 import sys
 
 import yaml
-from context_contract import validate_relative_document_path
-from context_resolver import resolve_context
+from jsonschema import Draft202012Validator
+from context_contract import (
+    HOST_SOURCE_DOCS, load_unique_yaml, validate_applies_to_pattern,
+    validate_relative_document_path,
+)
+from context_resolver import _dependency_order, _pattern_matches, resolve_context
 
 VERSION = 1
 BEGIN = "<!-- BEGIN AGENT-CONTEXT-HANDOFF/V1 -->"
@@ -177,6 +181,150 @@ def validate_bundle(bundle, *, allow_partial=False):
                 raise ValueError("Context documents are not dependency-first")
 
 
+
+def pinned_context_index(root, commit, manifest):
+    """Rebuild the selector's full metadata index from immutable Git objects."""
+    schema = json.loads(git(
+        root, "show", commit + ":templates/context/context-frontmatter.schema.json"
+    ))
+    validator = Draft202012Validator(schema)
+    index, sources = {}, {}
+    for doc_id, locator in sorted(manifest["documents"].items()):
+        source_path = (locator["path"] if locator["root"] == "repo"
+                       else HOST_SOURCE_DOCS.get(doc_id))
+        if source_path is None:
+            continue  # Same unindexed optional host-document policy as C3.
+        raw = git(root, "show", commit + ":" + source_path)
+        content = raw.decode("utf-8")
+        if not content.startswith("---\n") or "\n---\n" not in content[4:]:
+            raise ValueError("Pinned source frontmatter missing: " + doc_id)
+        metadata = load_unique_yaml(content[4:].split("\n---\n", 1)[0])
+        if list(validator.iter_errors(metadata)):
+            raise ValueError("Invalid pinned source metadata: " + doc_id)
+        context = metadata["context"]
+        if context["id"] != doc_id:
+            raise ValueError("Pinned source context ID mismatch: " + doc_id)
+        for pattern in context["applies_to"]:
+            validate_applies_to_pattern(pattern)
+        index[doc_id] = context
+        sources[doc_id] = (source_path, raw)
+    return index, sources
+
+
+def owner_ids(index, manifest, locations):
+    """Replay C3's longest-applicability-prefix selection without host files."""
+    scores = {}
+    for alias, relative in locations:
+        for doc_id, metadata in index.items():
+            if manifest["documents"][doc_id]["root"] != alias:
+                continue
+            for pattern in metadata["applies_to"]:
+                if _pattern_matches(relative, pattern):
+                    prefix = pattern.split("*", 1)[0].split("?", 1)[0]
+                    scores[doc_id] = max(scores.get(doc_id, -1), len(prefix))
+    if not scores:
+        return []
+    best = max(scores.values())
+    return sorted(doc_id for doc_id, score in scores.items() if score == best)
+
+
+def replay_path_locations(path, manifest, bundle):
+    """Infer original absolute roots only from carried source-path evidence."""
+    if not isinstance(path, str) or not path or "\x00" in path:
+        raise ValueError("Invalid context selector path")
+    flavor = (PureWindowsPath if PureWindowsPath(path).is_absolute()
+              else PurePosixPath)
+    selected = flavor(path)
+    if ".." in selected.parts:
+        raise ValueError("Unsafe context selector path")
+    if not selected.is_absolute():
+        return [("repo", validate_relative_document_path(path))]
+    roots = {}
+    for item in bundle["documents"] + bundle["missingDocuments"]:
+        locator = manifest["documents"].get(item["id"])
+        if locator is None:
+            raise ValueError("Unknown context source anchor: " + item["id"])
+        source = flavor(item["sourcePath"])
+        suffix = flavor(locator["path"]).parts
+        if (not source.is_absolute() or len(source.parts) <= len(suffix)
+                or source.parts[-len(suffix):] != suffix):
+            # A foreign platform's source path cannot anchor this selector.
+            continue
+        base = source.parents[len(suffix) - 1]
+        alias = locator["root"]
+        if alias in roots and roots[alias] != base:
+            raise ValueError("Inconsistent original context root: " + alias)
+        roots[alias] = base
+    locations = []
+    for alias, root in roots.items():
+        if selected.is_relative_to(root):
+            relative = selected.relative_to(root).as_posix()
+            if relative == "." and alias != "repo":
+                relative = "README.md"
+            locations.append((alias, relative))
+    if not locations:
+        raise ValueError("Cannot replay absolute selector from source-path provenance")
+    return locations
+
+
+def verify_pinned_selection(manifest, index, bundle):
+    """Require exact selected seeds, dependency closure, order and reasons."""
+    selector = bundle["selection"]
+    mode, value = selector["mode"], selector["value"]
+    seed_reasons, unmatched = {}, []
+
+    def add(doc_id, reason):
+        seed_reasons.setdefault(doc_id, set()).add(reason)
+
+    if mode == "default":
+        expected = manifest["entrypoints"]["default"]
+        if value != expected:
+            raise ValueError("Pinned default selector differs from manifest")
+        add(expected, "entrypoint: default")
+    elif mode == "topic":
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Invalid topic selector")
+        for doc_id, metadata in index.items():
+            if value.casefold() in (topic.casefold() for topic in metadata["topics"]):
+                add(doc_id, "topic: " + value)
+    elif mode == "path":
+        for doc_id in owner_ids(
+            index, manifest, replay_path_locations(value, manifest, bundle)
+        ):
+            add(doc_id, "path: " + value)
+    elif mode == "files-changed":
+        if (not isinstance(value, list) or not value
+                or value != sorted(set(value))):
+            raise ValueError("Invalid changed-files selector")
+        for path in value:
+            validate_relative_document_path(path)
+            owners = owner_ids(index, manifest, [("repo", path)])
+            if not owners:
+                unmatched.append(path)
+            for doc_id in owners:
+                add(doc_id, "changed file: " + path)
+    else:
+        raise ValueError("Unknown context selector")
+    if not seed_reasons:
+        raise ValueError("Pinned selector resolves to no context documents")
+    order, reasons = _dependency_order(seed_reasons, index)
+    if bundle["unmatchedPaths"] != unmatched:
+        raise ValueError("Context unmatched-path evidence differs from pinned selection")
+    documents = bundle["documents"]
+    missing = bundle["missingDocuments"]
+    present_ids = {item["id"] for item in documents}
+    missing_ids = {item["id"] for item in missing}
+    if ([item["id"] for item in documents] !=
+            [doc_id for doc_id in order if doc_id in present_ids]
+            or [item["id"] for item in missing] !=
+            [doc_id for doc_id in order if doc_id in missing_ids]
+            or present_ids | missing_ids != set(order)):
+        raise ValueError("Selected context documents or dependency closure incomplete")
+    for item in documents + missing:
+        if item["reasons"] != reasons[item["id"]]:
+            raise ValueError("Context inclusion reasons differ from pinned selection")
+
+
 def verify_handoff(envelope, *, allow_partial=False, repo_root=None,
                    check_source=False):
     fields = {
@@ -225,6 +373,8 @@ def verify_handoff(envelope, *, allow_partial=False, repo_root=None,
         bundle = envelope["contextBundle"]
         if manifest["contextVersion"] != bundle["contextVersion"] or manifest["project"] != bundle["project"]:
             raise ValueError("Pinned context manifest version/project mismatch")
+        index, sources = pinned_context_index(root, commit, manifest)
+        verify_pinned_selection(manifest, index, bundle)
         for item in bundle["documents"]:
             origin = manifest["documents"].get(item["id"])
             if origin is None or origin["root"] != item["root"]:
@@ -234,22 +384,16 @@ def verify_handoff(envelope, *, allow_partial=False, repo_root=None,
             else:
                 # Host README bytes are linked to committed managed templates,
                 # not to a private /opt runtime root on the original host.
-                from context_contract import HOST_SOURCE_DOCS
                 expected = HOST_SOURCE_DOCS.get(item["id"])
             if item["gitSourcePath"] != expected:
                 raise ValueError("Pinned Git source path does not match context manifest")
-            raw = git(root, "show", commit + ":" + expected)
-            if raw != item["content"].encode("utf-8"):
+            if item["id"] not in sources:
+                raise ValueError("Missing pinned metadata for context ID: " + item["id"])
+            if sources[item["id"]][1] != item["content"].encode("utf-8"):
                 raise ValueError("Pinned Git source bytes do not match handoff content")
-            source = raw.decode("utf-8")
-            if not source.startswith("---\n") or "\n---\n" not in source[4:]:
-                raise ValueError("Pinned source frontmatter missing")
-            declared = yaml.safe_load(source[4:].split("\n---\n", 1)[0])
-            metadata = declared.get("context") if isinstance(declared, dict) else None
-            if (not isinstance(metadata, dict)
-                    or metadata.get("id") != item["id"]
-                    or metadata.get("title") != item["title"]
-                    or sorted(metadata.get("requires", [])) != item["requires"]):
+            metadata = index[item["id"]]
+            if (metadata["title"] != item["title"]
+                    or sorted(metadata["requires"]) != item["requires"]):
                 raise ValueError("Pinned source metadata differs from handoff dependencies")
             source_commit = git(
                 root, "log", "-1", "--format=%H", commit, "--", expected
