@@ -19,6 +19,8 @@ on:
       - 'agents/registry.json'
       - 'agents/registry.schema.json'
       - 'scripts/validate-context-blueprint.py'
+      - 'scripts/reconcile-host-root-readmes.py'
+      - 'scripts/test_reconcile_host_root_readmes.py'
       - 'scripts/test_agent_context_bootstrap.py'
       - 'scripts/test_context_readme_frontmatter.py'
       - 'scripts/test_context_profile_version.py'
@@ -51,6 +53,10 @@ jobs:
         run: python scripts/test_agent_context_bootstrap.py
       - name: Test owning README context metadata
         run: python scripts/test_context_readme_frontmatter.py
+      - name: Validate Git-owned Ubuntu host README sources
+        run: python scripts/reconcile-host-root-readmes.py --validate
+      - name: Test controlled Ubuntu README reconciliation
+        run: python scripts/test_reconcile_host_root_readmes.py
       - name: Test research profile-version migration gate
         run: python scripts/test_context_profile_version.py
       - name: Validate disabled-only host runtime inventory source
