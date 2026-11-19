@@ -208,7 +208,7 @@ def propose(root, candidate_id, review):
     if key not in KIND or bridge["profileKind"] != KIND[key]:
         refuse("Unsupported research kind/transport translation")
     runtime = copy.deepcopy(bridge["runtimeContract"])
-    if runtime.get("transport") != TRANSPORT[key]:
+    if runtime.get("transport") != TRANSPORT[key[1]]:
         refuse("Transport mapping not approved")
     if research["runtime"]["executionHost"] != "ubuntu_agent_server" or runtime.get("executionHost") != "bridge_service":
         refuse("Unsupported host mapping")
