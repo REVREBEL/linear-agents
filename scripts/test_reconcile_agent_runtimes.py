@@ -7,6 +7,7 @@ from pathlib import Path
 import stat
 import tempfile
 import unittest
+from unittest import mock
 
 MODULE_PATH = Path(__file__).with_name("reconcile-agent-runtimes.py")
 spec = importlib.util.spec_from_file_location("agent_runtime_reconcile", MODULE_PATH)
@@ -53,6 +54,24 @@ class HostRuntimeInventoryTests(unittest.TestCase):
         backups = list(self.target.parent.glob("agent-runtimes.json.backup-*"))
         self.assertEqual(len(backups), 1)
         self.assertEqual(reconcile.read_json(backups[0]), old)
+
+    def test_apply_preserves_group_or_refuses_before_replacement(self):
+        old = reconcile.read_json(self.target)
+        old["defaultNodeHome"] = "/opt/volta"
+        self.target.write_text(json.dumps(old), encoding="utf-8")
+        actual_stat = Path.stat
+        target_stat = actual_stat(self.target)
+        simulated = mock.Mock(wraps=target_stat)
+        simulated.st_mode = target_stat.st_mode
+        simulated.st_uid = target_stat.st_uid
+        simulated.st_gid = target_stat.st_gid + 10000
+        def fake_stat(path, *args, **kwargs):
+            return simulated if path == self.target else actual_stat(path, *args, **kwargs)
+        with mock.patch.object(Path, "stat", fake_stat), \
+             mock.patch.object(reconcile.os, "chown", side_effect=PermissionError("group denied")):
+            with self.assertRaises(PermissionError):
+                reconcile.install(self.target, self.source)
+        self.assertEqual(reconcile.read_json(self.target), old)
 
     def test_refuses_to_replace_dispatch_enabled_target(self):
         old = reconcile.read_json(self.target)
