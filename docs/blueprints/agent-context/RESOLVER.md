@@ -24,7 +24,11 @@ No selector uses the `entrypoints.default` alias (`repo.bootstrap`) and follows 
 - `--path` normally accepts a root-relative POSIX repository path; an absolute path is permitted only if it falls inside a configured root, including an explicit `AGENT_CONTEXT_*_ROOT` host override. The best/nearest owner has the longest concrete prefix of a matching `context.applies_to` pattern. Filesystem contents at the requested path are not read.
 - `--files-changed` uses Git to determine tracked and untracked paths, then performs the same most-specific-owner lookup per path. Paths with no owner are explicitly listed in `unmatchedPaths`. If no path has an owner or there are no changed files, the command reports an error instead of silently returning default context.
 - Every source-backed required document is included recursively, once, in deterministic dependency-first order. All distinct inclusion reasons are retained and sorted (e.g. `topic: profiles` or `required by: repo.bridge`).
-- The resolver rejects an unavailable selected dependency or a host README that differs from its reviewed Git source; it never quietly drops source text. C4 provides the separate stricter filesystem-security suite and opt-in partial-result policy.
+- The resolver strictly rejects missing selected dependencies and README drift by default. C4 adds symlink/path hardening and explicit `--allow-partial` for **missing optional host docs only**, recorded under `partial` and `missingDocuments`; see [C4 safety policy](SAFETY.md).
+
+## C4 safety and explicit partial results (ABR-75)
+
+The default resolver refuses absent required roots, missing selected source documents, symlink escapes, invalid dependency graphs, malformed source metadata, or drifted host READMEs. `--allow-partial` is a deliberate opt-in for genuinely missing **optional host documentation only**, never for unsafe paths or invalid metadata. It preserves all available README content in full and reports omitted IDs, expected source paths, reasons and errors in `missingDocuments`, with `partial: true` in both Markdown and JSON formats. `validate` does not support partial results. See [SAFETY.md](SAFETY.md) for the exact classification and tests.
 
 ## Provenance and contents
 
@@ -38,4 +42,4 @@ Neither `gitSha`, a README, a research profile, nor a topic match grants agent e
 
 Run `python3 scripts/test_context_resolver.py`, `python3 scripts/test_agent_context_cli.py` and `python3 scripts/test_install_agent_context.py` in a clean reviewed checkout. Tests use temporary host roots and Git fixtures so no real native CLI profile or service state changes.
 
-After the PR merges, run the reviewed `scripts/install-agent-context.py --apply` and `--check` on Ubuntu, confirm the direct CLI retrieves `--topic profiles --format json`, and reconcile the separately Git-managed `templates/context/host-roots/agent-tools/README.md` through `scripts/reconcile-host-root-readmes.py`. Versioned template publication only needs refreshing if the tracked template source changes. C4 and C5 cover stronger unsafe-root protections, optional partial output, cross-platform source retrieval and acceptance tests.
+After an approved resolver change merges, run the reviewed `scripts/install-agent-context.py --apply` and `--check` on Ubuntu, then confirm direct CLI retrieval and that all available README contents remain complete. If a Git-owned host README changes, reconcile it separately through `scripts/reconcile-host-root-readmes.py`. C4's path/partial behavior is documented in [SAFETY.md](SAFETY.md); C5 owns expanded cross-platform acceptance.
