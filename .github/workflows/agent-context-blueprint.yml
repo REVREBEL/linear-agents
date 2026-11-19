@@ -5,6 +5,10 @@ on:
     paths:
       - 'docs/blueprints/agent-context/**'
       - 'templates/context/**'
+      - 'agents/agent-registry-schema.json'
+      - 'agents/agent-registry.yaml'
+      - 'agents/registry.json'
+      - 'agents/registry.schema.json'
       - 'scripts/validate-context-blueprint.py'
       - '.github/workflows/agent-context-blueprint.yml'
   workflow_dispatch:
