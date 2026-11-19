@@ -124,10 +124,12 @@ def install(target, desired):
             stream.flush()
             os.fsync(stream.fileno())
         os.chmod(temporary, stat.S_IMODE(metadata.st_mode))
-        if os.geteuid() == 0:
+        temporary_metadata = os.stat(temporary)
+        if (temporary_metadata.st_uid, temporary_metadata.st_gid) != (metadata.st_uid, metadata.st_gid):
             os.chown(temporary, metadata.st_uid, metadata.st_gid)
-        elif (metadata.st_uid != os.geteuid()):
-            fail("Target owner differs; run with authorized host file permissions")
+        temporary_metadata = os.stat(temporary)
+        if (temporary_metadata.st_uid, temporary_metadata.st_gid) != (metadata.st_uid, metadata.st_gid):
+            fail("Cannot preserve target ownership; run with authorized host file permissions")
         os.replace(temporary, target)
     finally:
         if os.path.exists(temporary):
