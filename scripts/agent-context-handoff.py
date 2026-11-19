@@ -242,9 +242,9 @@ def verify_handoff(envelope, *, allow_partial=False, repo_root=None,
             if raw != item["content"].encode("utf-8"):
                 raise ValueError("Pinned Git source bytes do not match handoff content")
             source = raw.decode("utf-8")
-            if not source.startswith("---\\n") or "\\n---\\n" not in source[4:]:
+            if not source.startswith("---\n") or "\n---\n" not in source[4:]:
                 raise ValueError("Pinned source frontmatter missing")
-            declared = yaml.safe_load(source[4:].split("\\n---\\n", 1)[0])
+            declared = yaml.safe_load(source[4:].split("\n---\n", 1)[0])
             metadata = declared.get("context") if isinstance(declared, dict) else None
             if (not isinstance(metadata, dict)
                     or metadata.get("id") != item["id"]
