@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - '.agents/README.md'
+      - 'agents/README.md'
+      - 'bridge/README.md'
       - '.agents/context.yaml'
       - 'AGENTS.md'
       - 'agents/README.md'
@@ -18,6 +20,7 @@ on:
       - 'agents/registry.schema.json'
       - 'scripts/validate-context-blueprint.py'
       - 'scripts/test_agent_context_bootstrap.py'
+      - 'scripts/test_context_readme_frontmatter.py'
       - 'scripts/test_context_profile_version.py'
       - 'scripts/reconcile-agent-runtimes.py'
       - 'scripts/review-research-promotion.py'
@@ -46,6 +49,8 @@ jobs:
         run: python scripts/validate-context-blueprint.py
       - name: Test project-local context bootstrap
         run: python scripts/test_agent_context_bootstrap.py
+      - name: Test owning README context metadata
+        run: python scripts/test_context_readme_frontmatter.py
       - name: Test research profile-version migration gate
         run: python scripts/test_context_profile_version.py
       - name: Validate disabled-only host runtime inventory source
