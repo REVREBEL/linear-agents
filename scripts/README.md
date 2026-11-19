@@ -19,6 +19,10 @@ This script does **not** deploy a Worker, enable an agent, modify a CLI profile,
 
 `review-research-promotion.py` takes a canonical research candidate ID and an independently reviewed JSON mapping record. It compiles and prints a **non-executable Registry v2 proposal with provenance**; it never changes `agents/registry.json`, provider runtime state, authorization, or a Worker. The deliberately incomplete template is `templates/context/research-promotion.review.template.json`; the contract and approval limitations are documented in [PROMOTION.md](../docs/blueprints/agent-context/PROMOTION.md). Run `python3 scripts/test_review_research_promotion.py` for offline regressions.
 
+## Research execution-authority boundary (ABR-78 / D2)
+
+`check-research-authority.mjs` audits tracked Bridge/Worker/routing/provider executable sources and the two Registry v2 reader scripts. It refuses direct imports/references to research YAML, candidate files, staged host manifests, proposal payloads or context templates. `test_research_execution_boundary.py` uses fake high-privilege research candidates to prove Worker discovery remains confined to `agents/registry.json`, and checks the admission/source separation. Existing `test_review_research_promotion.py` tests show signing, model-allowlist and host-isolation claims stay descriptive while privileged mappings are rejected. All run in the dedicated [research boundary workflow](../.github/workflows/research-authority-boundary.yml) when relevant source changes. See [authority contract](../docs/blueprints/agent-context/RESEARCH_AUTHORITY.md); this is a source regression gate, not a runtime code-signature service.
+
 ## Versioned context-template publishing (ABR-71)
 
 `publish-context-templates.py` publishes **Git-reviewed, inert context templates** from `templates/context/` into `/opt/agent-tools/templates/context/`. This script owns the installation boundary; it is **not** an agent runner, a context resolver, or a profile deployment mechanism.
