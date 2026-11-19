@@ -29,7 +29,7 @@ The newer approved snapshot adds exactly one ID, **`colab-notebook-agent`**. The
 2. Maintain an individual YAML file in **`agents/profiles/candidates/<id>.yaml`** for every catalog entry; both representations must be semantically identical. Preserve the existing 14 individual files and add `colab-notebook-agent.yaml`.
 3. Preserve both historical attached snapshots unchanged under `docs/blueprints/agent-context/references/`; do not make the `v2`-named snapshot a second active catalog.
 4. Keep the existing research `AgentRegistryEntry` schema independent of the executable `agents/registry.schema.json` contract. Keep the compatibility schema mirror byte-identical until an explicit migration.
-5. Validate catalog IDs, unique entries, counts, historical 14-entry parity, latest approved snapshot parity and candidate file parity before merging later catalog changes. A future research update must first update the approved snapshot baseline by an explicit reviewed decision rather than bypassing the consistency check.
+5. Validate catalog IDs, unique entries, counts, historic 14→15 snapshot parity and **current catalog ↔ candidate file parity** before merging later changes. After this adoption, future reviewed research catalog revisions may advance without editing the immutable historical snapshots. If another snapshot is needed, capture a separate versioned reference.
 
 ## Dispatch and tooling boundary
 
