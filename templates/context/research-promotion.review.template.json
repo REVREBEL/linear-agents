@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "candidateId": "REPLACE_WITH_CANDIDATE_ID",
+  "researchSha256": "REPLACE_WITH_SHA256_OF_CANONICAL_CANDIDATE_YAML",
+  "approval": {
+    "decision": "REPLACE_WITH_APPROVED_AFTER_REVIEW",
+    "reviewer": "REPLACE_WITH_INDEPENDENT_REVIEWER",
+    "submittedBy": "REPLACE_WITH_SUBMITTER",
+    "reviewUrl": "https://github.com/REVREBEL/linear-agents/pull/REPLACE"
+  },
+  "verification": {
+    "model": {
+      "modelId": "REPLACE_WITH_VERIFIED_MODEL_ID",
+      "provider": "REPLACE_WITH_VERIFIED_MODEL_VENDOR",
+      "evidenceUrl": "https://github.com/REVREBEL/linear-agents/pull/REPLACE"
+    },
+    "runtime": {
+      "evidenceUrl": "https://github.com/REVREBEL/linear-agents/pull/REPLACE"
+    },
+    "worker": {
+      "workerHost": "REPLACE_WITH_VERIFIED_WORKER_HOST",
+      "tunnelHost": "REPLACE_WITH_VERIFIED_TUNNEL_HOST",
+      "configSha256": "REPLACE_WITH_SHA256_OF_WORKER_WRANGLER_JSONC",
+      "evidenceUrl": "https://github.com/REVREBEL/linear-agents/pull/REPLACE"
+    }
+  },
+  "bridge": {
+    "role": "coding",
+    "provider": "opencode",
+    "packageDir": "agents/coding/example-agent",
+    "worker": {
+      "directory": "agents/coding/example-agent/worker",
+      "config": "wrangler.jsonc",
+      "serviceTemplate": "linear-REPLACE-agent",
+      "prefixEnv": "EXAMPLE_PREFIX",
+      "kvEnv": "EXAMPLE_KV_NAMESPACE_ID",
+      "durableObject": "DELIVERY_COORDINATOR",
+      "deployedName": "linear-REPLACE-agent"
+    },
+    "execution": {
+      "runtime": "opencode",
+      "host": "bridge"
+    },
+    "linear": {
+      "appIdentity": "example-agent",
+      "credentialPrefix": "EXAMPLE"
+    },
+    "runtimeContract": {
+      "transport": "headless_cli",
+      "executionHost": "bridge_service",
+      "executable": {
+        "binaryEnv": "OPENCODE_BIN",
+        "argv": [
+          "run",
+          "--format",
+          "json",
+          "--model",
+          "ollama/example-model",
+          "{{PROMPT}}"
+        ]
+      },
+      "workspaceRootEnv": "WORKSPACE_ROOT",
+      "linearBridge": {
+        "workerHost": "REPLACE_WITH_VERIFIED_WORKER_HOST",
+        "tunnelHost": "REPLACE_WITH_VERIFIED_TUNNEL_HOST",
+        "supportedEvents": [
+          "session_created",
+          "session_prompted"
+        ],
+        "completionMode": "worker_callback"
+      }
+    },
+    "executionPolicy": {
+      "autonomy_level": "Advisor",
+      "memory_scope": "session_isolated",
+      "permissions": {
+        "sourceWrite": false,
+        "directoryMoves": false,
+        "gitCommit": false,
+        "gitPush": false,
+        "autoMerge": false,
+        "deployment": false
+      },
+      "security": {
+        "blast_radius": "Low",
+        "credential_model": "none",
+        "envStripPatterns": [
+          "REPLACE_WITH_REQUIRED_SECRET_ENV"
+        ],
+        "mcpToolAllowlist": [],
+        "handoff_targets": []
+      }
+    },
+    "targetPackageDir": "agents/coding/example-agent",
+    "profileKind": "cli_agent"
+  }
+}

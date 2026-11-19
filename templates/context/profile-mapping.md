@@ -2,6 +2,8 @@
 
 The research schema is authoritative at [`agent-profile.entry.schema.json`](agent-profile.entry.schema.json), mirrored byte-for-byte at `agents/agent-registry-schema.json` for existing tooling. The executable Registry v2 has its own source schema at `agents/registry.schema.json`; neither is a subtype of the other. Examples and CI must validate both independently and reject cross-contract substitution.
 
+**ABR-64 implementation:** [`scripts/review-research-promotion.py`](../../scripts/review-research-promotion.py) compiles a validated research entry and explicit independently approved, evidence-linked mapping into an **inert** Registry v2 proposal. It deliberately supports only reviewed `cli_agent`/`headless_cli` and `llm`/`direct_api` combinations, requires local Worker package/config digest and blocks unsafe commands and policy escalation. It does not write the executable registry. See [the promotion contract](../../docs/blueprints/agent-context/PROMOTION.md) and [the incomplete review template](research-promotion.review.template.json).
+
 This mapping is **conceptual and review-gated**. The two formats have independent schemas and must not be silently merged. `AgentRegistryEntry` from the attached `agent-registry-schema.json` is not the same as `#/$defs/agent` from the live `agents/registry.schema.json`.
 
 | NotebookLM research field | Bridge `agents/registry.json` | Review/translation requirement |
