@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -64,6 +65,18 @@ class DomainReadmeTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "dependency cycle"):
             validator.validate_domain_dependency_graph(graph, set(graph))
+
+    def test_rejects_cycle_through_existing_bridge_readme(self):
+        bridge = ROOT / "bridge/README.md"
+        original = Path.read_text
+        def read_text(path, *args, **kwargs):
+            text = original(path, *args, **kwargs)
+            if path == bridge:
+                text = text.replace("requires: [repo.agents,", "requires: [repo.memory, repo.agents,", 1)
+            return text
+        with mock.patch.object(Path, "read_text", read_text):
+            with self.assertRaisesRegex(ValueError, "dependency cycle"):
+                validator.validate_domain_readme_metadata(MANIFEST, SCHEMA)
 
     def test_manifest_entrypoints_reference_domain_roots(self):
         self.assertEqual(MANIFEST["entrypoints"]["memory"], "repo.memory")
