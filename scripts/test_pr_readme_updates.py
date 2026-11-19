@@ -26,6 +26,7 @@ class PrReadmeDisciplineTests(unittest.TestCase):
             "integrations/litellm", "agents",
             "agents/profiles/candidates", "scripts", "memory",
             "memory/migrations", "bridge", ".agents",
+            "infrastructure/cloudflare",
         ):
             self.write(f"{directory}/README.md", "# Owning README\n")
         for source in (
@@ -33,7 +34,7 @@ class PrReadmeDisciplineTests(unittest.TestCase):
             "integrations/litellm/runtime.mjs",
             "agents/registry.json", "scripts/utility.py",
             "memory/migrations/001.sql", "bridge/server/runner.mjs",
-            "package.json",
+            "package.json", "infrastructure/cloudflare/.terraform.lock.hcl",
         ):
             self.write(source, "original content\n")
         self.commit("baseline")
@@ -101,6 +102,23 @@ class PrReadmeDisciplineTests(unittest.TestCase):
         report = self.check()
         self.assertEqual(report["missing"][0]["readme"],
                          "memory/migrations/README.md")
+
+    def test_terraform_lockfile_change_requires_local_owner(self):
+        self.update("infrastructure/cloudflare/.terraform.lock.hcl")
+        report = self.check()
+        self.assertFalse(report["passed"])
+        self.assertEqual(
+            report["missing"][0]["readme"], "infrastructure/cloudflare/README.md"
+        )
+
+    def test_terraform_lockfile_and_owner_update_pass(self):
+        self.update("infrastructure/cloudflare/.terraform.lock.hcl")
+        self.update("infrastructure/cloudflare/README.md")
+        report = self.check()
+        self.assertTrue(report["passed"])
+        self.assertEqual(
+            report["covered"][0]["readme"], "infrastructure/cloudflare/README.md"
+        )
 
     def test_research_candidate_and_catalog_data_automatically_exempt(self):
         self.write("agents/profiles/candidates/beam.yaml", "id: beam\n")
@@ -199,6 +217,24 @@ class PrReadmeDisciplineTests(unittest.TestCase):
         report = policy.check_pr(self.repo, self.rev(), head)
         self.assertTrue(report["passed"])
         self.assertEqual(len(report["covered"]), 1)
+
+    def test_modified_file_uses_merge_base_owner_not_new_base_readme(self):
+        self.write("jobs/admission/sub/runtime.mjs", "original\n")
+        self.commit("track nested source before branch")
+        self.base = self.rev()
+        self.git("checkout", "-q", "-b", "feature")
+        self.update("jobs/admission/sub/runtime.mjs")
+        self.update("jobs/admission/README.md")
+        self.commit("feature updates prior owner")
+        head = self.rev()
+        self.git("checkout", "-q", "main")
+        self.write("jobs/admission/sub/README.md", "# Added after feature diverged\n")
+        self.commit("new main owner")
+        report = policy.check_pr(self.repo, self.rev(), head)
+        self.assertTrue(report["passed"], report)
+        self.assertEqual(
+            report["covered"][0]["readme"], "jobs/admission/README.md"
+        )
 
     def test_deleted_file_uses_merge_base_owner_not_new_base_readme(self):
         self.git("checkout", "-q", "-b", "feature")
