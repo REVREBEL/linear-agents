@@ -48,6 +48,10 @@ The profile template deliberately uses `maxRetryAttempts: 0` (no automatic retri
 
 The Git-root [`.agents/README.md`](../../../.agents/README.md) and [`.agents/context.yaml`](../../../.agents/context.yaml) now declare the context entrypoint and optional host aliases. They are **metadata only**: the resolver, harness skill, and deployment integration remain future tasks, and the existing `.agents/skills/` contents are preserved. The validator checks bootstrap frontmatter, root-relative document paths, aliases, and entrypoints. READMEs and frontmatter owned by other folders are introduced separately under B3/B4.
 
+## Agent instructions (ABR-67)
+
+Root [`AGENTS.md`](../../../AGENTS.md) now directs agents to read the project-local context README and manifest before code edits, identify relevant owning README dependencies, and use the shared resolver when it becomes available. Until then, dependency documents are inspected manually. No command is represented as installed before Milestone C.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.
