@@ -79,6 +79,46 @@ class AgentContextResolverTests(unittest.TestCase):
         item = next(item for item in result["documents"] if item["id"] == "host.agent-runtimes")
         self.assertIn(f"path: {path}", item["reasons"])
 
+    def test_recursive_globs_include_root_level_entries(self):
+        self.assertTrue(resolver._pattern_matches("README.md", "**/*"))
+        self.assertTrue(resolver._pattern_matches("codex", "**/*"))
+        self.assertTrue(resolver._pattern_matches("child/README.md", "**/*"))
+        self.assertTrue(resolver._pattern_matches("agents/README.md", "agents/**/README.md"))
+        self.assertFalse(resolver._pattern_matches("other/README.md", "agents/**/README.md"))
+
+    def test_root_level_host_files_and_directories_have_owners(self):
+        owners = {
+            "agents": "host.agent-runtimes",
+            "agent-tools": "host.agent-tools",
+            "global-tools": "host.global-tools",
+        }
+        for folder, doc_id in owners.items():
+            for filename in ("README.md", "codex"):
+                with self.subTest(root=folder, filename=filename):
+                    selected_path = str(self.roots[folder] / filename)
+                    bundle = self.resolve(path=selected_path)
+                    matched = [doc for doc in bundle["documents"]
+                               if f"path: {selected_path}" in doc["reasons"]]
+                    self.assertEqual([doc["id"] for doc in matched], [doc_id])
+
+    def test_configured_host_root_directory_selects_its_readme(self):
+        owners = {
+            "agents": "host.agent-runtimes",
+            "agent-tools": "host.agent-tools",
+            "global-tools": "host.global-tools",
+        }
+        for folder, doc_id in owners.items():
+            with self.subTest(root=folder):
+                selected_path = str(self.roots[folder])
+                bundle = self.resolve(path=selected_path)
+                matched = [doc for doc in bundle["documents"]
+                           if f"path: {selected_path}" in doc["reasons"]]
+                self.assertEqual([doc["id"] for doc in matched], [doc_id])
+                self.assertEqual(
+                    matched[0]["content"],
+                    (self.roots[folder] / "README.md").read_text(),
+                )
+
     def test_document_bodies_are_exact_and_not_truncated(self):
         bundle = self.resolve(topic="profiles")
         repo_doc = next(doc for doc in bundle["documents"] if doc["id"] == "repo.agents")
