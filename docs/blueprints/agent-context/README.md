@@ -72,6 +72,10 @@ The Git-owned [`templates/context/`](../../../templates/context/README.md) tree 
 
 The [Context v1 schema policy](CONTEXT_SCHEMA.md) establishes the formal JSON Schemas for README YAML frontmatter and `.agents/context.yaml` root/document aliases, including cross-platform environment and OS-specific root defaults. The reusable Python validator rejects duplicate IDs, unsafe paths, missing references and dependency cycles while reading only Git-owned source READMEs. The `jobs/README.md` now has validated context frontmatter. This adds no running resolver or CLI agent privileges.
 
+## Portable Context CLI bootstrap (ABR-73)
+
+The source-controlled `scripts/agent_context_cli.py` exposes `--help`, `--version` and `validate` using the reviewed C1 contracts; it discovers a project manifest from the working directory or an explicit root. A guarded `scripts/install-agent-context.py` builds a deterministic, source-verified single-file Python zipapp for deliberate post-merge installation at `/opt/agent-tools/bin/agent-context`, with backup and read-only check modes. This milestone provides only the CLI entrypoint and validation path. C3–C5 own document selection, recursive retrieval, provenance, rendering, and stronger live filesystem checks.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.
