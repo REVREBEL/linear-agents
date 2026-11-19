@@ -25,7 +25,12 @@ TARGET = Path("/opt/agent-tools/bin/agent-context")
 SOURCES = {
     "agent_context_cli.py": "scripts/agent_context_cli.py",
     "context_contract.py": "scripts/context_contract.py",
+    "context_resolver.py": "scripts/context_resolver.py",
 }
+# C2 two-module zipapps remain recognizable so reviewed C3 updates can
+# replace them without treating an existing managed executable as unknown.
+LEGACY_MODULES = frozenset(("agent_context_cli.py", "context_contract.py"))
+ALLOWED_MODULE_SETS = frozenset((frozenset(SOURCES), LEGACY_MODULES))
 SHEBANG = b"#!/usr/bin/env python3\n"
 ENTRYPOINT = b"from agent_context_cli import main\nraise SystemExit(main())\n"
 MANIFEST = "__build__.json"
@@ -70,7 +75,7 @@ def validated_sources():
 def build_metadata(sources, commit):
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         refuse("Invalid CLI source commit")
-    if set(sources) != set(SOURCES):
+    if frozenset(sources) not in ALLOWED_MODULE_SETS:
         refuse("Missing or unexpected CLI source module")
     return {
         "formatVersion": 1,
@@ -115,10 +120,15 @@ def inspect_managed(target):
         refuse(f"Unmanaged executable (invalid shebang): {target}")
     try:
         with zipfile.ZipFile(io.BytesIO(data), "r") as archive:
-            if set(archive.namelist()) != ARCHIVE_FILES:
+            names = set(archive.namelist())
+            if names == ARCHIVE_FILES:
+                module_names = frozenset(SOURCES)
+            elif names == LEGACY_MODULES | {"__main__.py", MANIFEST}:
+                module_names = LEGACY_MODULES
+            else:
                 refuse(f"Unmanaged executable (unexpected archive files): {target}")
             metadata = json.loads(archive.read(MANIFEST).decode("utf-8"))
-            sources = {name: archive.read(name) for name in SOURCES}
+            sources = {name: archive.read(name) for name in module_names}
             if archive.read("__main__.py") != ENTRYPOINT:
                 refuse(f"Unmanaged executable entrypoint: {target}")
         if build_metadata(sources, metadata.get("sourceCommit", "")) != metadata:
@@ -188,7 +198,7 @@ def main():
     sources, meta = validated_sources()
     artifact = archive_bytes(sources, meta)
     if args.validate:
-        print(f"Validated Agent Context C2 zipapp: {len(sources)} source modules, "
+        print(f"Validated Agent Context zipapp: {len(sources)} source modules, "
               f"commit {meta['sourceCommit'][:12]}, SHA-256 {sha256(artifact)[:12]}")
         return 0
     if args.check:

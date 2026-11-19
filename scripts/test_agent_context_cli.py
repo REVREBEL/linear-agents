@@ -1,5 +1,6 @@
 """ABR-73: verify portable CLI bootstrap without agent or service startup."""
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -17,7 +18,7 @@ class ContextCliTests(unittest.TestCase):
     def test_help_and_version_are_portable(self):
         for args, text in (
             (["--help"], "validate"),
-            (["--version"], "agent-context 0.1.0"),
+            (["--version"], "agent-context 0.2.0"),
         ):
             with self.subTest(args=args):
                 outcome = subprocess.run(
@@ -107,13 +108,47 @@ class ContextCliTests(unittest.TestCase):
         self.assertIn("agent-context:", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
-    def test_unsupported_commands_are_not_implemented_prematurely(self):
+    def test_unknown_selector_is_rejected(self):
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), "--topic", "profiles"],
+            [sys.executable, str(SCRIPT), "--not-an-option", "profiles"],
             capture_output=True, text=True,
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("invalid choice", result.stderr)
+
+    def test_validate_rejects_selection_flags(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "validate", "--topic", "profiles"],
+            capture_output=True, text=True, cwd=ROOT,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("validate does not accept", result.stderr)
+
+    def test_explain_reports_source_reasons(self):
+        with tempfile.TemporaryDirectory() as folder:
+            env = os.environ.copy()
+            env.pop("AGENT_CONTEXT_REPO_ROOT", None)
+            for key, name in (
+                ("AGENT_CONTEXT_AGENTS_ROOT", "agents"),
+                ("AGENT_CONTEXT_AGENT_TOOLS_ROOT", "agent-tools"),
+                ("AGENT_CONTEXT_GLOBAL_TOOLS_ROOT", "global-tools"),
+            ):
+                target = Path(folder) / name
+                target.mkdir()
+                shutil.copy2(
+                    ROOT / "templates/context/host-roots" / name / "README.md",
+                    target / "README.md",
+                )
+                env[key] = str(target)
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "explain", "--topic", "jobs", "--format", "json"],
+                capture_output=True, text=True, cwd=ROOT, env=env,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        import json
+        bundle = json.loads(result.stdout)
+        self.assertTrue(any(item["id"] == "repo.jobs" for item in bundle["documents"]))
+        self.assertTrue(all("content" not in item for item in bundle["documents"]))
 
 
 if __name__ == "__main__":

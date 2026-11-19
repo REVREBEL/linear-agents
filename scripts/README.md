@@ -39,11 +39,11 @@ Run `python3 scripts/validate-context-contract.py` to validate the current Git c
 
 ## Portable Agent Context CLI and installer (ABR-73 / C2)
 
-`agent_context_cli.py` is the **portable, reviewed CLI entrypoint**. At C2 it exposes `--help`, `--version`, and **read-only** `validate` (the v1 metadata contract from `context_contract.py`). The retrieval selectors `--topic`, `--path`, `--files-changed`, rendering formats, and provenance handoffs belong to C3–C5; this CLI does not yet implement them or run an agent.
+`agent_context_cli.py` is the **portable, reviewed CLI entrypoint**. C2 introduced `--help`, `--version` and read-only `validate`. C3 now extends the same entrypoint with `--topic`, `--path`, `--files-changed`, complete Markdown/JSON document rendering, recursive dependencies and `explain`. The CLI remains documentation-only and never runs an agent.
 
 Run directly on any supported development host with Python 3.10+ and `PyYAML`/`jsonschema` installed: `python3 scripts/agent_context_cli.py validate` from the repository, or `python3 scripts/agent_context_cli.py --repo-root /path/to/checkout validate` from anywhere. The CLI searches the current directory and parents for the **nearest** `.agents/context.yaml` manifest, even when that project's schema is missing. Validation then reports the incomplete project instead of selecting an unrelated enclosing repository. `AGENT_CONTEXT_REPO_ROOT` is an explicit override and `--repo-root` takes precedence. Invalid explicit roots fail rather than silently selecting another checkout.
 
-`install-agent-context.py` packages the **committed Git** copies of `agent_context_cli.py` and `context_contract.py` into a reproducible, single-file Python zipapp at `/opt/agent-tools/bin/agent-context` (external Python dependencies remain host-managed). It rejects uncommitted source changes, including Git `assume-unchanged` masking, and refuses unmanaged executables or unexpected edits. Installation replaces only that executable atomically; existing managed versions are backed up.
+`install-agent-context.py` packages the **committed Git** copies of `agent_context_cli.py`, `context_contract.py` and `context_resolver.py` into a reproducible, single-file Python zipapp at `/opt/agent-tools/bin/agent-context` (external Python dependencies remain host-managed). It rejects uncommitted source changes, including Git `assume-unchanged` masking, and refuses unmanaged executables or unexpected edits. Installation replaces only that executable atomically; existing managed versions are backed up. The C3 installer recognizes previously reviewed two-module C2 zipapps so an explicit upgrade does not treat those managed artifacts as unknown.
 
 - `python3 scripts/install-agent-context.py --validate` — read-only Git integrity / zipapp build check.
 - `python3 scripts/install-agent-context.py --check` — read-only comparison to the installed CLI.
@@ -51,6 +51,14 @@ Run directly on any supported development host with Python 3.10+ and `PyYAML`/`j
 - `agent-context --version` and `agent-context --repo-root /path/to/checkout validate` — verify the executable works outside the project directory after installation.
 
 Run `python3 scripts/test_agent_context_cli.py` and `python3 scripts/test_install_agent_context.py` for isolation, source provenance, CLI and deployment tests. See [Context schema](../docs/blueprints/agent-context/CONTEXT_SCHEMA.md) and [Context implementation blueprint](../docs/blueprints/agent-context/README.md). This does not install third-party packages, modify runtime profiles, create credentials, enable dispatch, or restart services.
+
+## Complete README retrieval and explanation (ABR-74 / C3)
+
+`context_resolver.py` implements topic, nearest-owner path and Git changed-file selection using the v1 `.agents/context.yaml` manifest. It follows `context.requires` recursively, deduplicates documents, preserves every selected README in full, and emits deterministic dependency-first results with Git source SHA, actual source path, SHA-256, dirty-worktree indication and sorted inclusion reasons. Host README files must match their reviewed Git sources, and missing selected dependencies fail visibly; files without a matching changed-file owner appear under `unmatchedPaths`.
+
+Supported commands include `agent-context --topic profiles`, `agent-context --path agents/registry.json`, `agent-context --files-changed`, `agent-context --topic profiles --format json`, `agent-context explain --topic profiles`, and `agent-context --path jobs/lifecycle/example.mjs --format json explain`. With no selector the default context entrypoint is retrieved. The `validate` command remains metadata-only, while `explain` shows provenance/reasons without document bodies. These commands work directly through `python3 scripts/agent_context_cli.py` before the approved C3 zipapp is installed.
+
+For full semantics and the post-merge verification contract see [C3 resolver documentation](../docs/blueprints/agent-context/RESOLVER.md). Run `python3 scripts/test_context_resolver.py`, plus existing CLI and installer tests. C4/C5 separately add stricter filesystem controls, opt-in partial output and cross-host acceptance testing. The resolver does not execute README instructions or grant Bridge dispatch permissions.
 
 ## Host-only infrastructure
 

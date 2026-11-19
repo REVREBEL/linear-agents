@@ -46,7 +46,7 @@ class AgentContextInstallerTests(unittest.TestCase):
     def test_installed_zipapp_runs_outside_git_checkout(self):
         binary = self.make_archive()
         for args, expected in (
-            (["--version"], "agent-context 0.1.0"),
+            (["--version"], "agent-context 0.2.0"),
             (["--repo-root", str(ROOT), "validate"], "13 source-backed README contracts"),
         ):
             with self.subTest(args=args):
@@ -56,6 +56,35 @@ class AgentContextInstallerTests(unittest.TestCase):
                 )
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertIn(expected, proc.stdout)
+
+    def test_zipapp_resolves_document_dependencies_outside_checkout(self):
+        binary = self.make_archive()
+        env = os.environ.copy()
+        env.pop("AGENT_CONTEXT_REPO_ROOT", None)
+        for variable, folder in (
+            ("AGENT_CONTEXT_AGENTS_ROOT", "agents"),
+            ("AGENT_CONTEXT_AGENT_TOOLS_ROOT", "agent-tools"),
+            ("AGENT_CONTEXT_GLOBAL_TOOLS_ROOT", "global-tools"),
+        ):
+            root = self.root / folder
+            root.mkdir(exist_ok=True)
+            shutil.copy2(
+                ROOT / "templates/context/host-roots" / folder / "README.md",
+                root / "README.md",
+            )
+            env[variable] = str(root)
+        proc = subprocess.run(
+            [
+                sys.executable, str(binary),
+                "--repo-root", str(ROOT), "--topic", "profiles", "--format", "json",
+            ],
+            cwd=self.root, capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        bundle = json.loads(proc.stdout)
+        self.assertTrue(any(item["id"] == "repo.agents" for item in bundle["documents"]))
+        self.assertTrue(any(item["id"] == "host.agent-runtimes" for item in bundle["documents"]))
+        self.assertTrue(all("content" in item for item in bundle["documents"]))
 
     def test_missing_install_and_read_only_check(self):
         self.assertEqual(installer.check_install(self.target, self.artifact), 1)
@@ -98,6 +127,20 @@ class AgentContextInstallerTests(unittest.TestCase):
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_bytes(), self.artifact)
 
+    def test_c2_two_module_managed_zipapp_upgrades_to_c3(self):
+        prior_sources = {
+            name: self.sources[name] for name in installer.LEGACY_MODULES
+        }
+        prior_metadata = installer.build_metadata(prior_sources, "a" * 40)
+        prior_artifact = installer.archive_bytes(prior_sources, prior_metadata)
+        installer.install(self.target, prior_artifact)
+        self.assertEqual(installer.check_install(self.target, self.artifact), 1)
+        installer.install(self.target, self.artifact)
+        self.assertEqual(installer.check_install(self.target, self.artifact), 0)
+        backups = list(self.bin_dir.glob("agent-context.backup-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), prior_artifact)
+
     def test_refuse_existing_unmanaged_file(self):
         self.target.write_text("#!/bin/sh\necho not managed\n")
         with self.assertRaisesRegex(ValueError, "Unmanaged executable"):
@@ -107,8 +150,8 @@ class AgentContextInstallerTests(unittest.TestCase):
     def test_refuse_tampered_managed_zipapp(self):
         installer.install(self.target, self.artifact)
         data = self.target.read_bytes()
-        self.assertIn(b'CLI_VERSION = "0.1.0"', data)
-        self.target.write_bytes(data.replace(b'CLI_VERSION = "0.1.0"', b'CLI_VERSION = "9.9.9"'))
+        self.assertIn(b'CLI_VERSION = "0.2.0"', data)
+        self.target.write_bytes(data.replace(b'CLI_VERSION = "0.2.0"', b'CLI_VERSION = "9.9.9"'))
         with self.assertRaisesRegex(ValueError, "Unmanaged|Modified managed|digest mismatch"):
             installer.install(self.target, self.artifact)
 
