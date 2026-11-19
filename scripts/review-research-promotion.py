@@ -10,6 +10,7 @@ import sys
 from urllib.parse import urlparse
 import yaml
 from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError, SchemaError
 
 ROOT = Path(__file__).resolve().parents[1]
 KIND = {("cli_agent", "headless_cli"): "cli_agent", ("llm", "direct_api"): "service_agent"}
@@ -303,6 +304,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+    except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError, ValidationError, SchemaError) as error:
         print(f"Research promotion rejected: {error}", file=sys.stderr)
         sys.exit(2)
