@@ -1,0 +1,56 @@
+name: README Coverage Inventory
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    name: Advisory README and local-link inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test Git-only README inventory
+        run: python scripts/test_report_readme_coverage.py
+      - name: Generate full machine-readable and Markdown reports
+        run: |
+          python scripts/report-readme-coverage.py --format json --output artifacts/readme-coverage.json
+          python scripts/report-readme-coverage.py --format markdown --output artifacts/readme-coverage.md
+      - name: Summarize results without failing on existing gaps
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = json.loads(Path("artifacts/readme-coverage.json").read_text())
+          summary = [
+              "## README coverage (advisory)",
+              "",
+              f"- Tracked directories: {report['foldersTotal']}",
+              f"- Directories without README: {report['foldersMissingReadme']}",
+              f"- Uncovered directories with behavioral source: {report['foldersMissingWithBehavioralFiles']}",
+              f"- Broken local references: {report['brokenReferenceCount']}",
+              "",
+              "Download the README Coverage Inventory artifact for the complete paths and source lines.",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+              output.write("\n".join(summary) + "\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: readme-coverage-inventory
+          path: |
+            artifacts/readme-coverage.json
+            artifacts/readme-coverage.md
+          if-no-files-found: error
+          retention-days: 30
