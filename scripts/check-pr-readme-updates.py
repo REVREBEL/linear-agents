@@ -22,7 +22,7 @@ BEHAVIORAL_SUFFIXES = frozenset({
 SPECIAL_BEHAVIORAL = frozenset({
     "Dockerfile", "Containerfile", "Makefile", ".env.example",
     "requirements.txt", "Pipfile", "Gemfile", "go.mod", "go.sum",
-    "Cargo.lock", "Cargo.toml",
+    "Cargo.lock", "Cargo.toml", ".terraform.lock.hcl",
 })
 PROFILE_DATA_PREFIXES = (
     "agents/profiles/candidates/", "agents/profiles/research/",
