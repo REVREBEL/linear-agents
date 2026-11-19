@@ -7,7 +7,6 @@ import json
 import os
 import re
 from pathlib import Path, PurePosixPath, PureWindowsPath
-import ntpath
 import posixpath
 
 import yaml
@@ -18,6 +17,11 @@ HOST_SOURCE_DOCS = {
     "host.agent-runtimes": "templates/context/host-roots/agents/README.md",
     "host.agent-tools": "templates/context/host-roots/agent-tools/README.md",
     "host.global-tools": "templates/context/host-roots/global-tools/README.md",
+}
+HOST_DOCUMENT_ROOTS = {
+    "host.agent-runtimes": "host-agents",
+    "host.agent-tools": "host-agent-tools",
+    "host.global-tools": "host-global-tools",
 }
 PLATFORMS = frozenset({"linux", "darwin", "win32"})
 
@@ -175,6 +179,10 @@ def validate_context_contract(repo_root, manifest=None):
             if not resolved.is_relative_to(base) or not target.is_file():
                 raise ValueError(f"Missing or escaping repository context document: {doc_id}")
         elif doc_id in HOST_SOURCE_DOCS:
+            # The three reviewed host README sources are fixed counterparts
+            # of their manifest aliases, not arbitrary host paths.
+            if root != HOST_DOCUMENT_ROOTS[doc_id] or path != "README.md":
+                raise ValueError(f"Host source-backed context alias mismatch: {doc_id}")
             target = base / HOST_SOURCE_DOCS[doc_id]
         else:
             # Other optional host-only documents need not exist at schema time.
