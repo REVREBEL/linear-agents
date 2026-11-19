@@ -4,6 +4,7 @@ Uses temporary host roots and Git-owned README bytes. It never changes /opt,
 native profiles, Bridge services or provider configuration.
 """
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -315,6 +316,66 @@ class CrossRootAcceptanceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Missing or escaping repository"):
             resolver.resolve_context(repo, topic="profiles", environ=self.environ,
                                      allow_partial=True)
+
+    def test_changed_file_handoff_crosses_repo_owners_and_lists_unmatched(self):
+        repo = self.make_git_fixture()
+        changed_readme = repo / "agents/README.md"
+        changed_readme.write_bytes(changed_readme.read_bytes() + b"\nReviewed content change\n")
+        for relative in (
+            "memory/migrations/001_agent_checkpoints.sql",
+            "integrations/openrouter/agent-runtime.mjs",
+            "scripts/unknown-source.txt",
+        ):
+            path = repo / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("fixture change", encoding="utf-8")
+        bundle = resolver.resolve_context(
+            repo, files_changed=True, environ=self.environ,
+        )
+        self.assertEqual(
+            bundle["selection"]["mode"], "files-changed"
+        )
+        self.assertEqual(bundle["unmatchedPaths"], ["scripts/unknown-source.txt"])
+        reasons = {doc["id"]: doc["reasons"] for doc in bundle["documents"]}
+        self.assertIn("changed file: agents/README.md", reasons["repo.agents"])
+        self.assertIn(
+            "changed file: memory/migrations/001_agent_checkpoints.sql",
+            reasons["repo.memory.migrations"],
+        )
+        self.assertIn(
+            "changed file: integrations/openrouter/agent-runtime.mjs",
+            reasons["repo.integrations.openrouter"],
+        )
+        self.assertEqual(
+            len(bundle["documents"]), len(set(x["id"] for x in bundle["documents"]))
+        )
+        self.assertEqual(
+            json.loads(resolver.render_context(bundle, output_format="json")), bundle
+        )
+
+    def test_standalone_committed_zipapp_retrieves_same_bundle(self):
+        spec = importlib.util.spec_from_file_location(
+            "agent_context_c5_installer", ROOT / "scripts/install-agent-context.py"
+        )
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+        sources, metadata = installer.validated_sources()
+        executable = self.base / "agent-context.pyz"
+        executable.write_bytes(installer.archive_bytes(sources, metadata))
+        environment = os.environ.copy()
+        environment.pop("AGENT_CONTEXT_REPO_ROOT", None)
+        environment.update(self.environ)
+        environment["PYTHONUTF8"] = "1"
+        result = subprocess.run(
+            [
+                sys.executable, str(executable), "--repo-root", str(ROOT),
+                "--topic", "profiles", "--format", "json",
+            ],
+            cwd=self.base, env=environment,
+            capture_output=True, text=True, encoding="utf-8",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), self.bundle(topic="profiles"))
 
     def test_native_platform_override_retrieval_runs_without_opt_roots(self):
         platform = "win32" if sys.platform == "win32" else (
