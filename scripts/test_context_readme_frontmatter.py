@@ -3,7 +3,6 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
-import tempfile
 import unittest
 
 import yaml
@@ -42,7 +41,7 @@ class OwningReadmeTests(unittest.TestCase):
 
     def test_rejects_missing_document_alias(self):
         changed = copy.deepcopy(MANIFEST)
-        del changed["documents"]["repo.bridge"]
+        changed["documents"]["repo.bridge"]["path"] = "bridge/other.md"
         with self.assertRaisesRegex(ValueError, "alias does not match"):
             validator.validate_active_readme_metadata(changed, SCHEMA)
 
