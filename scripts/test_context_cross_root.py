@@ -390,6 +390,22 @@ class CrossRootAcceptanceTests(unittest.TestCase):
 
 
 class CrossPlatformPathContracts(unittest.TestCase):
+    def test_critical_context_sources_have_native_lf_checkout_policy(self):
+        sources = (
+            ".agents/context.yaml", ".agents/README.md",
+            "agents/README.md", "bridge/README.md", "jobs/README.md",
+            "memory/README.md", "memory/migrations/README.md",
+            "integrations/README.md", "integrations/openrouter/README.md",
+            "templates/context/host-roots/agents/README.md",
+            "templates/context/context-manifest.schema.json",
+            "scripts/agent_context_cli.py", "scripts/context_contract.py",
+            "scripts/context_resolver.py", "scripts/install-agent-context.py",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                policy = git(ROOT, "check-attr", "eol", "--", source)
+                self.assertIn(b": eol: lf", policy, policy.decode())
+
     def test_platform_defaults_and_env_override_precedence(self):
         config = {
             "environment": "AGENT_CONTEXT_TEST_ROOT",
