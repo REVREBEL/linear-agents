@@ -115,10 +115,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      # Git's Windows default can convert README LF bytes to CRLF, which
-      # would misattribute committed Git README content in provenance checks.
-      - name: Preserve reviewed Git source line endings
-        run: git config --global core.autocrlf false
+      # The repository's scoped .gitattributes enforces LF source bytes
+      # independently of each runner's core.autocrlf defaults.
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
