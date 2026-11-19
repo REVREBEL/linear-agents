@@ -11,6 +11,8 @@ on:
       - 'agents/registry.json'
       - 'agents/registry.schema.json'
       - 'scripts/validate-context-blueprint.py'
+      - 'scripts/reconcile-agent-runtimes.py'
+      - 'scripts/test_reconcile_agent_runtimes.py'
       - '.github/workflows/agent-context-blueprint.yml'
   workflow_dispatch:
 
@@ -32,3 +34,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check 'PyYAML==6.0.2' 'jsonschema==4.23.0'
       - name: Validate context and profile templates
         run: python scripts/validate-context-blueprint.py
+      - name: Validate disabled-only host runtime inventory source
+        run: python scripts/reconcile-agent-runtimes.py --validate
+      - name: Test staged host inventory reconciliation
+        run: python scripts/test_reconcile_agent_runtimes.py
