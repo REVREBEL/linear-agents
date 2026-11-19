@@ -1,3 +1,14 @@
+---
+context:
+  id: repo.bridge
+  version: 1
+  title: Agent Bridge runtime
+  topics: [bridge, dispatch, deployment, profiles]
+  requires: [repo.agents, host.agent-runtimes, host.agent-tools, host.global-tools]
+  applies_to: ["bridge/**", "jobs/dispatch/**", "jobs/admission/**"]
+  update_on: [behavior, contracts, configuration, dependencies, security, deployment]
+---
+
 # Canonical bridge architecture
 
 - `server/`: production runtime, HTTP helper primitives, route composition

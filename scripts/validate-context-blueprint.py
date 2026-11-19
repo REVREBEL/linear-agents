@@ -93,6 +93,44 @@ def validate_bootstrap_manifest(manifest, label):
             raise ValueError(f"{label}: unresolved entrypoint {name}: {document_id}")
 
 
+def validate_active_readme_metadata(manifest, schema):
+    """B3: verify in-place owning READMEs and declared cross-root dependencies."""
+    documents = manifest["documents"]
+    for doc_id, relative in (
+        ("repo.bootstrap", ".agents/README.md"),
+        ("repo.agents", "agents/README.md"),
+        ("repo.bridge", "bridge/README.md"),
+    ):
+        path = ROOT / relative
+        text = path.read_text(encoding="utf-8")
+        if not text.startswith("---\n") or "\n---\n" not in text[4:]:
+            raise ValueError(f"{relative}: missing context frontmatter")
+        meta = yaml.safe_load(text[4:].split("\n---\n", 1)[0])
+        validate(meta, schema, relative)
+        ctx = meta["context"]
+        if ctx["id"] != doc_id:
+            raise ValueError(f"{relative}: expected context.id {doc_id}")
+        if documents.get(doc_id) != {"root": "repo", "path": relative}:
+            raise ValueError(f"{relative}: context document alias does not match manifest")
+        for dep in ctx["requires"]:
+            if dep == doc_id or dep not in documents:
+                raise ValueError(f"{relative}: missing or self-referential dependency {dep}")
+            locator = documents[dep]
+            # Host documentation lands in B4: missing optional host roots are valid,
+            # but the manifest must explicitly declare them optional.
+            if locator["root"] != "repo" and manifest["roots"][locator["root"]]["required"]:
+                raise ValueError(f"{relative}: host root unexpectedly required: {dep}")
+        if doc_id == "repo.agents" and not set((
+            "host.agent-runtimes", "host.agent-tools", "host.global-tools",
+        )).issubset(ctx["requires"]):
+            raise ValueError(f"{relative}: required host profile dependencies missing")
+        if doc_id == "repo.bridge" and not set((
+            "repo.agents", "host.agent-runtimes", "host.agent-tools",
+            "host.global-tools",
+        )).issubset(ctx["requires"]):
+            raise ValueError(f"{relative}: required dispatch dependencies missing")
+
+
 def main():
     schema_path = TEMPLATES / "agent-profile.entry.schema.json"
     mirror_path = ROOT / "agents/agent-registry-schema.json"
@@ -222,6 +260,8 @@ def main():
         raise ValueError("Bootstrap document alias must reference .agents/README.md")
     if any(dep not in active_manifest["documents"] for dep in bootstrap_context["requires"]):
         raise ValueError("Root bootstrap README has an undeclared document dependency")
+
+    validate_active_readme_metadata(active_manifest, context_schema)
 
     # One canonical copy of the uploaded research entry schema.
     duplicate = BLUEPRINT / "references/agent-registry-schema.json"
