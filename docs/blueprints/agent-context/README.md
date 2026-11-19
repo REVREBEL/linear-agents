@@ -32,6 +32,10 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 
 [Staged Ubuntu harness inventory and reconciliation](RUNTIME_INVENTORY.md) documents the verified installed CLI paths, the Git-owned source at `templates/context/agent-runtimes.staged.json`, and the guarded `scripts/reconcile-agent-runtimes.py` command. This is **not** an executable agent registry and does not enable dispatch. Applying the reviewed staged snapshot to `/opt/agents/registry/agent-runtimes.json` is a separate, deliberate host operation following review and merge.
 
+## Research-to-runtime promotion (ABR-64)
+
+The [review-gated promotion contract](PROMOTION.md) and `scripts/review-research-promotion.py` provide an **offline, proposal-only** translation from research `AgentRegistryEntry` plus explicit reviewed evidence into separate Registry v2 entry JSON. Real PR approval, provider verification, and deployment are external to the tool. Candidate profiles never become executable automatically.
+
 ## Template defaults and historical CLI examples
 
 The profile template deliberately uses `maxRetryAttempts: 0` (no automatic retries until a provider retry policy is tested). It uses the installed OpenCode CLI's `--session` continuation flag; historical research catalogs mention `--session-id`, which is not the installed OpenCode v1.19.5 syntax. Keep research snapshots unchanged as evidence rather than treating their command strings as executable.
