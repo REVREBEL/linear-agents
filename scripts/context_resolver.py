@@ -80,6 +80,11 @@ def _pattern_matches(rel, pattern):
         return True
     if pattern.endswith("/**") and rel == pattern[:-3]:
         return True
+    # A recursive glob includes zero directory levels. fnmatchcase alone
+    # requires a slash for "**/*" and misses root-level files/directories.
+    if "**/" in pattern:
+        prefix, suffix = pattern.split("**/", 1)
+        return _pattern_matches(rel, prefix + suffix)
     return False
 
 
@@ -94,8 +99,11 @@ def _owners_for_path(raw, index, manifest, root_paths):
             real_root = root.resolve()
             if input_path.is_relative_to(real_root):
                 relative = input_path.relative_to(real_root).as_posix()
-                if relative != ".":
-                    possible.append((alias, relative))
+                # A host root directory is owned by its root README. Reuse
+                # the declared README applicability pattern for selection.
+                if relative == "." and alias != "repo":
+                    relative = "README.md"
+                possible.append((alias, relative))
     else:
         possible.append(("repo", validate_relative_document_path(raw)))
     if not possible:
