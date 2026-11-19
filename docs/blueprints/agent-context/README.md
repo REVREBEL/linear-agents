@@ -18,6 +18,10 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 
 The [Qwen Local pilot evidence and promotion gate](QWEN_LOCAL_PILOT.md) records the independent `qwen-local` research candidate, verified local Ollama artifact and scoped OpenCode model discovery, and blocked full headless/Worker readiness. Existing D5 handoff context is replayed without private host paths; Registry v2 stays unchanged until ABR-58 evidence, independent approval, and explicit promotion.
 
+## Fresh-session context acceptance (ABR-86 / E2)
+
+The [one-command E2 acceptance contract](FRESH_SESSION.md) verifies that a new CLI session can retrieve `agents/`, `bridge/`, `jobs/` and the three `/opt` host-root READMEs using the existing `--topic jobs --format json` selector, with no duplicate resolver or elevated permissions. Dedicated regressions exercise independently launched Python processes, portability, exact Git provenance, failure on a missing host source, and D5 pinned handoff replay after the original host roots disappear. The separate live Ubuntu read of all six existing sources passed. No model/Worker invocation is implied.
+
 ## Package contents
 
 - `templates/context/agent-profile.v2.template.yaml`: **corrected** complete candidate profile template conforming to the uploaded per-entry schema.
