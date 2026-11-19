@@ -11,6 +11,7 @@ These files are source-controlled **templates**, not deployed agent configuratio
 | `agent-registry.catalog.template.yaml` | Catalog wrapper with `agents[]` entries, each validated against the research-entry schema | Wrapper `version: 1.0.0` is catalog metadata, not Bridge Registry v2 |
 | `bridge-runtime-registry.v2-entry.template.json` | One *executable-registry entry example*, distinct from the research entry | Validate against `agents/registry.schema.json#/$defs/agent`; do not use research schema |
 | `profile-mapping.md` | Research-to-runtime translation review requirements | Document verified mappings; no automatic promotion |
+| `research-promotion.review.template.json` | Deliberately incomplete approval, evidence and Bridge-only mapping record | Fill with real reviewed provenance; compile using `scripts/review-research-promotion.py`, producing an inert proposal only |
 | `agent-runtimes.staged.json` | **Reviewed desired host-only CLI harness snapshot**, independent of all agent-profile and Worker registries | Source for the opt-in reconciliation command `scripts/reconcile-agent-runtimes.py`; all dispatch flags must remain false |
 | `README.template.md`, `host-root.README.template.md`, `context-frontmatter.schema.json` | Proposed portable README context contract | Context frontmatter `version: 1` is independent of either agent schema version |
 
