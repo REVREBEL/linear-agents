@@ -1,2 +1,20 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Agent Context README/provenance and executable zipapp sources are byte-stable
+# across Git checkouts, including Windows machines with core.autocrlf=true.
+/.agents/context.yaml text eol=lf
+/.agents/README.md text eol=lf
+/agents/README.md text eol=lf
+/bridge/README.md text eol=lf
+/jobs/README.md text eol=lf
+/memory/README.md text eol=lf
+/memory/**/README.md text eol=lf
+/integrations/README.md text eol=lf
+/integrations/**/README.md text eol=lf
+/templates/context/** text eol=lf
+/scripts/agent_context_cli.py text eol=lf
+/scripts/context_contract.py text eol=lf
+/scripts/context_resolver.py text eol=lf
+/scripts/install-agent-context.py text eol=lf
+/scripts/test_context_cross_root.py text eol=lf
