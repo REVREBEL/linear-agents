@@ -11,7 +11,7 @@ context:
 
 # Agent context bootstrap
 
-This directory owns the **project-local context entrypoint**, not agent execution or authorization. Start with the existing root [`AGENTS.md`](../AGENTS.md) for operational guardrails; use [`context.yaml`](context.yaml) as the planned document/root alias map. The context resolver is not installed yet: the manifest is inert metadata until Milestones C and D deliver the CLI and harness integrations.
+This directory owns the **project-local context entrypoint**, not agent execution or authorization. Start with the existing root [`AGENTS.md`](../AGENTS.md) for operational guardrails; use [`context.yaml`](context.yaml) as the planned document/root alias map. The C2 `agent-context` CLI bootstrap provides **metadata validation only**. Recursive context selection, full-source retrieval and harness integrations remain separate C3–C5 and D milestones; the manifest is never executable authority.
 
 ## Ownership
 
@@ -36,6 +36,10 @@ The reusable Git source set `../templates/context/` is published only through th
 ## Context metadata schemas (ABR-72)
 
 This manifest and its README headers now follow the versioned `templates/context/context-manifest.schema.json` and `context-frontmatter.schema.json` contracts. The Git-owned `scripts/validate-context-contract.py` checks document ID uniqueness, declared dependencies/cycles, safe relative paths and platform-aware root override semantics. A named `AGENT_CONTEXT_*_ROOT` environment override takes priority over an optional platform default, then the declared root default; the path must be native absolute and validation does not create missing host directories. The [schema policy](../docs/blueprints/agent-context/CONTEXT_SCHEMA.md) documents portability and boundaries. The resolver itself remains a later milestone.
+
+## Portable context CLI (ABR-73 / C2)
+
+Use `python3 scripts/agent_context_cli.py validate` from the repository (or `--repo-root PATH validate` from another working directory) for the v1 manifest and 13 README source contracts. After review/merge, the guarded `scripts/install-agent-context.py --apply` installs a deterministic `/opt/agent-tools/bin/agent-context` zipapp on Ubuntu; verify with `--check` and then `agent-context --version`. The command runs with host Python dependencies and does not run or dispatch agents. `--topic`, `--path`, `--files-changed` and output formats arrive in C3.
 
 ## Update discipline
 
