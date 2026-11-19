@@ -5,6 +5,7 @@ on:
     paths:
       - '.agents/README.md'
       - '.agents/context.yaml'
+      - 'AGENTS.md'
       - 'agents/README.md'
       - 'bridge/README.md'
       - 'jobs/README.md'
