@@ -64,6 +64,10 @@ The three reviewed, non-secret [host-root README sources](../../../templates/con
 
 Git READMEs in [`memory/`](../../../memory/README.md) and [`integrations/`](../../../integrations/README.md), plus their actively modified nested folders, now document checkpoint, provider and external API ownership. Their context IDs are registered in `.agents/context.yaml` and tested for complete source paths, declared cross-folder dependencies, and cycles. Metadata never authorizes database operations or provider dispatch.
 
+## Reusable template publication (ABR-71)
+
+The Git-owned [`templates/context/`](../../../templates/context/README.md) tree now has a versioned publisher at `scripts/publish-context-templates.py` for managed copies under `/opt/agent-tools/templates/context/`. The publisher verifies SHA-256 descriptors and recorded source revision, refuses unmanaged drift, and keeps a previous installed snapshot when a reviewed version changes. `--validate` and `--check` are read-only; host installation requires explicit post-merge `--apply`. The installed files remain inert templates; Milestone C owns the actual resolver.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.
