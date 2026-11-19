@@ -16,7 +16,7 @@ This directory owns the **project-local context entrypoint**, not agent executio
 ## Ownership
 
 - `context.yaml` declares `contextVersion: 1`, logical document IDs, optional host-root aliases, and future entrypoints. Its relative repository paths are resolved from the **project root** (parent directory of `.agents/`), never an arbitrary command working directory.
-- The existing [`skills/`](skills/) directory remains independently owned. Adding context documentation does not replace, remove, or activate any skill. The proposed `agent-context` skill is [staged in the blueprint](../docs/blueprints/agent-context/bootstrap/.agents/skills/agent-context/SKILL.md) for Milestone D1.
+- The existing [`skills/`](skills/) directory remains independently owned; D1 adds the [reviewed `agent-context` project skill](skills/agent-context/SKILL.md) without replacing other skills. The earlier [blueprint copy](../docs/blueprints/agent-context/bootstrap/.agents/skills/agent-context/SKILL.md) is a historical proposal, not the active harness entrypoint.
 - [`../templates/context/`](../templates/context/) holds portable README/context templates under Git review. [`../docs/blueprints/agent-context/`](../docs/blueprints/agent-context/) records the implementation plan and source-of-truth boundaries.
 
 ## Document readiness
@@ -52,6 +52,10 @@ The resolver refuses missing required roots, path traversal, symlinked source pa
 ## Cross-root acceptance (ABR-76 / C5)
 
 The [C5 acceptance suite](../docs/blueprints/agent-context/ACCEPTANCE.md) verifies the full `repo.agents` / `repo.bridge` and `host.agent-runtimes`, `host.agent-tools`, `host.global-tools` graph with deterministic dependency order, exact Git-linked README content, root overrides, missing-file reporting, real fixture dependency cycles and portable path behavior. GitHub Actions runs `scripts/test_context_cross_root.py` on Ubuntu, macOS and Windows. No native CLI profile or running Bridge agent is part of these tests.
+
+## Shared coding harness integration (ABR-77 / D1)
+
+The canonical project skill [`skills/agent-context/SKILL.md`](skills/agent-context/SKILL.md) is discoverable by **Codex, OpenCode, Qwen Code and Mistral Vibe** under the existing `.agents/skills/` location. Root [`AGENTS.md`](../AGENTS.md) provides the common coding/review entrypoint; Qwen Code also uses [`QWEN.md`](../QWEN.md) for its persistent project instructions. Each invokes the same reviewed `scripts/agent_context_cli.py` or installed `agent-context` executable, with no shadow copies or additional runner privileges. See [harness integration contract](../docs/blueprints/agent-context/HARNESSES.md) for native invocation syntax and tested boundaries.
 
 ## Update discipline
 
