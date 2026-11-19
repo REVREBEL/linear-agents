@@ -55,11 +55,9 @@ def reviewed_sources():
             if dep == doc_id or dep not in manifest["documents"]:
                 fail(f"Unknown or self-referential dependency in {source}: {dep}")
         locator = manifest["documents"].get(doc_id)
-        if locator != {"root": "host-" + folder, "path": "README.md"}:
-            # The manifest uses host-agents for /opt/agents (not host-agent-runtimes).
-            expected_root = "host-agents" if folder == "agents" else "host-" + folder
-            if locator != {"root": expected_root, "path": "README.md"}:
-                fail(f"Host document alias mismatch: {doc_id}")
+        expected_root = "host-" + folder
+        if locator != {"root": expected_root, "path": "README.md"}:
+            fail(f"Host document alias mismatch: {doc_id}")
         sources[folder] = content.encode("utf-8")
     return sources
 
@@ -116,7 +114,9 @@ def install_host(root, sources):
                 stream.flush()
                 os.fsync(stream.fileno())
             if previous:
-                os.chown(name, previous.st_uid, previous.st_gid)
+                staging = os.stat(name)
+                if (staging.st_uid, staging.st_gid) != (previous.st_uid, previous.st_gid):
+                    os.chown(name, previous.st_uid, previous.st_gid)
                 os.chmod(name, stat.S_IMODE(previous.st_mode))
                 backup = target.with_name(f"README.md.backup-{time.time_ns()}")
                 shutil.copy2(target, backup)
