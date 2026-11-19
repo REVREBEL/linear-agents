@@ -97,6 +97,12 @@ writeFileSync(join(root, source), 'import "../../agents/agent-registry.yaml";');
 assert.throws(() => auditResearchAuthority(root, [source]), /research catalog/);
 writeFileSync(join(root, source), 'import "../../templates/context/README.md";');
 assert.throws(() => auditResearchAuthority(root, [source]), /README context bundle/);
+const agentSource = "agents/bridge/candidate-loader.mjs";
+mkdirSync(join(root, "agents/bridge"), {{ recursive: true }});
+writeFileSync(join(root, agentSource), 'import "../profiles/candidates/example.yaml";');
+assert.throws(() => auditResearchAuthority(root, [agentSource]), /research candidate profile/);
+writeFileSync(join(root, agentSource), 'import "../agent-registry.yaml";');
+assert.throws(() => auditResearchAuthority(root, [agentSource]), /research catalog/);
 console.log("forbidden runtime import variants rejected");
 """
         result = self.run_node(script, self.repo)
