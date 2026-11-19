@@ -2,6 +2,10 @@
 
 This repository's `agents/` directory contains **source-controlled agent definitions and project registry files** used by Agent Bridge. It is **not** an empty placeholder and is **not** a mirror of the server's live `/opt/agents/` directory.
 
+## Cross-root ownership contract (ABR-60)
+
+The authoritative boundaries between Git definitions, native agent runtime homes, shared agent-specific tools and general Ubuntu toolchains are documented in [the Agent Context ownership contract](../docs/blueprints/agent-context/OWNERSHIP.md). Follow that contract before changing profile execution semantics, host setup, tool installation or dispatch.
+
 ## Ubuntu runtime boundary
 
 - `/opt/agents/` is the canonical host location for runtime CLI profiles.
