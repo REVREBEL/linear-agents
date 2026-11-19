@@ -167,8 +167,14 @@ def check_pr(repo, base, head):
         candidates = (
             ((change.old_path, before), (change.new_path, after))
             if change.status.startswith(("R", "C"))
-            else (((change.new_path, after),) if change.new_path
-                  else ((change.old_path, before),))
+            else (
+                ((change.new_path, before),)
+                if (change.old_path and change.new_path
+                    and (old_owner := nearest_readme(change.old_path, before))
+                    and old_owner not in after)
+                else (((change.new_path, after),) if change.new_path
+                      else ((change.old_path, before),))
+            )
         )
         for path, owners in candidates:
             if path is None or path in seen:
