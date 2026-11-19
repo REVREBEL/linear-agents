@@ -2,6 +2,7 @@
 import copy
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -25,12 +26,50 @@ class TemplatePublisherTests(unittest.TestCase):
         self.files, self.expected = publisher.reviewed_sources()
 
     def test_git_sources_are_versioned_and_complete(self):
-        self.assertGreaterEqual(len(self.files), 14)
+        self.assertGreaterEqual(len(self.files), 15)
+        self.assertEqual(len(publisher.REQUIRED), 15)
         self.assertTrue(publisher.REQUIRED.issubset(self.files))
         self.assertEqual(len(self.expected["sourceCommit"]), 40)
         self.assertEqual(self.expected["templateSet"], "agent-context")
         self.assertEqual(self.expected["schemaVersion"], 1)
         self.assertEqual(self.expected, publisher.snapshot(self.files, self.expected["sourceCommit"]))
+
+    def make_committed_test_repository(self):
+        root = Path(self.temp.name) / "sample-repo"
+        template = root / "templates/context/README.md"
+        template.parent.mkdir(parents=True)
+        template.write_text("committed context template\n", encoding="utf-8")
+        def run(*args):
+            subprocess.run(["git", "-C", str(root), *args], check=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        run("init", "-q")
+        run("add", "--", "templates/context/README.md")
+        run("-c", "user.email=fixture@example.com", "-c", "user.name=Fixture",
+            "commit", "-qm", "initial reviewed template")
+        return root, template, run
+
+    def test_assume_unchanged_cannot_publish_dirty_worktree_bytes(self):
+        root, template, run = self.make_committed_test_repository()
+        run("update-index", "--assume-unchanged", "templates/context/README.md")
+        template.write_text("unreviewed local edit\n", encoding="utf-8")
+        with mock.patch.multiple(
+            publisher, ROOT=root, SOURCE_ROOT=root / "templates/context",
+            REQUIRED={"README.md"}
+        ):
+            self.assertEqual(
+                publisher.git("diff", "--name-only", "--", "templates/context"), b""
+            )
+            with self.assertRaisesRegex(ValueError, "differs from committed Git content"):
+                publisher.reviewed_sources()
+
+    def test_required_templates_cannot_be_omitted(self):
+        root, _, _ = self.make_committed_test_repository()
+        with mock.patch.multiple(
+            publisher, ROOT=root, SOURCE_ROOT=root / "templates/context",
+            REQUIRED={"README.md", "agent-runtimes.staged.json"}
+        ):
+            with self.assertRaisesRegex(ValueError, "Required context source templates missing"):
+                publisher.reviewed_sources()
 
     def test_initial_check_is_read_only(self):
         self.assertEqual(publisher.check_install(self.dest, self.expected), 1)
