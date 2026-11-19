@@ -36,6 +36,8 @@ class PromotionTests(unittest.TestCase):
         self.candidate["linearBridge"]["tunnelHost"] = "example-agent.revrebel.io"
         self.target = json.loads(
             (ROOT / "templates/context/bridge-runtime-registry.v2-entry.template.json").read_text())
+        self.target["worker"]["serviceTemplate"] = "linear-example-agent-agent"
+        self.target["worker"]["deployedName"] = "linear-example-agent-agent"
         self.target["runtimeContract"].pop("sessionContinuityFlag", None)
         self.target["runtimeContract"]["linearBridge"]["workerHost"] = "linear-example.revrebel.io"
         self.target["runtimeContract"]["linearBridge"]["tunnelHost"] = "example-agent.revrebel.io"
@@ -46,7 +48,7 @@ class PromotionTests(unittest.TestCase):
         route = "linear-" + "$" + "{EXAMPLE_PREFIX}." + "$" + "{DOMAIN}"
         kv = "$" + "{EXAMPLE_KV_NAMESPACE_ID}"
         config = {
-            "name": "linear-example-agent",
+            "name": "linear-example-agent-agent",
             "routes": [{"pattern": route, "custom_domain": True}],
             "kv_namespaces": [{"binding": "LINEAR_DATA", "id": kv}],
             "durable_objects": {"bindings": [
@@ -137,7 +139,7 @@ class PromotionTests(unittest.TestCase):
         self.deny("Unsafe CLI argv", lambda r: r["bridge"]["runtimeContract"]["executable"]["argv"].append("; rm /"))
 
     def test_rejects_privilege_escalation(self):
-        self.deny("Privileged Git/deployment", lambda r: r["bridge"]["executionPolicy"]["permissions"].update(deployment=True))
+        self.deny("Invalid/elevated permission", lambda r: r["bridge"]["executionPolicy"]["permissions"].update(deployment=True))
         self.deny("Invalid/elevated permission", lambda r: r["bridge"]["executionPolicy"]["permissions"].update(sourceWrite=True))
         self.deny("environment strip", lambda r: r["bridge"]["executionPolicy"]["security"].update(envStripPatterns=[]))
         self.deny("Unknown/escalated autonomy", lambda r: r["bridge"]["executionPolicy"].update(autonomy_level="Executor"))
