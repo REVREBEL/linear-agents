@@ -11,7 +11,7 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 ## Package contents
 
 - `templates/context/agent-profile.v2.template.yaml`: **corrected** complete candidate profile template conforming to the uploaded per-entry schema.
-- `templates/context/agent-profile.entry.schema.json`: exact copy of the uploaded `agent-registry-schema.json`.
+- `templates/context/agent-profile.entry.schema.json`: **single canonical copy** of the uploaded `agent-registry-schema.json`, used by research templates and validation.
 - `templates/context/agent-registry.catalog.template.yaml`: example catalog wrapper; the attached schema validates *entries*, not the wrapper.
 - `templates/context/bridge-runtime-registry.v2-entry.template.json`: separate *Bridge-specific* runtime registry example, originally misidentified as the NotebookLM profile template.
 - `templates/context/profile-mapping.md`: review-gated mapping between research profiles and executable Agent Registry v2.
@@ -20,7 +20,11 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 - `.agents/README.md`, `.agents/context.yaml`, `.agents/skills/agent-context/SKILL.md`, `AGENTS.bootstrap.md`: project bootstrap and shared CLI skill contract.
 - `agents.README.context-starter.md`, `bridge/README.context-starter.md`: fragments to **merge** with existing READMEs, not replacements.
 - `IMPLEMENTATION_TASKS.md`: milestones and tests (PostgreSQL UI excluded).
-- `references/`: exact attached catalog snapshots and per-entry schema for traceability; source-controlled reference placement is optional.
+- `references/`: exact attached 14- and 15-agent research catalog snapshots for historical comparison. The shared entry schema is referenced from `templates/context/agent-profile.entry.schema.json` to prevent divergent copies.
+
+## Template defaults and historical CLI examples
+
+The profile template deliberately uses `maxRetryAttempts: 0` (no automatic retries until a provider retry policy is tested). It uses the installed OpenCode CLI's `--session` continuation flag; historical research catalogs mention `--session-id`, which is not the installed OpenCode v1.19.5 syntax. Keep research snapshots unchanged as evidence rather than treating their command strings as executable.
 
 ## Ownership and use
 
