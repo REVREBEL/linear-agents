@@ -24,7 +24,7 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 - `templates/context/README.template.md` and `context-frontmatter.schema.json`: README metadata and documentation structure.
 - `templates/context/host-root.README.template.md`: root README for `/opt/agents`, `/opt/agent-tools`, `/opt/global-tools`.
 - `.agents/README.md` and `.agents/context.yaml`: **installed Git bootstrap documents (ABR-66)**; root `AGENTS.md` now contains the **B2 bootstrap instructions (ABR-67)**. The proposed `agent-context` skill remains staged in `bootstrap/` for Milestone D1.
-- `agents.README.context-starter.md`, `bridge/README.context-starter.md`: fragments to **merge** with existing READMEs, not replacements.
+- `agents.README.context-starter.md`, `bridge/README.context-starter.md`: staged reference fragments; their frontmatter is now merged into the **existing** owning READMEs under ABR-68 without replacing their contents.
 - `IMPLEMENTATION_TASKS.md`: milestones and tests (PostgreSQL UI excluded).
 - `references/`: exact attached 14- and 15-agent research catalog snapshots for historical comparison. The existing `agents/agent-registry-schema.json` remains a checked compatibility mirror of `templates/context/agent-profile.entry.schema.json`; validation rejects divergence.
 
@@ -51,6 +51,10 @@ The Git-root [`.agents/README.md`](../../../.agents/README.md) and [`.agents/con
 ## Agent instructions (ABR-67)
 
 Root [`AGENTS.md`](../../../AGENTS.md) now directs agents to read the project-local context README and manifest before code edits, identify relevant owning README dependencies, and use the shared resolver when it becomes available. Until then, dependency documents are inspected manually. No command is represented as installed before Milestone C.
+
+## Owning README context frontmatter (ABR-68)
+
+Existing [`agents/README.md`](../../../agents/README.md) and [`bridge/README.md`](../../../bridge/README.md) now publish their context IDs, profile/dispatch/deployment topics, document applicability, and dependencies on the repo registry and three optional `/opt` documentation roots. Their original implementation instructions remain intact. The validator checks these IDs against `.agents/context.yaml`, schema-valid frontmatter, and dependency aliases; host-root README files themselves arrive in B4.
 
 ## Ownership and use
 
