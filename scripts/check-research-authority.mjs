@@ -21,8 +21,8 @@ const ADDITIONAL_SOURCES = [
 const SOURCE_SUFFIX = /\.(?:mjs|cjs|js|ts|tsx|py)$/i;
 const EXCLUDED = /(?:^|\/)(?:__tests__\/|test\/|tests\/)|(?:\.test|\.spec)\.(?:mjs|cjs|js|ts|tsx|py)$/i;
 const DENIED = [
-  ["research catalog", /agents\/agent-registry(?:-v2)?\.ya?ml/i],
-  ["research candidate profile", /agents\/profiles\/(?:candidates|research)\//i],
+  ["research catalog", /(?:agents\/)?agent-registry(?:-v2)?\.ya?ml/i],
+  ["research candidate profile", /(?:agents\/)?profiles\/(?:candidates|research)\//i],
   ["research proposal compiler", /review-research-promotion\.py/i],
   ["research proposal payload", /reviewed-proposal-not-installed|researchSha256/i],
   ["README context bundle", /(?:\.agents\/context\.yaml|\.managed-context\.json|templates\/context\/)/i],
