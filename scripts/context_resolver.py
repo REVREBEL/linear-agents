@@ -112,7 +112,9 @@ def _owners_for_path(raw, index, manifest, root_paths):
                     relative = "README.md"
                 possible.append((alias, relative))
     else:
-        possible.append(("repo", validate_relative_document_path(raw)))
+        relative = validate_relative_document_path(raw)
+        reject_symlink_components(root_paths["repo"] / relative, "selection path")
+        possible.append(("repo", relative))
     if not possible:
         raise ValueError(f"Context path outside declared roots: {raw}")
     scores = {}
