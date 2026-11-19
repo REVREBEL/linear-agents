@@ -40,6 +40,10 @@ The [review-gated promotion contract](PROMOTION.md) and `scripts/review-research
 
 The profile template deliberately uses `maxRetryAttempts: 0` (no automatic retries until a provider retry policy is tested). It uses the installed OpenCode CLI's `--session` continuation flag; historical research catalogs mention `--session-id`, which is not the installed OpenCode v1.19.5 syntax. Keep research snapshots unchanged as evidence rather than treating their command strings as executable.
 
+## Per-profile version policy
+
+[ABR-65 research profile version policy](PROFILE_VERSION_POLICY.md) keeps `profileVersion` undefined and rejects implicit additions in profile inputs, research schemas and promotion proposals. Introducing it later requires a separately reviewed schema migration, compatibility plan and dedicated tests. This is distinct from the research catalog `version`, Bridge Registry `schemaVersion` and README frontmatter version.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.
