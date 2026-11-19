@@ -86,6 +86,10 @@ Run `python3 scripts/test_context_cross_root.py` locally. The Agent Context GitH
 
 The [README discipline policy](../docs/blueprints/agent-context/README_DISCIPLINE.md) defines ownership, exemptions and scope. Run `python3 scripts/test_pr_readme_updates.py` for fixture regressions, and `python3 scripts/check-pr-readme-updates.py --base BASE_SHA --head HEAD_SHA` to check an actual PR. The dedicated GitHub Actions workflow runs on every PR with read-only permissions and the full Git graph. This is CI/source documentation enforcement only; no native agent, host installation or service changes.
 
+## README coverage inventory and broken-local-link report (ABR-83 / D4)
+
+`report-readme-coverage.py` reads committed Git tree objects to inventory every folder with tracked files, find folders without their own `README.md`, and validate relative Markdown/HTML links within tracked READMEs and canonical Agent Context documentation. The scanner uses the same behavioral-file classification as D3 and records broken references with source paths and line numbers. It is advisory: it does not make existing README gaps or broken links fail CI. Run `python3 scripts/test_report_readme_coverage.py` and `python3 scripts/report-readme-coverage.py --format json`; the [README Coverage Inventory workflow](../.github/workflows/readme-coverage-inventory.yml) uploads current Markdown/JSON reports on every PR and push to main. See [D4 guide](../docs/blueprints/agent-context/README_COVERAGE.md) and [historical baseline](../docs/blueprints/agent-context/README_COVERAGE_BASELINE.md). No services or host profiles are scanned or changed.
+
 ## Host-only infrastructure
 
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.
