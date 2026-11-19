@@ -191,7 +191,24 @@ def validate_domain_readme_metadata(manifest, schema):
         if not set(DOMAIN_REQUIREMENTS[doc_id]).issubset(context["requires"]):
             raise ValueError(f"{relative_path}: missing owning documentation dependency")
         graph[doc_id] = context["requires"]
-    validate_domain_dependency_graph(graph, set(documents))
+    # Include other source-backed README nodes so cycles crossing a domain
+    # boundary are visible. The planned repo.jobs metadata is not present yet.
+    combined_graph = dict(graph)
+    for doc_id, relative_path in (
+        ("repo.bootstrap", ".agents/README.md"),
+        ("repo.agents", "agents/README.md"),
+        ("repo.bridge", "bridge/README.md"),
+        ("host.agent-runtimes", "templates/context/host-roots/agents/README.md"),
+        ("host.agent-tools", "templates/context/host-roots/agent-tools/README.md"),
+        ("host.global-tools", "templates/context/host-roots/global-tools/README.md"),
+    ):
+        body = (ROOT / relative_path).read_text(encoding="utf-8")
+        meta = yaml.safe_load(body[4:].split("\n---\n", 1)[0])
+        validate(meta, schema, relative_path)
+        if meta["context"]["id"] != doc_id:
+            raise ValueError(f"{relative_path}: expected context.id {doc_id}")
+        combined_graph[doc_id] = meta["context"]["requires"]
+    validate_domain_dependency_graph(combined_graph, set(documents))
     for entrypoint, doc_id in (("memory", "repo.memory"), ("integrations", "repo.integrations")):
         if manifest["entrypoints"].get(entrypoint) != doc_id:
             raise ValueError(f"Context entrypoint {entrypoint} must reference {doc_id}")
