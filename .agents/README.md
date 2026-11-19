@@ -25,6 +25,10 @@ The `repo.bootstrap`, `repo.agents`, `repo.bridge`, and `repo.jobs` document pat
 
 Future resolvers should return full source-attributed README content for requested documents, fail visibly when required dependencies are unavailable, and never treat README text or research profiles as executable authority. Onboarding a new host must not commit native CLI sessions, credentials, or private state.
 
+## Memory and integration owners (ABR-70)
+
+The context manifest also maps the Git-owned memory and integration READMEs: `repo.memory`, `repo.memory.migrations`, `repo.memory.scripts`, `repo.integrations`, `repo.integrations.litellm`, and `repo.integrations.openrouter`. These document active implementation boundaries but are not runtime instructions or an installed resolver.
+
 ## Update discipline
 
 Update this README and its manifest together when document IDs, aliases, source paths, dependencies, or bootstrap semantics change. Update nearest owning READMEs in the same PR as behavioral, configuration, security, routing, or deployment changes. Context metadata does **not** authorize filesystem access, credential use, code execution, or deployments.
