@@ -4,4 +4,6 @@ Research may propose model profiles, capability comparisons, adapter designs, an
 
 The bridge must independently check installed CLIs, reachable providers, actual model responses, allowed tools, dispatch host, and authorization before marking an agent operational. Track `researched`, `configured`, and `verified` separately; do not equate a NotebookLM answer with an agent heartbeat.
 
+**ABR-64 translation:** A separate [review-gated promotion adapter](../../../docs/blueprints/agent-context/PROMOTION.md) accepts a matching canonical candidate, independent approval record, model/runtime/Worker evidence and reviewed Bridge-specific mapping. It emits an inert proposal; candidate files do not acquire executable identities by being present in the research catalog.
+
 Reviewed provider adapters belong under `integrations/`; durable review handoffs belong under `jobs/`; runtime memory belongs under `memory/`. No automatic promotion from NotebookLM into the dispatch registry.
