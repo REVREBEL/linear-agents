@@ -40,7 +40,7 @@ The name `agent-registry-v2.yaml` refers to a **research snapshot**, not the exe
 - `/opt/agents/` presently holds runtime homes such as `opencode/`, `codex/`, `qwen/`, `gemini/`, `kilo/`, `trae/` and `memu/`.
 - `/opt/agent-tools/` currently includes `bin/`, `agents/` and `systemd/`; `/opt/global-tools/` includes shared tool-manager directories.
 - `/opt/agents/registry/agent-runtimes.json` remains a **disabled** host-local copy. ABR-63 defines its reviewed intended snapshot in `templates/context/agent-runtimes.staged.json` and a guarded host reconciliation command in `scripts/reconcile-agent-runtimes.py`. The historical host file retains stale values until reviewed source is explicitly applied. See [the verified inventory](RUNTIME_INVENTORY.md).
-- Reviewed host-root README **sources** now live under `templates/context/host-roots/{agents,agent-tools,global-tools}/README.md` (ABR-69), with a checked, explicit installer at `scripts/reconcile-host-root-readmes.py`. Host copies under `/opt` exist only after the reviewed Git source is deliberately applied. The context resolver and reusable template publisher remain separate milestones.
+- Reviewed host-root README **sources** now live under `templates/context/host-roots/{agents,agent-tools,global-tools}/README.md` (ABR-69), with an explicit installer at `scripts/reconcile-host-root-readmes.py`. The three host READMEs were applied after the ABR-69 merge; later changes require a new explicit reconciliation. ABR-71 separately adds `scripts/publish-context-templates.py` for versioned managed Git copies under `/opt/agent-tools/templates/context/`; this does not install a resolver or change native agent profiles.
 
 ## Acceptance and follow-up
 
