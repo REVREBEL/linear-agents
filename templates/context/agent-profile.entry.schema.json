@@ -1,0 +1,303 @@
+{
+  "title": "AgentRegistryEntry",
+  "description": "Defines an agent model, its operational runtime, Linear bridge bindings, routing taxonomy, and security boundaries.",
+  "type": "object",
+  "required": [
+    "id",
+    "displayName",
+    "description",
+    "kind",
+    "provider",
+    "runtime",
+    "linearBridge",
+    "taxonomy",
+    "routing",
+    "execution",
+    "permissions",
+    "security"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Unique slug identifier (e.g. north-mini-code, flint, gemma-4-31b)."
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed operational summary defining the model architecture, bridge purpose, strengths, and constraints."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "llm",
+        "cli_agent",
+        "browser_automation",
+        "ide_hook",
+        "mock_simulator"
+      ]
+    },
+    "provider": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "transport",
+        "executionHost"
+      ],
+      "properties": {
+        "transport": {
+          "type": "string",
+          "enum": [
+            "headless_cli",
+            "browser_cdp",
+            "ide_session",
+            "direct_api",
+            "simulation"
+          ]
+        },
+        "executionHost": {
+          "type": "string"
+        },
+        "binaryPath": {
+          "type": "string"
+        },
+        "commandTemplate": {
+          "type": "string"
+        },
+        "cdpEndpoint": {
+          "type": "string"
+        },
+        "workspaceRoot": {
+          "type": "string"
+        }
+      }
+    },
+    "linearBridge": {
+      "type": "object",
+      "required": [
+        "workerHost",
+        "tunnelHost",
+        "supportedEvents"
+      ],
+      "properties": {
+        "workerHost": {
+          "type": "string"
+        },
+        "tunnelHost": {
+          "type": "string"
+        },
+        "supportedEvents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "session_created",
+              "session_prompted",
+              "code_review_verdict"
+            ]
+          }
+        },
+        "completionMode": {
+          "type": "string",
+          "enum": [
+            "worker_callback",
+            "awaiting_external",
+            "manual_cli"
+          ]
+        }
+      }
+    },
+    "taxonomy": {
+      "type": "object",
+      "required": [
+        "agent_type",
+        "domain"
+      ],
+      "properties": {
+        "agent_type": {
+          "type": "string",
+          "enum": [
+            "Reflex",
+            "Goal-based",
+            "Utility-based",
+            "Learning"
+          ]
+        },
+        "domain": {
+          "type": "string"
+        },
+        "top_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "required": [
+        "complexity_tier",
+        "supported_intents"
+      ],
+      "properties": {
+        "complexity_tier": {
+          "type": "string",
+          "enum": [
+            "Low",
+            "Medium",
+            "High"
+          ]
+        },
+        "semantic_description": {
+          "type": "string"
+        },
+        "supported_intents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "task_ratings": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "autonomy_level",
+        "memory_scope"
+      ],
+      "properties": {
+        "autonomy_level": {
+          "type": "string",
+          "enum": [
+            "Read-only",
+            "Recommender",
+            "Supervised",
+            "Executor",
+            "Autonomous"
+          ]
+        },
+        "memory_scope": {
+          "type": "string",
+          "enum": [
+            "stateless",
+            "session_isolated",
+            "project_persistent"
+          ]
+        },
+        "sessionContinuityFlag": {
+          "type": "string"
+        },
+        "quotaPolicy": {
+          "type": "object",
+          "properties": {
+            "resumable": {
+              "type": "boolean"
+            },
+            "defaultRetryDelayMs": {
+              "type": "integer"
+            },
+            "maxRetryAttempts": {
+              "type": "integer"
+            },
+            "exhaustionPattern": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "required": [
+        "sourceWrite",
+        "directoryMoves",
+        "gitCommit",
+        "gitPush",
+        "autoMerge",
+        "deployment"
+      ],
+      "properties": {
+        "sourceWrite": {
+          "type": "boolean"
+        },
+        "directoryMoves": {
+          "type": "boolean"
+        },
+        "gitCommit": {
+          "type": "boolean"
+        },
+        "gitPush": {
+          "type": "boolean"
+        },
+        "autoMerge": {
+          "type": "boolean"
+        },
+        "deployment": {
+          "type": "boolean"
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "required": [
+        "blast_radius",
+        "credential_model",
+        "envStripPatterns"
+      ],
+      "properties": {
+        "blast_radius": {
+          "type": "string",
+          "enum": [
+            "Low",
+            "Medium",
+            "High",
+            "Critical"
+          ]
+        },
+        "credential_model": {
+          "type": "string",
+          "enum": [
+            "app_oauth",
+            "delegated_user",
+            "system_standing",
+            "ephemeral_session"
+          ]
+        },
+        "envStripPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mcpToolAllowlist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "handoff_targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
