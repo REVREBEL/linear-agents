@@ -1,6 +1,6 @@
 # Reusable agent-context templates
 
-These files are source-controlled **templates**, not deployed agent configuration. The project-root `.agents/README.md` and `.agents/context.yaml` bootstrap metadata is now tracked in Git (ABR-66), but the shared resolver, host-root README rollout and harness integrations remain later milestones. The two agent-profile formats below are intentionally incompatible.
+These files are source-controlled **templates**, not deployed agent configuration. The project-root `.agents/README.md` and `.agents/context.yaml` bootstrap metadata is tracked in Git (ABR-66), and ABR-71 provides an **explicit versioned publisher** for managed copies under `/opt/agent-tools/templates/context/`. The shared resolver and harness integrations remain later milestones. The two agent-profile formats below are intentionally incompatible.
 
 ## Ownership
 
@@ -17,6 +17,12 @@ These files are source-controlled **templates**, not deployed agent configuratio
 | `host-roots/{agents,agent-tools,global-tools}/README.md` | Reviewed, non-secret Ubuntu host-root README **sources** (ABR-69) | Install explicitly via `scripts/reconcile-host-root-readmes.py` after review; no automatic host sync |
 
 The compatibility mirror at `agents/agent-registry-schema.json` exists because `agents/agent-registry.yaml` references a co-located research schema. It is **not** a third schema to edit independently. Update both copies in the same reviewed change until an explicit migration removes the legacy mirror. The validation script rejects mismatches and duplicate copies under blueprint `references/`.
+
+## Versioned template publication (ABR-71)
+
+The canonical source remains **this Git folder**, including the reviewed host-root README sources. From the merged Agent Bridge checkout on Ubuntu, run `python3 scripts/publish-context-templates.py --validate` to validate tracked sources, `--check` to compare the installed managed directory without writes, and `--apply` to install after review. The publisher copies the tracked `.md`, `.yaml`, and `.json` files under `/opt/agent-tools/templates/context/`, preserving relative paths, plus a deterministic `.managed-context.json` with schema version, latest source-tree Git commit, per-file SHA-256/size and a tree digest. It never copies untracked runtime data.
+
+`--apply` is **explicit and idempotent**. The first run creates the missing destination; later runs do nothing when hashes match. A reviewed source change installs a complete new directory snapshot and retains the previous managed snapshot in a sibling `context.backup-*` directory. Unknown files, edited managed files, symlink escapes and unmanaged installation roots cause a refusal instead of an overwrite. This installation is **documentation/templates only**, not an executable context resolver, runtime configuration sync, credential migration, or agent dispatch action. Reusable templates under this path never replace native profiles under `/opt/agents/`.
 
 ## Research entry versioning (ABR-65)
 
