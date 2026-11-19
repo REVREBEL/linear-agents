@@ -78,6 +78,12 @@ class ReadmeCoverageTests(unittest.TestCase):
         self.rev = self.git("rev-parse", "HEAD")
         self.assertEqual(self.run_report()["brokenReferenceCount"], 0)
 
+    def test_link_to_repository_root_is_valid(self):
+        self.write("module/README.md", "[Root](../)\n")
+        self.commit()
+        self.rev = self.git("rev-parse", "HEAD")
+        self.assertEqual(self.run_report()["brokenReferenceCount"], 0)
+
     def test_broken_reference_reports_origin_line_and_target(self):
         self.write("module/README.md", "# Module\n[Missing](sub/gone.py)\n")
         self.commit()
