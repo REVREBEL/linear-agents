@@ -155,6 +155,7 @@ def probe(desired):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group()
+    group.add_argument("--check", action="store_true", help="Compare host file with the reviewed Git snapshot (default)")
     group.add_argument("--render", action="store_true", help="Print the reviewed JSON snapshot")
     group.add_argument("--validate", action="store_true", help="Validate the Git source alone")
     group.add_argument("--probe", action="store_true", help="Read-only executable/home path probe")
