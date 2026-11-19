@@ -60,6 +60,10 @@ Existing [`agents/README.md`](../../../agents/README.md) and [`bridge/README.md`
 
 The three reviewed, non-secret [host-root README sources](../../../templates/context/host-roots/README.md) define `host.agent-runtimes`, `host.agent-tools` and `host.global-tools`. A guarded `scripts/reconcile-host-root-readmes.py` supports source validation, read-only host comparison and explicit post-review install with backups. Git source files do **not** automatically populate `/opt`, enable the resolver or alter services.
 
+## Memory and integration ownership (ABR-70)
+
+Git READMEs in [`memory/`](../../../memory/README.md) and [`integrations/`](../../../integrations/README.md), plus their actively modified nested folders, now document checkpoint, provider and external API ownership. Their context IDs are registered in `.agents/context.yaml` and tested for complete source paths, declared cross-folder dependencies, and cycles. Metadata never authorizes database operations or provider dispatch.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.
