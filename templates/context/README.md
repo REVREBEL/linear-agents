@@ -14,6 +14,7 @@ These files are source-controlled **templates**, not deployed agent configuratio
 | `research-promotion.review.template.json` | Deliberately incomplete approval, evidence and Bridge-only mapping record | Fill with real reviewed provenance; compile using `scripts/review-research-promotion.py`, producing an inert proposal only |
 | `agent-runtimes.staged.json` | **Reviewed desired host-only CLI harness snapshot**, independent of all agent-profile and Worker registries | Source for the opt-in reconciliation command `scripts/reconcile-agent-runtimes.py`; all dispatch flags must remain false |
 | `README.template.md`, `host-root.README.template.md`, `context-frontmatter.schema.json` | Proposed portable README context contract | Context frontmatter `version: 1` is independent of either agent schema version |
+| `host-roots/{agents,agent-tools,global-tools}/README.md` | Reviewed, non-secret Ubuntu host-root README **sources** (ABR-69) | Install explicitly via `scripts/reconcile-host-root-readmes.py` after review; no automatic host sync |
 
 The compatibility mirror at `agents/agent-registry-schema.json` exists because `agents/agent-registry.yaml` references a co-located research schema. It is **not** a third schema to edit independently. Update both copies in the same reviewed change until an explicit migration removes the legacy mirror. The validation script rejects mismatches and duplicate copies under blueprint `references/`.
 

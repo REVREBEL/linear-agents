@@ -56,6 +56,10 @@ Root [`AGENTS.md`](../../../AGENTS.md) now directs agents to read the project-lo
 
 Existing [`agents/README.md`](../../../agents/README.md) and [`bridge/README.md`](../../../bridge/README.md) now publish their context IDs, profile/dispatch/deployment topics, document applicability, and dependencies on the repo registry and three optional `/opt` documentation roots. Their original implementation instructions remain intact. The validator checks these IDs against `.agents/context.yaml`, schema-valid frontmatter, and dependency aliases; host-root README files themselves arrive in B4.
 
+## Ubuntu host-root READMEs (ABR-69)
+
+The three reviewed, non-secret [host-root README sources](../../../templates/context/host-roots/README.md) define `host.agent-runtimes`, `host.agent-tools` and `host.global-tools`. A guarded `scripts/reconcile-host-root-readmes.py` supports source validation, read-only host comparison and explicit post-review install with backups. Git source files do **not** automatically populate `/opt`, enable the resolver or alter services.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.

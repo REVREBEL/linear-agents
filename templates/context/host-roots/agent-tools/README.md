@@ -1,0 +1,35 @@
+---
+context:
+  id: host.agent-tools
+  version: 1
+  title: Ubuntu shared agent-specific tools
+  topics: [agents, tooling, wrappers, host]
+  requires: [host.global-tools]
+  applies_to: ["**/*"]
+  update_on: [behavior, contracts, configuration, dependencies, security, deployment]
+---
+
+<!-- Managed source: templates/context/host-roots/agent-tools/README.md -->
+# /opt/agent-tools — shared agent-specific tooling
+
+## Owns
+Shared agent launcher wrappers, agent-specific utilities, managed skills and approved context templates installed for multiple native identities. This is an **installation root**, not the authoritative source for source-controlled Bridge code or research profiles.
+
+## Does not own
+Agent account authentication, private native sessions, model caches or per-identity configuration (those belong to `/opt/agents/`). General-purpose tools and language runtimes belong to `/opt/global-tools/`. Bridge dispatch, Worker identities, permissions and review rules remain in Git and its validated operational configuration.
+
+## Structure and dependencies
+Observed directories include `bin/`, `agents/`, and `systemd/`. Existing executable wrappers under `bin/` include `agent-exec`, `opencode`, `uv`, and `uvx` (observed files do not establish that the wrappers are healthy). New managed context template copies are planned under `templates/context/` in Milestone B6.
+
+Depends on `host.global-tools` for shared language runtimes and tooling. Its context ID is `host.agent-tools`; the manifest's optional override is `AGENT_CONTEXT_AGENT_TOOLS_ROOT`.
+
+## Runtime contract
+Only reviewed scripts may install or update managed shared tools. A wrapper must not infer executable authority from a research profile, CLI directory or this README. The Bridge's separate runtime adapters and authorization checks govern invocation. Shared wrapper installation does not enable a Worker or session.
+
+## Verification (read only)
+- `ls -ld /opt/agent-tools /opt/agent-tools/bin`
+- `ls -l /opt/agent-tools/bin`
+- `test -x /opt/agent-tools/bin/agent-exec` (path/executable flag only; not an end-to-end launcher test)
+
+## Update policy
+The reviewed source of **this README** is `templates/context/host-roots/agent-tools/README.md` in Git. Install source changes deliberately using `scripts/reconcile-host-root-readmes.py --apply`. Keep operational guidance synchronized with reviewed wrapper changes; do not copy credentials, private sessions, or host environment values into this document.
