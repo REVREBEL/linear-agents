@@ -17,7 +17,7 @@ The compatibility mirror at `agents/agent-registry-schema.json` exists because `
 
 ## Research catalog source
 
-`agents/agent-registry.yaml` is the current, canonical **15-profile research catalog**. Each entry is also in `agents/profiles/candidates/<id>.yaml`; both must match the preserved approved 15-agent snapshot at `docs/blueprints/agent-context/references/agent-registry-v2.yaml`. The prior 14-agent file at `references/agent-registry.yaml` is immutable history. Neither file indicates that a provider, model, Colab endpoint or Worker is installed or reachable.
+`agents/agent-registry.yaml` is the current, canonical **15-profile research catalog**. Each entry is also in `agents/profiles/candidates/<id>.yaml`; the current catalog and candidates must match **each other**. At ABR-62 adoption they also match the approved 15-agent snapshot at `docs/blueprints/agent-context/references/agent-registry-v2.yaml`. That snapshot and the earlier 14-entry snapshot are immutable history; future reviewed catalog revisions may advance independently. Neither file indicates that a provider, model, Colab endpoint or Worker is installed or reachable.
 
 ## Why research and execution schemas are different
 
