@@ -7,6 +7,8 @@ import re
 import yaml
 from jsonschema import Draft202012Validator
 
+from context_contract import validate_context_contract
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = ROOT / "templates/context"
 BLUEPRINT = ROOT / "docs/blueprints/agent-context"
@@ -358,6 +360,12 @@ def main():
     host_module = util.module_from_spec(spec)
     spec.loader.exec_module(host_module)
     host_module.reviewed_sources()
+
+    # C1: one authoritative v1 schema/README dependency graph validator.
+    # Legacy B1/B3/B5 checks above remain for compatibility and staged
+    # bootstrap requirements; future C2/C3 resolver code consumes the same
+    # data contract, not a competing manifest format.
+    validate_context_contract(ROOT)
 
     # One canonical copy of the uploaded research entry schema.
     duplicate = BLUEPRINT / "references/agent-registry-schema.json"
