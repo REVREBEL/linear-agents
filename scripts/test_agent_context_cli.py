@@ -1,6 +1,4 @@
 """ABR-73: verify portable CLI bootstrap without agent or service startup."""
-import io
-from contextlib import redirect_stdout, redirect_stderr
 import os
 from pathlib import Path
 import subprocess
