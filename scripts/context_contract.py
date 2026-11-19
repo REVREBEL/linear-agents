@@ -55,6 +55,10 @@ def require_context_source(path, root, doc_id, *, optional=False):
     reject_symlink_components(source, f"source for {doc_id}")
     if not source.is_relative_to(directory):
         raise ValueError(f"Context source escapes declared root for {doc_id}: {source}")
+    if directory.exists() and not directory.is_dir():
+        raise ValueError(f"Context root is not a directory for {doc_id}: {directory}")
+    if source.exists() and not source.is_file():
+        raise ValueError(f"Context source is not a regular file for {doc_id}: {source}")
     if not directory.is_dir() or not source.is_file():
         detail = f"Context source missing for {doc_id}: {source}"
         if optional:
