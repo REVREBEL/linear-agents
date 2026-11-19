@@ -46,7 +46,7 @@ class AgentContextInstallerTests(unittest.TestCase):
     def test_installed_zipapp_runs_outside_git_checkout(self):
         binary = self.make_archive()
         for args, expected in (
-            (["--version"], "agent-context 0.2.0"),
+            (["--version"], "agent-context 0.3.0"),
             (["--repo-root", str(ROOT), "validate"], "13 source-backed README contracts"),
         ):
             with self.subTest(args=args):
@@ -150,8 +150,8 @@ class AgentContextInstallerTests(unittest.TestCase):
     def test_refuse_tampered_managed_zipapp(self):
         installer.install(self.target, self.artifact)
         data = self.target.read_bytes()
-        self.assertIn(b'CLI_VERSION = "0.2.0"', data)
-        self.target.write_bytes(data.replace(b'CLI_VERSION = "0.2.0"', b'CLI_VERSION = "9.9.9"'))
+        self.assertIn(b'CLI_VERSION = "0.3.0"', data)
+        self.target.write_bytes(data.replace(b'CLI_VERSION = "0.3.0"', b'CLI_VERSION = "9.9.9"'))
         with self.assertRaisesRegex(ValueError, "Unmanaged|Modified managed|digest mismatch"):
             installer.install(self.target, self.artifact)
 
