@@ -27,7 +27,7 @@ Exemptions are **file-specific, not PR-wide**: a PR containing both a research Y
 
 ## Unowned source paths and D4
 
-If a behavioral file has no tracked README in its directory/ancestor hierarchy (excluding root fallback for nested paths), the check reports `UNOWNED (D4 advisory)` with the exact path. It does not fail that PR or force a broad documentation migration. **ABR-80 / D4** will inventory these coverage gaps and broken links. As new READMEs are added and tracked, same-PR enforcement activates automatically for their descendants.
+If a behavioral file has no tracked README in its directory/ancestor hierarchy (excluding root fallback for nested paths), the check reports `UNOWNED (D4 advisory)` with the exact path. It does not fail that PR or force a broad documentation migration. **ABR-83 / D4** will inventory these coverage gaps and broken links. As new READMEs are added and tracked, same-PR enforcement activates automatically for their descendants.
 
 ## Maintainer and CI verification
 
