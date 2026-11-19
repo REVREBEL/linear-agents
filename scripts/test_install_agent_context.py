@@ -57,6 +57,35 @@ class AgentContextInstallerTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertIn(expected, proc.stdout)
 
+    def test_zipapp_resolves_document_dependencies_outside_checkout(self):
+        binary = self.make_archive()
+        env = os.environ.copy()
+        env.pop("AGENT_CONTEXT_REPO_ROOT", None)
+        for variable, folder in (
+            ("AGENT_CONTEXT_AGENTS_ROOT", "agents"),
+            ("AGENT_CONTEXT_AGENT_TOOLS_ROOT", "agent-tools"),
+            ("AGENT_CONTEXT_GLOBAL_TOOLS_ROOT", "global-tools"),
+        ):
+            root = self.root / folder
+            root.mkdir()
+            shutil.copy2(
+                ROOT / "templates/context/host-roots" / folder / "README.md",
+                root / "README.md",
+            )
+            env[variable] = str(root)
+        proc = subprocess.run(
+            [
+                sys.executable, str(binary),
+                "--repo-root", str(ROOT), "--topic", "profiles", "--format", "json",
+            ],
+            cwd=self.root, capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        bundle = json.loads(proc.stdout)
+        self.assertTrue(any(item["id"] == "repo.agents" for item in bundle["documents"]))
+        self.assertTrue(any(item["id"] == "host.agent-runtimes" for item in bundle["documents"]))
+        self.assertTrue(all("content" in item for item in bundle["documents"]))
+
     def test_missing_install_and_read_only_check(self):
         self.assertEqual(installer.check_install(self.target, self.artifact), 1)
         self.assertFalse(self.target.exists())
