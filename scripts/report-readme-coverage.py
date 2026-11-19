@@ -160,7 +160,7 @@ def check_target(source, target, tracked, dirs):
     candidate = posixpath.normpath(posixpath.join(posixpath.dirname(source), location))
     if candidate == ".." or candidate.startswith("../"):
         return {"target": raw, "resolvedPath": candidate, "reason": "link escapes Git root"}
-    if candidate in tracked or candidate in dirs:
+    if candidate == "." or candidate in tracked or candidate in dirs:
         return None
     return {"target": raw, "resolvedPath": candidate, "reason": "missing tracked target"}
 
