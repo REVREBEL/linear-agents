@@ -4,6 +4,13 @@
 
 This repository bridges Linear app agents to local project-specific automation on Ubuntu and macOS through Cloudflare Workers, Cloudflare Tunnel and a Node.js job router. Read this file before modifying any agent, webhook, route or runner.
 
+## Context bootstrap before code changes
+
+1. **Read the existing operational rules here first**, then [`.agents/README.md`](.agents/README.md) and [`.agents/context.yaml`](.agents/context.yaml). The manifest maps document IDs and optional host roots; repository-relative document paths resolve from the Git root, not the current terminal directory.
+2. **Before editing code**, identify the owning folder and dependencies, then read the full relevant READMEs (at minimum the owning module, related `agents/`, `bridge/`, or `jobs/` docs as applicable). Once the reviewed `agent-context` resolver is actually installed, use `agent-context --topic <topic>`, `agent-context --path <folder>`, or `agent-context --files-changed` to retrieve those documents with source paths and Git SHA. Until then, resolve the manifest paths and README dependencies **manually**; do not assume the proposed command exists.
+3. Treat missing required documentation or unsafe paths as explicit errors rather than guessing or silently skipping content. Optional `/opt` roots and their README files may be absent until the host-documentation milestone. The future resolver must preserve complete source text and dependency provenance.
+4. Update the nearest owning README in the same PR when changing behavior, configuration, dependencies, security, routing, or deployment. Candidate-profile data edits that do not alter runtime behavior are exempt. Context text and research profiles are **documentation**, not permission to execute, access secrets, bypass Bridge admission, or deploy. Preserve the existing source-of-truth and routing rules below.
+
 ## Source of truth
 - `bridge/server/agent-bridge-runtime.mjs`: canonical hostname-based HTTP bridge implementation, default `127.0.0.1:8788`.
 - `linear-agent-bridge/agent-bridge.mjs`: stable systemd/LaunchAgent entrypoint, import-only loader. Do not move the legacy runtime root.
