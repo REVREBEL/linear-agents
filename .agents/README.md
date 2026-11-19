@@ -61,6 +61,10 @@ The canonical project skill [`skills/agent-context/SKILL.md`](skills/agent-conte
 
 The [D3 policy](../docs/blueprints/agent-context/README_DISCIPLINE.md) and CI workflow enforce nearest **physical** tracked README changes whenever a PR modifies behavior, configuration, contracts, dependencies, security or deployment code. Research/profile data-only files and tests/docs receive justified, file-specific exemptions; a mixed PR still needs the README for each behavioral source. Unowned files remain D4 coverage advisories. Context dependencies remain reading requirements, not duplicate README-update obligations.
 
+## README coverage reporting (ABR-83 / D4)
+
+The [D4 coverage guide](../docs/blueprints/agent-context/README_COVERAGE.md) and [baseline report](../docs/blueprints/agent-context/README_COVERAGE_BASELINE.md) inventory Git-tracked folders lacking READMEs and broken relative local references. The read-only [reporter](../scripts/report-readme-coverage.py) emits Markdown or JSON; CI publishes current artifacts for each PR. These findings remain advisory and do not broaden the D3 same-PR README policy into a repository-wide rewrite.
+
 ## Update discipline
 
 Update this README and its manifest together when document IDs, aliases, source paths, dependencies, or bootstrap semantics change. Update nearest owning READMEs in the same PR as behavioral, configuration, security, routing, or deployment changes. Context metadata does **not** authorize filesystem access, credential use, code execution, or deployments.
