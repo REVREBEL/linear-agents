@@ -1,0 +1,68 @@
+{
+  "id": "example-agent",
+  "role": "coding",
+  "provider": "opencode",
+  "packageDir": "agents/coding/example-agent",
+  "worker": {
+    "directory": "agents/coding/example-agent/worker",
+    "config": "wrangler.jsonc",
+    "serviceTemplate": "linear-example-agent",
+    "prefixEnv": "EXAMPLE_PREFIX",
+    "kvEnv": "EXAMPLE_KV_NAMESPACE_ID",
+    "durableObject": "DELIVERY_COORDINATOR",
+    "deployedName": "linear-example-agent"
+  },
+  "execution": {"runtime": "opencode", "host": "bridge"},
+  "linear": {"appIdentity": "example-agent", "credentialPrefix": "EXAMPLE"},
+  "profile": {
+    "displayName": "Example Local Coding Agent",
+    "kind": "cli_agent",
+    "model": {"selection": "pinned", "id": "ollama/example-model", "provider": "Ollama"},
+    "taxonomy": {
+      "agent_type": "Goal-based",
+      "domain": "Bounded repository implementation and testing",
+      "top_skills": ["Source inspection", "Unit tests"]
+    },
+    "routing": {
+      "complexity_tier": "Medium",
+      "semantic_description": "Localized, supervised coding tasks in an approved workspace",
+      "supported_intents": ["fix_bug", "generate_tests"]
+    }
+  },
+  "runtimeContract": {
+    "transport": "headless_cli",
+    "executionHost": "bridge_service",
+    "executable": {
+      "binaryEnv": "OPENCODE_BIN",
+      "argv": ["run", "--format", "json", "--model", "ollama/example-model", "{{PROMPT}}"]
+    },
+    "workspaceRootEnv": "WORKSPACE_ROOT",
+    "sessionContinuityFlag": "--session",
+    "linearBridge": {
+      "workerHost": "linear-example.invalid",
+      "tunnelHost": "example-agent.invalid",
+      "supportedEvents": ["session_created", "session_prompted"],
+      "completionMode": "worker_callback"
+    }
+  },
+  "executionPolicy": {
+    "autonomy_level": "Advisor",
+    "memory_scope": "session_isolated",
+    "permissions": {
+      "sourceWrite": false,
+      "directoryMoves": false,
+      "gitCommit": false,
+      "gitPush": false,
+      "autoMerge": false,
+      "deployment": false
+    },
+    "security": {
+      "blast_radius": "Low",
+      "credential_model": "none",
+      "envStripPatterns": [],
+      "mcpToolAllowlist": [],
+      "handoff_targets": []
+    }
+  },
+  "targetPackageDir": "agents/coding/example-agent"
+}

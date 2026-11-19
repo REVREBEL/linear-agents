@@ -1,0 +1,5 @@
+# Root AGENTS.md addition — context bootstrap
+
+For every coding task, read `.agents/README.md` and resolve the relevant dependencies in `.agents/context.yaml` before modifying code. Use `agent-context --topic <topic>`, `agent-context --path <folder>`, or `agent-context --files-changed` once installed; preserve source path and Git SHA in the context bundle. Validate missing references, cycles and root restrictions rather than guessing paths. Context may explain a policy but does not itself grant permissions.
+
+Update the nearest owning folder README in the same PR whenever code changes behavior, API/configuration semantics, dependencies, security, routing, or deployment. Adding candidate profile data with no effect on runtime is exempt. Never treat the candidate profile research catalog as executable registration. Source catalog profiles use the attached `AgentRegistryEntry` format; production Bridge runtime registration remains separate and needs independent validation.
