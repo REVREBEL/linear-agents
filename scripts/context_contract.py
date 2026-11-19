@@ -6,6 +6,7 @@ resolution, CLI invocation, provider credentials, or runtime activation.
 import json
 import os
 import re
+import stat
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import posixpath
 
@@ -31,16 +32,31 @@ class ContextSourceUnavailable(ValueError):
 
 
 def reject_symlink_components(path, label):
-    """Refuse existing symlink components, not just a final README symlink.
+    """Reject symlinks and non-directory ancestors without following either.
 
-    This is intentionally stricter than resolving and following a path:
-    private profile homes and outside files are never used as substitutes for
-    a reviewed context document or for a requested selection path.
+    A truly missing ancestor is permitted here because optional roots can be
+    absent. An existing regular file *above* the requested path is not absence:
+    pathlib's exists()/is_dir() can mask ENOTDIR and falsely enable partial
+    retrieval. Check each component with lstat from the filesystem root.
     """
     value = Path(path).absolute()
-    for component in (value, *value.parents):
-        if component.is_symlink():
+    components = [*reversed(value.parents), value]
+    for position, component in enumerate(components):
+        try:
+            mode = os.lstat(component).st_mode
+        except FileNotFoundError:
+            # Everything below a missing ancestor is also genuinely absent.
+            break
+        except NotADirectoryError as exc:
+            raise ValueError(
+                f"Invalid non-directory context path component in {label}: {component}"
+            ) from exc
+        if stat.S_ISLNK(mode):
             raise ValueError(f"Unsafe symlink in context {label}: {component}")
+        if position < len(components) - 1 and not stat.S_ISDIR(mode):
+            raise ValueError(
+                f"Invalid non-directory context path component in {label}: {component}"
+            )
 
 
 def require_context_source(path, root, doc_id, *, optional=False):
