@@ -40,7 +40,7 @@ The Agent Context workflow runs the new suite both in its established Ubuntu blu
 | `macos-latest` | POSIX macOS paths | Same complete acceptance suite, with temporary root paths normalized to handle platform symlink aliases |
 | `windows-latest` | Native Windows paths | Same suite with absolute Windows host overrides and POSIX manifest-relative document locators |
 
-The matrix uses Python 3.12 with pinned `PyYAML==6.0.2` and `jsonschema==4.23.0`. Git checkout preserves reviewed source line endings so byte-for-byte README comparisons do not mistake automatic CRLF conversion for source drift.
+The matrix uses Python 3.12 with pinned `PyYAML==6.0.2` and `jsonschema==4.23.0`. A **scoped root `.gitattributes` contract** forces LF checkout bytes for Git-owned context READMEs, source templates and the three packaged CLI modules on all OSes, independent of `core.autocrlf`. Without this, Windows may transform committed LF to CRLF and break the intentional byte-for-byte source checks. The acceptance test verifies the tracked Git attributes rather than silently normalizing content in the resolver.
 
 **Run locally:** `python3 scripts/test_context_cross_root.py`, from a Git checkout after installing the project's existing schema dependencies. The tests require only temporary files and standard Git commands. These are isolated test runs, not permission grants or an `agent-context` CLI installation step.
 
