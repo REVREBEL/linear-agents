@@ -35,9 +35,12 @@ def find_repo_root(explicit=None, *, cwd=None, environ=None):
     start = Path.cwd() if cwd is None else Path(cwd)
     if not start.is_dir():
         raise ValueError(f"Context working directory is not a directory: {start}")
-    for candidate in (start.resolve(), *start.resolve().parents):
-        if ((candidate / ".agents/context.yaml").is_file()
-                and (candidate / "templates/context/context-manifest.schema.json").is_file()):
+    # A manifest is the project boundary. Do not skip an incomplete nested
+    # project just because its schema is missing: validation must report the
+    # missing contract for that project, not accept an unrelated parent.
+    resolved = start.resolve()
+    for candidate in (resolved, *resolved.parents):
+        if (candidate / ".agents/context.yaml").is_file():
             return candidate
     raise ValueError(
         "No Agent Context project found; run inside a configured repository "
