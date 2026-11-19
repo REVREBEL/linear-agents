@@ -19,7 +19,7 @@ Shared agent launcher wrappers, agent-specific utilities, managed skills and app
 Agent account authentication, private native sessions, model caches or per-identity configuration (those belong to `/opt/agents/`). General-purpose tools and language runtimes belong to `/opt/global-tools/`. Bridge dispatch, Worker identities, permissions and review rules remain in Git and its validated operational configuration.
 
 ## Structure and dependencies
-Observed directories include `bin/`, `agents/`, and `systemd/`. Existing executable wrappers under `bin/` include `agent-exec`, `opencode`, `uv`, and `uvx` (observed files do not establish that the wrappers are healthy). New managed context template copies are planned under `templates/context/` in Milestone B6.
+Observed directories include `bin/`, `agents/`, and `systemd/`. Existing executable wrappers under `bin/` include `agent-exec`, `opencode`, `uv`, and `uvx` (observed files do not establish that the wrappers are healthy). The reviewed ABR-71 publisher installs versioned, inert Git context template copies under `templates/context/` when explicitly applied after merge. Its `.managed-context.json` records file hashes and source revision; the publisher does not install a resolver or agent runner.
 
 Depends on `host.global-tools` for shared language runtimes and tooling. Its context ID is `host.agent-tools`; the manifest's optional override is `AGENT_CONTEXT_AGENT_TOOLS_ROOT`.
 
@@ -30,6 +30,7 @@ Only reviewed scripts may install or update managed shared tools. A wrapper must
 - `ls -ld /opt/agent-tools /opt/agent-tools/bin`
 - `ls -l /opt/agent-tools/bin`
 - `test -x /opt/agent-tools/bin/agent-exec` (path/executable flag only; not an end-to-end launcher test)
+- `python3 scripts/publish-context-templates.py --check` from the reviewed Git checkout (read-only managed template comparison)
 
 ## Update policy
 The reviewed source of **this README** is `templates/context/host-roots/agent-tools/README.md` in Git. Install source changes deliberately using `scripts/reconcile-host-root-readmes.py --apply`. Keep operational guidance synchronized with reviewed wrapper changes; do not copy credentials, private sessions, or host environment values into this document.
