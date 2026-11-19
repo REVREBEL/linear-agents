@@ -23,7 +23,7 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 - `templates/context/profile-mapping.md`: review-gated mapping between research profiles and executable Agent Registry v2.
 - `templates/context/README.template.md` and `context-frontmatter.schema.json`: README metadata and documentation structure.
 - `templates/context/host-root.README.template.md`: root README for `/opt/agents`, `/opt/agent-tools`, `/opt/global-tools`.
-- `.agents/README.md` and `.agents/context.yaml`: **installed Git bootstrap documents (ABR-66)**. The proposed `agent-context` skill and root `AGENTS.md` amendment remain staged in `bootstrap/` for later milestones.
+- `.agents/README.md` and `.agents/context.yaml`: **installed Git bootstrap documents (ABR-66)**; root `AGENTS.md` now contains the **B2 bootstrap instructions (ABR-67)**. The proposed `agent-context` skill remains staged in `bootstrap/` for Milestone D1.
 - `agents.README.context-starter.md`, `bridge/README.context-starter.md`: fragments to **merge** with existing READMEs, not replacements.
 - `IMPLEMENTATION_TASKS.md`: milestones and tests (PostgreSQL UI excluded).
 - `references/`: exact attached 14- and 15-agent research catalog snapshots for historical comparison. The existing `agents/agent-registry-schema.json` remains a checked compatibility mirror of `templates/context/agent-profile.entry.schema.json`; validation rejects divergence.
