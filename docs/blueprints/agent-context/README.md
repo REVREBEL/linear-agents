@@ -92,6 +92,10 @@ The [C5 test contract](ACCEPTANCE.md) verifies complete, source-linked context r
 
 The Git-owned [canonical project skill](../../../.agents/skills/agent-context/SKILL.md) and root [AGENTS.md](../../../AGENTS.md) now direct coding/review agents to the already-reviewed `agent-context` resolver before edits. [QWEN.md](../../../QWEN.md) provides Qwen Code's project instruction entrypoint without copying the skill. Codex, OpenCode, Qwen Code and Mistral Vibe discover the same `.agents/skills/agent-context/SKILL.md`; native invocations and limitations are documented in [HARNESSES.md](HARNESSES.md). The CI harness tests exercise actual read-only retrieval and source provenance, not runtime model launches or additional dispatch authority.
 
+## Research execution authority boundary (ABR-78 / D2)
+
+The [D2 authority contract](RESEARCH_AUTHORITY.md) separates candidate research/profile data, code-signature/model/host claims, and context bundles from real Registry v2/Worker identity, authenticated Bridge job admission, and runtime enforcement. A focused CI gate checks that executable Bridge and Worker sources do not import research/context proposals; fake-candidate tests demonstrate that catalog permission claims cannot mint Worker identities, while reviewed promotion remains non-installing. This milestone does not assert that cryptographic code-signature validation or live model allowlist enforcement has been added to a runtime.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.

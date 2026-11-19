@@ -34,6 +34,10 @@ The version-like filename `agent-registry-v2.yaml` is a *research snapshot name*
 
 The approved `AgentRegistryEntry` does not define per-entry `profileVersion`. The blueprint validator and promotion-proposal compiler reject silent additions until a separately reviewed schema migration explicitly defines version semantics, compatibility and tests. Catalog `version: 1.0.0` remains catalog metadata, not an agent schema version. See [the version migration policy](../docs/blueprints/agent-context/PROFILE_VERSION_POLICY.md).
 
+## Research cannot authorize execution (ABR-78 / D2)
+
+The [D2 authority boundary](../docs/blueprints/agent-context/RESEARCH_AUTHORITY.md) identifies the **trusted Registry v2, authenticated job admission and host/runtime controls** separately from research YAML, promotion proposals and README context. A candidate's `deployment`, `codeSigned`, `modelAllowlist`, `hostIsolation`, Worker host or command-template claims are not evidence of approval or permission. Source audits and isolated fake-candidate tests run in the dedicated research-authority CI workflow, alongside the existing promotion and Registry v2 policy tests. Code-signature and model-provider availability checks are not established by a candidate profile and must be verified by their actual runtime control planes.
+
 ## Ubuntu runtime boundary
 
 - `/opt/agents/` is the canonical host location for runtime CLI profiles.

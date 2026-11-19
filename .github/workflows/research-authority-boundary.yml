@@ -1,0 +1,57 @@
+name: Research Metadata Authority Boundary
+
+on:
+  pull_request:
+    paths:
+      - 'bridge/**'
+      - 'jobs/**'
+      - 'routing/**'
+      - 'linear-agent-bridge/**'
+      - 'linear-*-worker/**'
+      - 'agents/coding/**'
+      - 'agents/bridge/**'
+      - 'integrations/**'
+      - 'agents/agent-registry.yaml'
+      - 'agents/profiles/candidates/**'
+      - 'agents/registry.json'
+      - 'agents/registry.schema.json'
+      - 'templates/context/agent-profile.entry.schema.json'
+      - 'scripts/agent-worker-registry.mjs'
+      - 'scripts/validate-agent-registry.mjs'
+      - 'scripts/agent-registry.test.mjs'
+      - 'scripts/review-research-promotion.py'
+      - 'scripts/test_review_research_promotion.py'
+      - 'scripts/check-research-authority.mjs'
+      - 'scripts/test_research_execution_boundary.py'
+      - '.github/workflows/research-authority-boundary.yml'
+      - '.agents/skills/agent-context/**'
+      - 'AGENTS.md'
+      - 'agents/README.md'
+      - 'docs/blueprints/agent-context/**'
+  workflow_dispatch:
+
+jobs:
+  non-authoritative-research:
+    name: No research-to-dispatch authority
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned research schema dependencies
+        run: python -m pip install --disable-pip-version-check 'PyYAML==6.0.2' 'jsonschema==4.23.0'
+      - name: Reject research/context imports in executable Bridge sources
+        run: node scripts/check-research-authority.mjs
+      - name: Validate canonical executable Registry v2
+        run: node scripts/validate-agent-registry.mjs
+      - name: Verify executable registry policies
+        run: node --test scripts/agent-registry.test.mjs
+      - name: Reject untrusted research identity and admission claims
+        run: python scripts/test_research_execution_boundary.py
+      - name: Verify reviewed proposals never grant authorization
+        run: python scripts/test_review_research_promotion.py
