@@ -144,6 +144,47 @@ class PromotionTests(unittest.TestCase):
         self.deny("environment strip", lambda r: r["bridge"]["executionPolicy"]["security"].update(envStripPatterns=[]))
         self.deny("Unknown/escalated autonomy", lambda r: r["bridge"]["executionPolicy"].update(autonomy_level="Executor"))
 
+    def test_research_security_claims_never_become_runtime_proof(self):
+        # This candidate deliberately claims external signing, model allowlist
+        # and host attestation. The research schema currently allows extra
+        # descriptive fields; none may be translated into executable proof.
+        self.candidate["security"].update(
+            codeSigned=True,
+            modelAllowlist=["*"],
+            hostIsolation="verified",
+        )
+        self.candidate["runtime"]["signedExecutable"] = True
+        self.refresh_candidate()
+        self.review["researchSha256"] = self.digest
+        entry = self.run_promotion()["registryEntry"]
+        self.assertNotIn("codeSigned", json.dumps(entry))
+        self.assertNotIn("signedExecutable", json.dumps(entry))
+        self.assertNotIn("modelAllowlist", json.dumps(entry))
+        self.assertNotIn("hostIsolation", json.dumps(entry))
+        self.assertEqual(entry["profile"]["model"]["selection"], "pinned")
+        self.assertEqual(entry["runtimeContract"]["executionHost"], "bridge_service")
+
+    def test_research_cannot_select_a_different_execution_host(self):
+        self.deny(
+            "Unsupported host mapping",
+            lambda r: r["bridge"]["runtimeContract"].update(executionHost="remote_mac"),
+        )
+        self.candidate["runtime"]["executionHost"] = "remote_mac"
+        self.refresh_candidate()
+        self.review["researchSha256"] = self.digest
+        with self.assertRaisesRegex(ValueError, "Unsupported host mapping"):
+            self.run_promotion()
+
+    def test_model_claims_cannot_change_reviewed_model_identity(self):
+        self.deny(
+            "Model provider/ID not verified",
+            lambda r: r["verification"]["model"].update(modelId="unapproved-model"),
+        )
+        self.deny(
+            "Model provider/ID not verified",
+            lambda r: r["verification"]["model"].update(provider="different-provider"),
+        )
+
     def test_rejects_unknown_runtime_and_session_shortcuts(self):
         self.deny("Unsupported research kind", lambda r: r["bridge"].update(profileKind="test_agent"))
         self.deny("Unverified retry", lambda r: r["bridge"]["runtimeContract"].update(sessionContinuityFlag="--session-id"))
