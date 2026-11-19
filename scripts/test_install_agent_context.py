@@ -69,6 +69,14 @@ class AgentContextInstallerTests(unittest.TestCase):
         self.assertEqual(installer.install(self.target, self.artifact), 0)
         self.assertEqual(list(self.bin_dir.glob("agent-context.backup-*")), [])
 
+    def test_check_detects_and_apply_repairs_non_executable_mode(self):
+        installer.install(self.target, self.artifact)
+        self.target.chmod(0o644)
+        self.assertEqual(installer.check_install(self.target, self.artifact), 1)
+        self.assertEqual(installer.install(self.target, self.artifact), 0)
+        self.assertEqual(self.target.stat().st_mode & 0o7777, 0o755)
+        self.assertEqual(installer.check_install(self.target, self.artifact), 0)
+
     def test_reviewed_update_retains_backup_without_install_gap(self):
         installer.install(self.target, self.artifact)
         updated_sources = dict(self.sources)
