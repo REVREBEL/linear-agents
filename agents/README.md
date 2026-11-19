@@ -1,3 +1,14 @@
+---
+context:
+  id: repo.agents
+  version: 1
+  title: Agent definitions and runtime registry
+  topics: [agents, profiles, registry, deployment]
+  requires: [host.agent-runtimes, host.agent-tools, host.global-tools]
+  applies_to: ["agents/**"]
+  update_on: [behavior, contracts, configuration, dependencies, security, deployment]
+---
+
 # Agent registry
 
 This repository's `agents/` directory contains **source-controlled agent definitions and project registry files** used by Agent Bridge. It is **not** an empty placeholder and is **not** a mirror of the server's live `/opt/agents/` directory.
