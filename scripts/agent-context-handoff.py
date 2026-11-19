@@ -166,10 +166,15 @@ def validate_bundle(bundle, *, allow_partial=False):
         if item["id"] in seen:
             raise ValueError("Document cannot be present and missing")
         seen.add(item["id"])
+    positions = {
+        item["id"]: n for n, item in enumerate(bundle["documents"])
+    }
     for item in bundle["documents"]:
         for required in item["requires"]:
             if required not in seen:
                 raise ValueError("Unresolved context dependency: " + required)
+            if required in positions and positions[required] >= positions[item["id"]]:
+                raise ValueError("Context documents are not dependency-first")
 
 
 def verify_handoff(envelope, *, allow_partial=False, repo_root=None,
@@ -236,11 +241,27 @@ def verify_handoff(envelope, *, allow_partial=False, repo_root=None,
             raw = git(root, "show", commit + ":" + expected)
             if raw != item["content"].encode("utf-8"):
                 raise ValueError("Pinned Git source bytes do not match handoff content")
+            source = raw.decode("utf-8")
+            if not source.startswith("---\\n") or "\\n---\\n" not in source[4:]:
+                raise ValueError("Pinned source frontmatter missing")
+            declared = yaml.safe_load(source[4:].split("\\n---\\n", 1)[0])
+            metadata = declared.get("context") if isinstance(declared, dict) else None
+            if (not isinstance(metadata, dict)
+                    or metadata.get("id") != item["id"]
+                    or metadata.get("title") != item["title"]
+                    or sorted(metadata.get("requires", [])) != item["requires"]):
+                raise ValueError("Pinned source metadata differs from handoff dependencies")
             source_commit = git(
                 root, "log", "-1", "--format=%H", commit, "--", expected
             ).decode("ascii").strip()
             if source_commit != item["gitSha"]:
                 raise ValueError("Pinned source revision mismatch")
+        for missing in bundle["missingDocuments"]:
+            missing_id = missing["id"]
+            origin = manifest["documents"].get(missing_id)
+            if (origin is None or origin["root"] == "repo"
+                    or manifest["roots"][origin["root"]]["required"]):
+                raise ValueError("Missing context entry is not an optional host source")
     return envelope
 
 
