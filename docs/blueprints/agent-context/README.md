@@ -23,7 +23,7 @@ The current Bridge `agents/registry.json` with `schemaVersion: 2` is **another, 
 - `templates/context/profile-mapping.md`: review-gated mapping between research profiles and executable Agent Registry v2.
 - `templates/context/README.template.md` and `context-frontmatter.schema.json`: README metadata and documentation structure.
 - `templates/context/host-root.README.template.md`: root README for `/opt/agents`, `/opt/agent-tools`, `/opt/global-tools`.
-- `.agents/README.md`, `.agents/context.yaml`, `.agents/skills/agent-context/SKILL.md`, `AGENTS.bootstrap.md`: project bootstrap and shared CLI skill contract.
+- `.agents/README.md` and `.agents/context.yaml`: **installed Git bootstrap documents (ABR-66)**. The proposed `agent-context` skill and root `AGENTS.md` amendment remain staged in `bootstrap/` for later milestones.
 - `agents.README.context-starter.md`, `bridge/README.context-starter.md`: fragments to **merge** with existing READMEs, not replacements.
 - `IMPLEMENTATION_TASKS.md`: milestones and tests (PostgreSQL UI excluded).
 - `references/`: exact attached 14- and 15-agent research catalog snapshots for historical comparison. The existing `agents/agent-registry-schema.json` remains a checked compatibility mirror of `templates/context/agent-profile.entry.schema.json`; validation rejects divergence.
@@ -43,6 +43,10 @@ The profile template deliberately uses `maxRetryAttempts: 0` (no automatic retri
 ## Per-profile version policy
 
 [ABR-65 research profile version policy](PROFILE_VERSION_POLICY.md) keeps `profileVersion` undefined and rejects implicit additions in profile inputs, research schemas and promotion proposals. Introducing it later requires a separately reviewed schema migration, compatibility plan and dedicated tests. This is distinct from the research catalog `version`, Bridge Registry `schemaVersion` and README frontmatter version.
+
+## Project-local bootstrap (ABR-66)
+
+The Git-root [`.agents/README.md`](../../../.agents/README.md) and [`.agents/context.yaml`](../../../.agents/context.yaml) now declare the context entrypoint and optional host aliases. They are **metadata only**: the resolver, harness skill, and deployment integration remain future tasks, and the existing `.agents/skills/` contents are preserved. The validator checks bootstrap frontmatter, root-relative document paths, aliases, and entrypoints. READMEs and frontmatter owned by other folders are introduced separately under B3/B4.
 
 ## Ownership and use
 

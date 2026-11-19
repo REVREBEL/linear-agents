@@ -1,0 +1,34 @@
+# ABR-66: tracked bootstrap declaration only; the agent-context CLI is not yet installed.
+# Paths under the "repo" root are relative to this project's root (the .agents/ parent).
+# Optional host roots may be absent until ABR-69 and are not loaded by this manifest.
+contextVersion: 1
+project: agent-bridge
+roots:
+  repo:
+    path: .
+    required: true
+  host-agents:
+    environment: AGENT_CONTEXT_AGENTS_ROOT
+    default: /opt/agents
+    required: false
+  host-agent-tools:
+    environment: AGENT_CONTEXT_AGENT_TOOLS_ROOT
+    default: /opt/agent-tools
+    required: false
+  host-global-tools:
+    environment: AGENT_CONTEXT_GLOBAL_TOOLS_ROOT
+    default: /opt/global-tools
+    required: false
+documents:
+  repo.bootstrap: {root: repo, path: .agents/README.md}
+  repo.agents: {root: repo, path: agents/README.md}
+  repo.bridge: {root: repo, path: bridge/README.md}
+  repo.jobs: {root: repo, path: jobs/README.md}
+  host.agent-runtimes: {root: host-agents, path: README.md}
+  host.agent-tools: {root: host-agent-tools, path: README.md}
+  host.global-tools: {root: host-global-tools, path: README.md}
+entrypoints:
+  default: repo.bootstrap
+  profiles: repo.agents
+  deployment: repo.bridge
+  runtime: host.agent-runtimes

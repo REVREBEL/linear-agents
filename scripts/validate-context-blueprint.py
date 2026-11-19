@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Validate research and runtime examples without activating Agent Bridge."""
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import json
+import re
 
 import yaml
 from jsonschema import Draft202012Validator
@@ -45,6 +46,51 @@ def validate_research_profile(instance, schema, label):
             "research schema migration"
         )
     validate(instance, schema, label)
+
+
+def validate_bootstrap_manifest(manifest, label):
+    """Validate B1 manifest pointers; formal context schema belongs to C1."""
+    if not isinstance(manifest, dict) or manifest.get("contextVersion") != 1:
+        raise ValueError(f"{label}: contextVersion must equal 1")
+    roots, documents, entrypoints = (
+        manifest.get("roots"), manifest.get("documents"), manifest.get("entrypoints")
+    )
+    if not all(isinstance(item, dict) and item for item in (roots, documents, entrypoints)):
+        raise ValueError(f"{label}: roots, documents and entrypoints are required mappings")
+    repo = roots.get("repo")
+    if repo != {"path": ".", "required": True}:
+        raise ValueError(f"{label}: repo root must be the project-root relative '.'")
+    for name, config in roots.items():
+        if not isinstance(config, dict):
+            raise ValueError(f"{label}: invalid root {name}")
+        if name != "repo":
+            env, default, required = (
+                config.get("environment"), config.get("default"), config.get("required")
+            )
+            if (not isinstance(env, str) or
+                re.fullmatch(r"[A-Z][A-Z0-9_]*", env) is None or
+                not isinstance(default, str) or not Path(default).is_absolute() or
+                not isinstance(required, bool)):
+                raise ValueError(f"{label}: invalid optional host root {name}")
+    for doc_id, locator in documents.items():
+        if not isinstance(doc_id, str) or not re.fullmatch(r"[a-z][a-z0-9.-]+", doc_id):
+            raise ValueError(f"{label}: invalid document ID {doc_id!r}")
+        if not isinstance(locator, dict) or set(locator) != {"root", "path"}:
+            raise ValueError(f"{label}: invalid locator for {doc_id}")
+        root, raw_path = locator["root"], locator["path"]
+        if root not in roots or not isinstance(raw_path, str):
+            raise ValueError(f"{label}: unknown root or missing path for {doc_id}")
+        path = PurePosixPath(raw_path)
+        if (not raw_path or path.is_absolute() or ".." in path.parts or
+            "\\" in raw_path or raw_path.startswith("./")):
+            raise ValueError(f"{label}: unsafe relative document path for {doc_id}")
+        if root == "repo":
+            resolved = (ROOT / raw_path).resolve()
+            if not resolved.is_relative_to(ROOT.resolve()) or not resolved.is_file():
+                raise ValueError(f"{label}: missing/outside repository document: {doc_id}")
+    for name, document_id in entrypoints.items():
+        if document_id not in documents:
+            raise ValueError(f"{label}: unresolved entrypoint {name}: {document_id}")
 
 
 def main():
@@ -148,6 +194,7 @@ def main():
         TEMPLATES / "README.template.md",
         TEMPLATES / "host-root.README.template.md",
         BLUEPRINT / "bootstrap/.agents/README.md",
+        ROOT / ".agents/README.md",
         BLUEPRINT / "bootstrap/agents.README.context-starter.md",
         BLUEPRINT / "bootstrap/bridge.README.context-starter.md",
     ):
@@ -157,9 +204,24 @@ def main():
         frontmatter = yaml.safe_load(body[4:].split("\n---\n", 1)[0])
         validate(frontmatter, context_schema, str(path.relative_to(ROOT)))
 
-    manifest = load_yaml(BLUEPRINT / "bootstrap/.agents/context.yaml")
-    if manifest.get("contextVersion") != 1 or not manifest.get("roots"):
-        raise ValueError("Context bootstrap manifest is missing its version or roots")
+    # B1: validate both original blueprint example and installed project-local
+    # metadata, without requiring optional host READMEs that arrive in B4.
+    for manifest_path in (
+        BLUEPRINT / "bootstrap/.agents/context.yaml",
+        ROOT / ".agents/context.yaml",
+    ):
+        validate_bootstrap_manifest(load_yaml(manifest_path), str(manifest_path.relative_to(ROOT)))
+    actual_readme = (ROOT / ".agents/README.md").read_text(encoding="utf-8")
+    bootstrap_context = yaml.safe_load(actual_readme[4:].split("\n---\n", 1)[0])["context"]
+    if bootstrap_context["id"] != "repo.bootstrap":
+        raise ValueError("Root bootstrap README ID must remain repo.bootstrap")
+    active_manifest = load_yaml(ROOT / ".agents/context.yaml")
+    if active_manifest["documents"]["repo.bootstrap"] != {
+        "root": "repo", "path": ".agents/README.md"
+    }:
+        raise ValueError("Bootstrap document alias must reference .agents/README.md")
+    if any(dep not in active_manifest["documents"] for dep in bootstrap_context["requires"]):
+        raise ValueError("Root bootstrap README has an undeclared document dependency")
 
     # One canonical copy of the uploaded research entry schema.
     duplicate = BLUEPRINT / "references/agent-registry-schema.json"
