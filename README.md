@@ -140,10 +140,10 @@ received ──> queued ──> launching ──> running ──> completed
 
 ### 4. Agent Registry & Multi-Model Inference Architecture
 
-The project has established a unified **Agent Registry v2** specification (`agent-registry.schema.json` and `agent-registry.yaml`), organizing 14 model profiles into distinct operational tiers:
+The project maintains **two distinct registries**: an executable, declarative Bridge Registry v2 (`agents/registry.json` and `agents/registry.schema.json`) and a **15-entry research catalog** (`agents/agent-registry.yaml` and its `AgentRegistryEntry` schema). The catalog lists proposed agent capabilities grouped by intended role below; entries are **not proof of installation, live dispatch or model availability**. The `colab-notebook-agent` entry is a research-only candidate.
 
 ```text
-                               AGENT REGISTRY v2 CATALOG
+                               RESEARCH MODEL CATALOG
    ┌───────────────────────────────────────┬──────────────────────────────────────┐
    ▼                                       ▼                                      ▼
 AUTONOMOUS CODING AGENTS         LOCAL AIR-GAPPED CODERS          SPECIALIZED ADAPTERS
@@ -154,9 +154,10 @@ AUTONOMOUS CODING AGENTS         LOCAL AIR-GAPPED CODERS          SPECIALIZED AD
 - Reflection Beam (501B MoE)                                     - Parallel Decisions Fast
 - ERNIE 5.5 Flash (280B MoE)                                     - NVIDIA Nemotron Rerank VL
 - Inkling 2 Small (594B MoE)                                     - Stealth Crouton (1M doc)
+                                                                    - Colab Notebook (candidate)
 ```
 
-#### Operational Classification Matrix
+#### Research Catalog Classification Matrix (proposed roles, not deployment status)
 | Model ID | Provider | Kind | Transport | Autonomy | Intended Role |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`north-mini-code:free`** | Cohere | `cli_agent` | `headless_cli` | `Executor` | Git worktree inspection, unit test repair, CI failure fixes. |
@@ -173,6 +174,7 @@ AUTONOMOUS CODING AGENTS         LOCAL AIR-GAPPED CODERS          SPECIALIZED AD
 | **`decisions-fast:free`** | Parallel | `llm` | `direct_api` | `Read-only` | Typed web-grounded decision scoring (`noul`, `choice`, `score`) with citations. |
 | **`nemotron-rerank-vl`** | NVIDIA | `llm` | `direct_api` | `Read-only` | Multimodal cross-encoder reranking for PostgreSQL/pgvector memory queries. |
 | **`crouton-alpha`** | Stealth | `llm` | `direct_api` | `Recommender` | 1M-token public document and specification synthesis. |
+| **`colab-notebook-agent`** | Google / Colab | `cli_agent` | `headless_cli` | `Executor` | Research-only notebook and GPU evaluation candidate; runtime, CLI command and Worker require verification. |
 
 ---
 
