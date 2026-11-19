@@ -114,6 +114,24 @@ class ContextContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Additional properties"):
             self.validate(changed)
 
+    def test_git_backed_host_alias_cannot_point_elsewhere(self):
+        changed = copy.deepcopy(BASE_MANIFEST)
+        changed["documents"]["host.agent-tools"]["path"] = "other.md"
+        with self.assertRaisesRegex(ValueError, "Host source-backed context alias mismatch"):
+            self.validate(changed)
+        changed = copy.deepcopy(BASE_MANIFEST)
+        changed["documents"]["host.agent-tools"]["root"] = "host-agents"
+        with self.assertRaisesRegex(ValueError, "Host source-backed context alias mismatch"):
+            self.validate(changed)
+
+    def test_valid_platform_specific_roots_are_schema_valid(self):
+        changed = copy.deepcopy(BASE_MANIFEST)
+        changed["roots"]["host-agents"]["platformDefaults"] = {
+            "darwin": "/Users/example/agents",
+            "win32": "C:\\agent-tools\\agents",
+        }
+        self.assertEqual(len(self.validate(changed)["validatedDocumentIds"]), 13)
+
     def test_missing_required_repo_readme_fails(self):
         (self.repo / "jobs/README.md").unlink()
         with self.assertRaisesRegex(ValueError, "Missing or escaping repository"):
