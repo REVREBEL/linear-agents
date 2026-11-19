@@ -21,7 +21,7 @@
 | Dedicated Qwen Worker | No `agents/coding/qwen-local/worker` or `qwen-local` Registry v2 entry exists | **Blocked**; no Worker/OAuth/KV evidence |
 | Shared ChatGPT CLI | Remains independent and pinned to its authenticated model; E1 does not change its profile or launcher | Boundary preserved |
 
-The example JSON intentionally uses the OpenCode 1.x `provider` / `npm` / `options` shape observed with CLI 1.19.5, not unverified OpenCode 2.x configuration. Its sole endpoint is `http://127.0.0.1:11434/v1`; it includes only the Qwen model and limits the usable context to Ollama's configured 16,384 tokens, rather than advertising the architecture's 262K maximum. It is a **versioned source example awaiting PR review**, not a host installation or active agent configuration.
+The example JSON intentionally uses the OpenCode 1.x `provider` / `npm` / `options` shape observed with CLI 1.19.5, not unverified OpenCode 2.x configuration. It declares `enabled_providers: ["ollama"]` and its sole configured endpoint is `http://127.0.0.1:11434/v1`; it includes only the Qwen model and limits the usable context to Ollama's configured 16,384 tokens, rather than advertising the architecture's 262K maximum. It is a **versioned source example awaiting PR review**, not a host installation or active agent configuration. The source test checks the declared allowlist only; the effective merged configuration, provider discovery and remote-provider rejection must be verified in the isolated target runtime before promotion.
 
 ## Agent Context pilot
 
