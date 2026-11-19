@@ -4,13 +4,13 @@ The `Owning README Discipline` GitHub Actions workflow checks **every pull reque
 
 ## Ownership and changes
 
-`scripts/check-pr-readme-updates.py` compares the **effective Git PR diff** between the merge base and head commit, using `git diff --name-status -z --find-renames BASE...HEAD`. It never guesses from the local working tree, issue labels, PR descriptions, or a single commit. It handles additions, modifications, deletions, renames, and type changes.
+`scripts/check-pr-readme-updates.py` compares the **effective Git PR diff** between the merge base and head commit, using `git diff --name-status -z --find-renames BASE...HEAD`. It never guesses from the local working tree, issue labels, PR descriptions, or a single commit. Old ownership is resolved from the **same merge-base snapshot** as the effective PR diff; a README independently added later to the target branch cannot impose a new requirement on the feature branch. It handles additions, modifications, deletions, renames, and type changes.
 
 For each behavioral file, walk up from its directory and choose the **closest tracked `README.md`**. A nested `jobs/admission/README.md` owns `jobs/admission/handler.mjs` ahead of `jobs/README.md`; `integrations/litellm/README.md` owns its adapter ahead of `integrations/README.md`. This filesystem ownership rule complements the logical `.agents/context.yaml` dependency graph: cross-root `requires` entries supply reading context, not multiple documentation-update obligations.
 
 The owning README must **exist at PR head and have an effective change in the same PR**. Changing only an ancestor README does not satisfy a nested owner. Deleting a nested owner does not silently transfer its obligation to an ancestor. For renames across owners, both old and new ownership are examined. Root-level behavioral files use root `README.md` only; nested paths with no local owner are reported as D4 coverage gaps rather than implicitly assigned to the top-level README.
 
-Behavioral source includes JavaScript/TypeScript/Python/shell source, SQL migrations, provider/Worker configuration, JSON/YAML/TOML schema or configuration, CSS and selected dependency/build manifests. Repository-local agent `SKILL.md` changes are behavioral instructions and require the nearest owner under `.agents/`. Content changes need a real Git file delta; merely mentioning a README in a comment cannot satisfy the check.
+Behavioral source includes JavaScript/TypeScript/Python/shell source, SQL migrations, provider/Worker configuration, JSON/YAML/TOML schema or configuration, CSS and dependency/build manifests, including the Terraform provider dependency lockfile `.terraform.lock.hcl`. Repository-local agent `SKILL.md` changes are behavioral instructions and require the nearest owner under `.agents/`. Content changes need a real Git file delta; merely mentioning a README in a comment cannot satisfy the check.
 
 ## Deterministic exemptions, with reasons
 
