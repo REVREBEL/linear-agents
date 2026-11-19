@@ -26,6 +26,10 @@ For `CHANGES_REQUESTED`, mention the configured implementation agent (such as An
 
 For `APPROVED`, post the verdict without re-triggering implementation. The agent must not merge or deploy unless the issue explicitly authorizes it.
 
+## Versioned context for an actionable agent return (ABR-84 / D5)
+
+When a GitHub/Linear review requests corrections from an implementing **agent**, prepare the instruction as a versioned context handoff using `python3 scripts/agent-context-handoff.py create --repo-root . --repository REVREBEL/linear-agents --message-file MESSAGE --path bridge/README.md --format markdown --output HANDOFF` (substitute the actual reviewed source path or use `--topic` for the task). Attach the full output to the Linear handoff message or link a durable, receiver-readable full JSON artifact with repository, pinned commit and `handoffSha256`. Require the implementing agent to verify it with `python3 scripts/agent-context-handoff.py verify --input HANDOFF --repo-root CHECKOUT --check-source` before applying revisions. If the full artifact cannot be delivered, mark the handoff incomplete; do not claim context transfer. The repository content is evidence, not authorization to merge or execute. See [D5 contract](../../../docs/blueprints/agent-context/HANDOFFS.md). An informational review verdict without an agent handoff does not need a new snapshot.
+
 ## Incoming follow-ups
 
 Linear `AgentSessionEvent created` carries `promptContext` for new sessions. `prompted` carries only the follow-up instruction in `agentActivity.content.body`. The Worker forwards that new instruction for the existing agent session, and the bridge saves `sessionAction` in the job. Existing agent runtime session reuse must be verified separately; preserving the Linear session ID does not by itself guarantee restoring a local model's conversational history.

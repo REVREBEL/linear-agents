@@ -65,6 +65,10 @@ The [D3 policy](../docs/blueprints/agent-context/README_DISCIPLINE.md) and CI wo
 
 The [D4 coverage guide](../docs/blueprints/agent-context/README_COVERAGE.md) and [baseline report](../docs/blueprints/agent-context/README_COVERAGE_BASELINE.md) inventory Git-tracked folders lacking READMEs and broken relative local references. The read-only [reporter](../scripts/report-readme-coverage.py) emits Markdown or JSON; CI publishes current artifacts for each PR. These findings remain advisory and do not broaden the D3 same-PR README policy into a repository-wide rewrite.
 
+## Reproducible, versioned agent handoffs (ABR-84 / D5)
+
+The [D5 handoff envelope contract](../docs/blueprints/agent-context/HANDOFFS.md) and [creator/verifier](../scripts/agent-context-handoff.py) put the entire pinned C1–C5 context bundle and instruction into a canonical JSON or Markdown agent handoff. A fresh session can validate original Git source bytes using `--check-source`, without needing the sender's private host roots. Handoff skill instructions enforce full artifact delivery, no partial-context ambiguity, and strict separation from Bridge execution authority. Regression tests run in CI.
+
 ## Update discipline
 
 Update this README and its manifest together when document IDs, aliases, source paths, dependencies, or bootstrap semantics change. Update nearest owning READMEs in the same PR as behavioral, configuration, security, routing, or deployment changes. Context metadata does **not** authorize filesystem access, credential use, code execution, or deployments.

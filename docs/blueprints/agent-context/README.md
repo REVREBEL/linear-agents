@@ -104,6 +104,10 @@ The [D2 authority contract](RESEARCH_AUTHORITY.md) separates candidate research/
 
 The [D4 audit guide](README_COVERAGE.md) and [reviewed baseline](README_COVERAGE_BASELINE.md) report tracked folders lacking their own README, behavioral source under those folders, and broken local links in README/project-context documentation. A new [advisory GitHub Actions report](../../../.github/workflows/readme-coverage-inventory.yml) publishes complete Markdown/JSON artifacts for each PR and main-branch push. Existing gaps are listed, not repaired automatically or promoted to a blocking CI requirement. The existing D3 same-PR policy remains unchanged.
 
+## Reproducible agent session handoffs (ABR-84 / D5)
+
+[D5 handoffs](HANDOFFS.md) carry a full context snapshot, source paths, the pinned Git commit, dependencies and message/context SHA-256 hashes into a new agent session, rather than expecting that session to re-resolve the current HEAD. The [source-level handoff CLI](../../../scripts/agent-context-handoff.py) creates and verifies Markdown/JSON envelopes and can compare the original README bytes to pinned Git objects without accessing the sending host's private roots. Canonical coding-agent and Linear review skills require a complete artifact or explicitly flag a blocked handoff. This is not a new bridge dispatch adapter or runtime authorization mechanism.
+
 ## Ownership and use
 
 Git project `templates/context/` is the reusable source. A setup tool can install reviewed copies at `/opt/agent-tools/templates/context/`, while project-specific files live in `.agents/`. Runtime private settings remain under `/opt/agents/` and shared general tools under `/opt/global-tools/`.
