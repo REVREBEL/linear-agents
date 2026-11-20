@@ -105,6 +105,18 @@ class SourceLinkedSiteTests(unittest.TestCase):
         self.assertEqual(len(list(self.output.rglob("index.html"))), 6)
         self.assertEqual(self.invoke("check").returncode, 0)
 
+    def test_repository_root_directory_link_uses_root_readme(self):
+        self.assertEqual(
+            site.local_href("../", "agents/README.md", "pages/agents/index.html",
+                            {"README.md": "pages/index.html"}, REPO_ID, "a" * 40),
+            "../index.html",
+        )
+        self.assertEqual(
+            site.local_href("../", "agents/README.md", "pages/agents/index.html",
+                            {}, REPO_ID, "a" * 40),
+            f"https://github.com/{REPO_ID}/tree/" + "a" * 40,
+        )
+
     def test_safe_markdown_renders_and_rewrites_local_links(self):
         self.build()
         root_html = (self.output / "pages/index.html").read_text()
