@@ -207,6 +207,21 @@ export function createDeviceEnrollment({
     }
     db.exec('BEGIN IMMEDIATE');
     try {
+      // The operator can revoke a device or replace its challenge while
+      // transport verification runs. Validate the observed state under the
+      // write lock before consuming the one-use challenge.
+      const currentChallenge = pending.get(deviceId);
+      const currentDevice = get.get(deviceId);
+      if (!currentChallenge || currentChallenge.expires_at <= now() ||
+          currentChallenge.nonce_hash !== entry.nonce_hash ||
+          currentChallenge.config_json !== entry.config_json ||
+          currentChallenge.type !== entry.type ||
+          currentChallenge.generation !== entry.generation ||
+          (currentDevice ? currentDevice.generation + 1 : 1) !== entry.generation ||
+          (entry.type === 'rotate' && currentDevice?.status !== 'active') ||
+          (entry.type === 'enroll' && currentDevice &&
+            !['revoked', 'paused'].includes(currentDevice.status)))
+        throw Error('STALE_OR_UNKNOWN_CHALLENGE');
       db.prepare(`INSERT INTO devices
         (id,approved_json,status,generation,last_seen_at,paired_at)
         VALUES (?,?, 'active',?,?,?)
