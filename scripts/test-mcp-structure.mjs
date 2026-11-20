@@ -143,3 +143,21 @@ test('ABR-98 Git status, bounded diff/log use isolated read-only sandbox',async 
   }),/INVALID_GIT_ARGUMENTS/);
   assert.equal((await readFile(path.join(repo,'module.ts'),'utf8')).includes('Hello'),true);
 });
+
+test('AST rewrite refuses ambiguous matches even with a one-result limit', async t => {
+  const { repo, authority, scoped } = await setup(t);
+  const file = path.join(repo, 'module.ts');
+  const original = 'function first() { return 1; }\nfunction second() { return 2; }\n';
+  await writeFile(file, original);
+  let writes = 0;
+  const tool = createStructuralTools({ workspaceRoots: {repo}, authority,
+    approvedAtomicWriter: async () => { writes++; } });
+  for (const dryRun of [true, false]) {
+    await assert.rejects(tool.astRewrite(scoped, {
+      workspaceId:'repo', path:'module.ts', kind:'functionDeclaration',
+      maxResults:1, replacement:'function changed() {}', dryRun,
+    }), /AST_NON_UNIQUE_MATCH/);
+  }
+  assert.equal(writes, 0);
+  assert.equal(await readFile(file, 'utf8'), original);
+});
