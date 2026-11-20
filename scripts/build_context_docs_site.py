@@ -175,6 +175,11 @@ def local_href(value, source, html_path, page_by_source, repository, head, *, im
     dest = posixpath.normpath(posixpath.join(posixpath.dirname(source), decoded))
     if dest == ".." or dest.startswith("../"):
         return "#"
+    if dest == ".":
+        if not image and "README.md" in page_by_source:
+            dest = "README.md"
+        else:
+            return f"https://github.com/{repository}/tree/{head}"
     dest = clean_path(dest)
     if dest not in page_by_source and dest + "/README.md" in page_by_source:
         dest += "/README.md"
