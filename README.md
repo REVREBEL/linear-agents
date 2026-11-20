@@ -541,3 +541,7 @@ The [ABR-95 OAuth/Cloudflare acceptance](docs/audits/mcp/OAUTH_EDGE.md) adds an 
 ## ABR-96 — Authenticated Ubuntu sandbox executor (source-only)
 
 The [ABR-96 executor implementation and safety gate](docs/audits/mcp/EXECUTOR.md) add separately scoped interactive Python/shell process handles and SQLite-idempotent execution jobs, in a Linux Bubblewrap namespace with no network access and a pinned project-FD mount. Its use remains **explicitly separate** from production `agent-bridge.service`, `jobs/persistence/job-store.mjs`, existing MCP `tools/call`, and Cloudflare ingress. Rootless Bubblewrap is currently **blocked by AppArmor for the real `bridge` service user**; no unsandboxed or elevated fallback is allowed. The unit candidate is inert and must be explicitly approved after successful service-user probing and ABR-97/98 host/tool integration.
+
+## ABR-97 — Verified macOS SSH and source-only device enrollment
+
+[ABR-97 host authorization and Mac audit](docs/audits/mcp/MACOS_HOST.md) adds separately signed/operator-approved `macos-runtime` and `rebel-server` enrollment, trusted interactive versus Linear admission, fail-closed host selection and actual read-only discovery of the current Mac launchd identity and repository root. It does not register new devices, run an MCP command on Mac, change the existing Ubuntu/Mac Bridge services or install a launchd agent. Mac OS confinement and Ubuntu `bridge` AppArmor gates remain open.

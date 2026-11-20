@@ -7,3 +7,7 @@ See [MCP host fixture](mcp-host-agent/README.md) and [upstream/parity audit](../
 ## ABR-96 — Sandboxed Ubuntu host executor
 
 `mcp-host-agent/` additionally contains the standalone authenticated execution service with Bubblewrap/prlimit namespace constraints, per-device/user/client/session/project authorization, SQLite outcome idempotency and interactive-process streaming. It is a source-only adapter, **not** an automatic extension to the paired read-only MCP agent or to the production Linear dispatcher. The service-user AppArmor policy gate remains blocked. See [executor safety and restart contract](../../docs/audits/mcp/EXECUTOR.md).
+
+## ABR-97 — Approved device choice and macOS discovery
+
+The separate `mcp-host-agent/device-enrollment.mjs`, `device-routing.mjs`, and `macos-host-probe.mjs` establish signed, expiring host pairing and a trusted route decision for actual SSH or paired WS targets. The real Mac's launchd Node and project root were read over strict SSH, without altering it; the existing read-only agent and Linux executor remain independent. [ABR-97 Mac/Ubuntu runbook](../../docs/audits/mcp/MACOS_HOST.md).

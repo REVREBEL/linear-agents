@@ -29,3 +29,7 @@ The local `server/mcp-relay/` fixture optionally requires cryptographically vali
 ## ABR-96 — Separate OS-sandbox execution adapter
 
 `agent/mcp-host-agent/execution-service.mjs` composes a **nonproduction** Ubuntu Bubblewrap executor with private scoped authority, interactive terminal handles and a distinct SQLite execution-outcome journal. It is not imported into the authoritative Bridge server or job ledger. The actual `bridge` OS user currently fails the rootless namespace preflight, so this code is not deployable until an approved narrow AppArmor policy succeeds. Details and rollback: [ABR-96 executor audit](../docs/audits/mcp/EXECUTOR.md).
+
+## ABR-97 — Two-host device authority
+
+`agent/mcp-host-agent/device-enrollment.mjs` and `device-routing.mjs` add signed, operator-approved canonical host records and verifier-injected human versus trusted Linear job routing. The existing `routing/hosts/host-routing.mjs` default is only applied after verified Linear admission; interactive tool arguments never create permissions or auto-fallback. See [ABR-97 Mac/Ubuntu evidence](../docs/audits/mcp/MACOS_HOST.md). These source modules are not imported by the running Bridge server or connected to production MCP tools.
