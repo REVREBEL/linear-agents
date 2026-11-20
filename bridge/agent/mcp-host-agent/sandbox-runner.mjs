@@ -178,9 +178,12 @@ export function createSandboxRunner({ projectsRoot, workspaces, expectedUid = pr
     let timeout, finished = false, disposition;
     const accumulate = (kind, chunk) => {
       const room = MAX_CAPTURE - output[kind].length;
-      if (room > 0) output[kind] = Buffer.concat([output[kind], chunk.subarray(0, room)]);
+      if (room > 0) {
+        const accepted = chunk.subarray(0, room);
+        output[kind] = Buffer.concat([output[kind], accepted]);
+        onChunk?.(kind, accepted);
+      }
       if (chunk.length > room) output[kind + 'Truncated'] = true;
-      onChunk?.(kind);
     };
     child.stdout.on('data', bytes => accumulate('stdout', bytes));
     child.stderr.on('data', bytes => accumulate('stderr', bytes));

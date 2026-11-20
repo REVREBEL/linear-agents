@@ -53,3 +53,9 @@ The [candidate unit](../../../scripts/linux/systemd/desktopcommander-mcp-host-ag
 If a future explicitly approved canary fails, stop **only** the new MCP host service, revoke paired device/OAuth grants, kill its cgroup, and rollback that unit/config. Do not touch `agent-bridge.service`, existing Worker/OAuth jobs, review inbox, Linear issues or PostgreSQL memory. Failed/old background operations stay interrupted and require fresh authorized instructions to retry; never replay a write based on recovered job text.
 
 **Milestone dependency:** ABR-97 device enrollment and macOS routing, ABR-98 MCP tool-profile exposure and full connected-tool parity, ABR-99 trusted Bridge handoffs, ABR-100 production/dual-host acceptance remain separate.
+
+## PR #251 review hardening: transactional batches and stable terminal cursors
+
+- `run_parallel` checks **every** item’s scope, idempotency conflict, queue capacity, and remaining durable-history slots before any insertion. New records commit together in a single SQLite transaction, and no work launches until every insert succeeds. A rejected batch leaves no unreturned or partially executed writes.
+- Terminal cursors now count immutable **arrival-ordered output segments**, not lines rebuilt from stdout-before-stderr. `nextOffset` and `cursorUnit: 'segments'` prevent newly printed stdout from being skipped after a previously read Python `>>> ` stderr prompt. Stream data is capped and sanitized on output.
+- Only active terminal processes count toward `maxSessions`. Recent completed handles remain readable, while the oldest finished entries are evicted once retention reaches `4 * maxSessions`; short-lived sequential processes do not require restarting the service.

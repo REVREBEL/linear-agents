@@ -257,21 +257,61 @@ export function createExecutionJobs({ runner, authority, journalDir, onAudit = (
   }
   function spawnJob(scope, command, options) { return enqueue(scope, 'spawn_job', command, options); }
   async function runParallel(scope, commands, { idempotencyKey, durationMs } = {}) {
+    if (closed) throw Error('EXECUTOR_CLOSED');
     if (!Array.isArray(commands) || commands.length < 1 ||
         commands.length > Math.min(runner.maxConcurrent * 4, 16) ||
         !KEY.test(idempotencyKey ?? '')) throw Error('INVALID_PARALLEL');
-    if (pending.length + active + commands.length > maxQueued)
-      throw Error('EXECUTOR_QUEUE_FULL');
-    // Validate all work before any batch item is persisted/started.
-    for (const cmd of commands) {
-      const parsed = validateCommand(cmd);
-      authority.requireGrant(scope, 'run_parallel', parsed.workspaceId, parsed.write);
+    const duration = durationMs ?? runner.maxDurationMs;
+    if (!Number.isInteger(duration) || duration < 200 || duration > runner.maxDurationMs)
+      throw Error('INVALID_TIMEOUT');
+
+    // Validate every identity, input, idempotency collision, queue slot, and
+    // immutable-history slot BEFORE inserting even one batch member.
+    const plans = commands.map((input, index) => {
+      const command = validateCommand(input);
+      const identity = authority.requireGrant(scope, 'run_parallel',
+        command.workspaceId, command.write);
+      const key = idempotencyKey + ':' + index;
+      if (!KEY.test(key)) throw Error('INVALID_PARALLEL');
+      const fingerprint = hash({ command, durationMs: duration });
+      const prior = byOwnerKey.get(identity.scopeKey, key);
+      if (prior && prior.fingerprint !== fingerprint) throw Error('IDEMPOTENCY_CONFLICT');
+      return { command, identity, key, fingerprint, prior,
+        id: prior?.id ?? randomUUID() };
+    });
+    const fresh = plans.filter(plan => !plan.prior);
+    if (pending.filter(task => byId.get(task.id)?.state === 'queued').length +
+        active + fresh.length > maxQueued) throw Error('EXECUTOR_QUEUE_FULL');
+    if (historyCount.get().count + fresh.length > maxHistory)
+      throw Error('EXECUTOR_HISTORY_LIMIT');
+    if (fresh.length) {
+      const check = runner.probeSandbox();
+      if (!check.available) throw Error('SANDBOX_UNAVAILABLE: ' + check.error);
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        for (const plan of fresh) {
+          insert.run(plan.id, plan.identity.scopeKey, plan.command.workspaceId,
+            plan.key, plan.fingerprint, now(), duration);
+        }
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      // Only schedule after *all* inserts committed. A partial SQLite
+      // failure can never execute work with an unreturned job ID.
+      for (const plan of fresh) {
+        pending.push({
+          id: plan.id, command: plan.command, durationMs: duration,
+          scopeKey: plan.identity.scopeKey, scope, tool: 'run_parallel',
+        });
+        onAudit({ event: 'execution_queued', jobId: plan.id,
+          workspaceId: plan.command.workspaceId, principal: plan.identity.subject });
+      }
+      queueMicrotask(pump);
     }
-    const jobs = commands.map((cmd, index) => enqueue(scope, 'run_parallel', cmd, {
-      idempotencyKey: idempotencyKey + ':' + index, durationMs,
-    }));
     while (true) {
-      const rows = jobs.map(job => view(byId.get(job.jobId)));
+      const rows = plans.map(plan => view(byId.get(plan.id)));
       if (rows.every(row => FINAL.has(row.state))) return rows;
       await sleep(40);
     }

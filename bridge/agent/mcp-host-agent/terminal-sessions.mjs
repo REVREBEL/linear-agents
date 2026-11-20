@@ -26,28 +26,58 @@ export function createTerminalSessions({ runner, authority, maxSessions = 8 }) {
   function outputView(session, offset = 0, length = 100) {
     if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(length) ||
         length < 1 || length > 500) throw Error('INVALID_PAGINATION');
-    const stdout = session.handle.sanitize(session.handle.output.stdout.toString('utf8'));
-    const stderr = session.handle.sanitize(session.handle.output.stderr.toString('utf8'));
-    const lines = (stdout + (stderr ? '\n' + stderr : '')).split(/\r?\n/);
+    // Each segment is appended in actual stdout/stderr arrival order.
+    // Cursors index immutable segments, never mutable concatenated streams.
+    const end = Math.min(session.segments.length, offset + length);
+    const text = session.segments.slice(offset, end).map(entry => entry.text).join('');
     return { processId: session.id, status: state(session),
-      output: lines.slice(offset, offset + length).join('\n'),
-      nextOffset: Math.min(lines.length, offset + length),
-      totalLines: lines.length,
-      truncated: session.handle.output.stdoutTruncated ||
-        session.handle.output.stderrTruncated,
+      output: session.handle.sanitize(text),
+      nextOffset: end, totalSegments: session.segments.length,
+      cursorUnit: 'segments',
+      totalLines: session.handle.sanitize(session.segments.map(entry => entry.text).join(''))
+        .split(/\r?\n/).length,
+      truncated: session.segmentsOverflow ||
+        session.handle.output.stdoutTruncated || session.handle.output.stderrTruncated,
       exitCode: session.outcome?.exitCode ?? null,
     };
   }
   function startProcess(scope, command, { durationMs = runner.maxDurationMs } = {}) {
     if (closed) throw Error('EXECUTOR_CLOSED');
-    if (sessions.size >= maxSessions) throw Error('SESSION_LIMIT');
+    const activeCount = [...sessions.values()].filter(item => !item.finished).length;
+    if (activeCount >= maxSessions) throw Error('SESSION_LIMIT');
+    // Finished session output is briefly accessible, but bounded retention
+    // prevents permanent exhaustion after repeated short-lived commands.
+    for (const [pastId, past] of sessions) {
+      if (sessions.size < maxSessions * 4) break;
+      if (past.finished) sessions.delete(pastId);
+    }
     const scopeInfo = authority.requireGrant(scope, 'start_process', command.workspaceId, command.write);
     const id = randomUUID();
-    const handle = runner.spawnCommand(command, { durationMs, interactive: true });
+    const segments = [];
+    const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
+    let segmentsOverflow = false;
+    const append = (kind, bytes) => {
+      const text = decoders[kind].decode(bytes, { stream: true });
+      if (!text) return;
+      if (segments.length >= 4_096) {
+        segmentsOverflow = true;
+        const item = sessions.get(id);
+        if (item) item.segmentsOverflow = true;
+        return;
+      }
+      segments.push({ kind, text });
+    };
+    const handle = runner.spawnCommand(command, {
+      durationMs, interactive: true, onChunk: append,
+    });
     const item = { id, workspaceId: command.workspaceId, ownerKey: scopeInfo.scopeKey,
-      scope, handle, outcome: null, finished: false };
+      scope, handle, outcome: null, finished: false, segments, segmentsOverflow };
     sessions.set(id, item);
     handle.completion.then(result => {
+      for (const kind of ['stdout', 'stderr']) {
+        const rest = decoders[kind].decode();
+        if (rest && segments.length < 4_096) segments.push({ kind, text: rest });
+      }
       item.finished = true;
       item.outcome = result;
     });

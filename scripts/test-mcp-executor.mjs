@@ -456,3 +456,84 @@ test('ABR-96 expired queued write is revalidated immediately before scheduling',
   assert.equal(outcome.errorCode, 'EXECUTION_NOT_AUTHORIZED');
   await assert.rejects(stat(path.join(project, 'expired-write')), /ENOENT/);
 });
+
+test('ABR-96 rejected parallel batch never persists or runs a partial write', async t => {
+  const { root, project, config } = await setup(t);
+  if (!probeSandbox().available) return t.skip('Bubblewrap namespace unavailable');
+  const service = createUbuntuExecutionService({ ...config, maxHistory: 1 });
+  t.after(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
+  const scope = service.issueFromVerifiedIdentity(grantA);
+  const edits = ['first-batch-marker', 'second-batch-marker'].map(name =>
+    py(`from pathlib import Path;Path("${name}").write_text("SHOULD_NOT_RUN")`, { write: true }));
+  await assert.rejects(service.runParallel(scope, edits,
+    { idempotencyKey: 'atomic-capacity-001' }), /EXECUTOR_HISTORY_LIMIT/);
+  assert.equal(service.listJobs(scope, 'project-a').length, 0);
+  await delay(120);
+  for (const name of ['first-batch-marker', 'second-batch-marker'])
+    await assert.rejects(stat(path.join(project, name)), /ENOENT/);
+  // Failure must leave the one available history slot untouched.
+  const subsequent = await service.runCommand(scope, py('print("HISTORY_REMAINS_FREE")'));
+  assert.equal(subsequent.state, 'completed');
+  assert.match(subsequent.stdout, /HISTORY_REMAINS_FREE/);
+});
+
+test('ABR-96 terminal cursor preserves stdout after an earlier stderr prompt', async t => {
+  const { root, config } = await setup(t);
+  if (!probeSandbox().available) return t.skip('Bubblewrap namespace unavailable');
+  const service = createUbuntuExecutionService(config);
+  t.after(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
+  const scope = service.issueFromVerifiedIdentity(grantA);
+  const proc = service.startProcess(scope, {
+    workspaceId: 'project-a', program: 'python3', args: ['-i','-q'],
+  });
+  let first;
+  for (let i = 0; i < 35; i++) {
+    first = service.readProcessOutput(scope, proc.processId, 0, 100);
+    if (first.status === 'waiting_input' && first.nextOffset > 0) break;
+    await delay(30);
+  }
+  assert.equal(first.status, 'waiting_input');
+  assert.match(first.output, />>> /);
+  assert.equal(first.cursorUnit, 'segments');
+  const cursor = first.nextOffset;
+  const response = await service.interactWithProcess(scope, proc.processId,
+    'print("CURSOR_FOLLOWS_NEW_STDOUT")\n', { waitMs: 170 });
+  assert.match(response.output, /CURSOR_FOLLOWS_NEW_STDOUT/);
+  const increment = service.readProcessOutput(scope, proc.processId, cursor, 100);
+  assert.match(increment.output, /CURSOR_FOLLOWS_NEW_STDOUT/);
+  assert.ok(increment.nextOffset > cursor);
+  assert.equal(service.readProcessOutput(scope, proc.processId, increment.nextOffset).output, '');
+  service.forceTerminate(scope, proc.processId);
+});
+
+test('ABR-96 completed terminals release active slots without losing recent output', async t => {
+  const { root, config } = await setup(t);
+  if (!probeSandbox().available) return t.skip('Bubblewrap namespace unavailable');
+  const service = createUbuntuExecutionService(config);
+  t.after(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
+  const scope = service.issueFromVerifiedIdentity(grantA);
+  let oldest, latest;
+  for (let i = 0; i < 35; i++) {
+    const proc = service.startProcess(scope, {
+      workspaceId: 'project-a', program: 'python3',
+      args: ['-c', `print("SESSION_${i}")`],
+    });
+    if (i === 0) oldest = proc.processId;
+    latest = proc.processId;
+    let done = false;
+    for (let attempt = 0; attempt < 35; attempt++) {
+      const result = service.readProcessOutput(scope, proc.processId);
+      if (result.status === 'completed') {
+        assert.match(result.output, new RegExp(`SESSION_${i}`));
+        done = true;
+        break;
+      }
+      await delay(25);
+    }
+    assert.ok(done, `session ${i} must complete`);
+  }
+  const sessions = service.listSessions(scope, 'project-a');
+  assert.ok(sessions.length <= 32, `bounded session retention ${sessions.length}`);
+  assert.equal(service.readProcessOutput(scope, latest).status, 'completed');
+  assert.throws(() => service.readProcessOutput(scope, oldest), /SESSION_NOT_FOUND/);
+});
