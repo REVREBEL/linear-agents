@@ -73,11 +73,14 @@ class IndependentCodingRepoTests(unittest.TestCase):
             "export const Users = { slug: 'users' } as const;\n",
             encoding="utf-8")
         subprocess.run(["git", "init", "-q", "-b", "main", str(self.repo)], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "config", "core.autocrlf", "false"], check=True)
         subprocess.run(["git", "-C", str(self.repo), "add", "."], check=True)
         subprocess.run([
             "git", "-C", str(self.repo), "-c", "user.name=Context Pilot",
             "-c", "user.email=pilot@example.invalid", "commit", "-qm", "Independent app"
         ], check=True)
+        # Re-materialize normalized committed README bytes on Windows as well.
+        subprocess.run(["git", "-C", str(self.repo), "checkout", "--force", "HEAD", "--", "."], check=True)
         self.env = os.environ.copy()
         self.env["PYTHONUTF8"] = "1"
         self.env.pop("AGENT_CONTEXT_REPO_ROOT", None)
@@ -86,8 +89,8 @@ class IndependentCodingRepoTests(unittest.TestCase):
         for _, key, folder, id_ in HOSTS:
             directory = self.base / "external-roots" / folder
             directory.mkdir(parents=True)
-            source = self.repo / "templates/context/host-roots" / folder / "README.md"
-            shutil.copyfile(source, directory / "README.md")
+            source = "templates/context/host-roots/" + folder + "/README.md"
+            (directory / "README.md").write_bytes(git(self.repo, "show", "HEAD:" + source))
             self.env[key] = str(directory)
             self.hosts[id_] = directory
 
