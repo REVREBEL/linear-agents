@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { createExecutionJobs } from '../bridge/agent/mcp-host-agent/async-jobs.mjs';
 import { createExecutionAuthority } from '../bridge/agent/mcp-host-agent/execution-authority.mjs';
 import { createUbuntuExecutionService } from '../bridge/agent/mcp-host-agent/execution-service.mjs';
 import { createSandboxRunner, probeSandbox } from '../bridge/agent/mcp-host-agent/sandbox-runner.mjs';
@@ -366,4 +367,39 @@ test('ABR-96 journal permissions, exclusive lease and no-replay history capacity
     idempotencyKey: 'history-overflow-002',
   }), /EXECUTOR_HISTORY_LIMIT/);
   assert.equal(service.listJobs(cap, 'project-a').length, 1);
+});
+
+test('queued jobs revalidate revoked and expired capabilities before launch', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'abr96-reauth-'));
+  let clock = 100_000, release;
+  const launched = [];
+  const authority = createExecutionAuthority({ deviceId, grants, ttlMs: 1_000, now: () => clock });
+  const first = authority.issueFromVerifiedIdentity(grantA);
+  const revoked = authority.issueFromVerifiedIdentity(grantA);
+  const expired = authority.issueFromVerifiedIdentity(grantA);
+  const runner = {
+    maxConcurrent: 1, maxDurationMs: 3_000, sanitize: value => String(value),
+    probeSandbox: () => ({ available: true }),
+    spawnCommand(command) {
+      launched.push(command.args[1]);
+      return { completion: new Promise(resolve => { release = resolve; }), terminate() {} };
+    },
+  };
+  const jobs = createExecutionJobs({ runner, authority, journalDir: path.join(root, 'journal') });
+  try {
+    jobs.spawnJob(first, py('first'), { idempotencyKey: 'first-job-key' });
+    await delay(0);
+    const a = jobs.spawnJob(revoked, py('revoked', { write: true }), { idempotencyKey: 'revoked-job-key' });
+    const b = jobs.spawnJob(expired, py('expired', { write: true }), { idempotencyKey: 'expired-job-key' });
+    authority.revoke(revoked);
+    clock += 1_001;
+    const inspector = authority.issueFromVerifiedIdentity(grantA);
+    release({ status: 'completed', exitCode: 0, stdout: '', stderr: '' });
+    const outcomes = await jobs.waitJobs(inspector, [a.jobId, b.jobId], 1_000);
+    assert.deepEqual(launched, ['first']);
+    assert.ok(outcomes.every(row => row.state === 'failed' && row.errorCode === 'EXECUTION_NOT_AUTHORIZED'));
+  } finally {
+    await jobs.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });
