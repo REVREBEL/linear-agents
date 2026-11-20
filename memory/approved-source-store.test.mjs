@@ -151,3 +151,37 @@ test("incorrect signature key fails closed across process restarts",async()=>{
     await assert.rejects(wrong.load({scope,receiptIds:[receipt.id],now}),/integrity/);
   });
 });
+
+test("approval snapshots caller data before async verification", async () => {
+  await fixture(async ({root,key,journal}) => {
+    let release;
+    let entered;
+    const pending = new Promise(resolve => { release = resolve; });
+    const started = new Promise(resolve => { entered = resolve; });
+    const candidate = structuredClone(source);
+    const mutableReceipt = structuredClone(receipt);
+    const store = createApprovedSourceStore({root,key,journal,verifySource:async args => {
+      assert.equal(args.content, source.content);
+      entered();
+      await pending;
+      return true;
+    }});
+    const approval = store.approve({receipt:mutableReceipt,source:candidate,now});
+    await started;
+    candidate.content = "Changed after source verification started.";
+    candidate.scope.issueId = "OTHER";
+    mutableReceipt.id = "d".repeat(64);
+    release();
+    await approval;
+    const loaded = await store.load({scope,receiptIds:[receipt.id],now});
+    assert.equal(loaded.approvedSources.get(receipt.id).content, source.content);
+  });
+});
+
+test("non-finite approval and load times fail closed", async () => {
+  await fixture(async ({store}) => {
+    await assert.rejects(store.approve({receipt,source,now:NaN}), /time/);
+    await store.approve({receipt,source,now});
+    await assert.rejects(store.load({scope,receiptIds:[receipt.id],now:NaN}), /invalid/);
+  });
+});
