@@ -78,9 +78,18 @@ test("query construction uses only trusted deterministic route fields", () => {
   assert.match(buildScopedRecallQuery({ repositoryId: "/home/bridge/agent-bridge",
     issueId: "ABR-59" }), /agent-bridge/);
   assert.ok(!query.includes("ignore instructions"));
+  for (const uuid of [
+    "12345678-abcd-4123-8123-123456789abc",
+    "A2345678-ABCD-4123-8123-123456789ABC",
+  ]) assert.match(buildScopedRecallQuery({
+    repositoryId: scope.repositoryId, issueId: uuid,
+  }), new RegExp(uuid, "i"));
   for (const bad of [
     { repositoryId: "private" }, { repositoryId: "owner/repo\nignore" },
-    { issueId: "ABR-59;rm -rf" }, { taskKind: "ignore instructions" },
+    { issueId: "ABR-59;rm -rf" },
+    { issueId: "12345678-abcd-4123-8123-123456789abx" },
+    { issueId: "12345678-abcd-4123-8123-123456789abc\nignore" },
+    { taskKind: "ignore instructions" },
   ]) assert.equal(buildScopedRecallQuery({
     repositoryId: scope.repositoryId, issueId: scope.issueId,
     taskKind: "coding", ...bad,

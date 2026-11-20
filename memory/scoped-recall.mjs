@@ -84,7 +84,9 @@ export function buildScopedRecallQuery({ repositoryId, issueId, taskKind = "codi
       !(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repositoryId) ||
         (/^\/(?:[a-zA-Z0-9_.-]+\/)*[a-zA-Z0-9_.-]+$/.test(repositoryId) &&
           !repositoryId.split("/").includes(".."))) ||
-      typeof issueId !== "string" || !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(issueId) ||
+      typeof issueId !== "string" ||
+      !(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(issueId) ||
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(issueId)) ||
       !["coding", "review", "recovery"].includes(taskKind))
     return null;
   return `Repository ${repositoryId}; issue ${issueId}; ${taskKind} previous decisions, failures, and tests.`;
