@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, symlink, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { WebSocket } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import { createLocalMcpRelay } from '../bridge/server/mcp-relay/index.mjs';
 import { connectLocalHostAgent } from '../bridge/agent/mcp-host-agent/index.mjs';
 
@@ -93,6 +93,12 @@ test('ABR-94 local relay+agent: authenticate, pair, read and fail closed', async
         });
         assert.equal(status, 401);
       }
+    });
+    await t.test('ambiguous localhost agent hostname fails before DNS connection', async () => {
+      await assert.rejects(connectLocalHostAgent({
+        endpoint: `ws://localhost:${address.port}/agent`,
+        agentToken, deviceId, workspace: inside,
+      }), /Only the local loopback agent endpoint/);
     });
     await t.test('pair a local agent and read exact authorized file content', async () => {
       agent = await connectLocalHostAgent({ endpoint: wsUrl, agentToken, deviceId,
@@ -198,6 +204,29 @@ test('ABR-94 local relay+agent: authenticate, pair, read and fail closed', async
       assert.equal(denied.result.isError, true);
       assert.equal(denied.result.content[0].text, 'DEVICE_OFFLINE');
       assert.deepEqual(await readFile(path.join(inside, 'README.md'), 'utf8'), '# First line\nSecond line\n');
+    });
+    await t.test('host handles a malicious oversized relay frame without crashing', async () => {
+      const fakeRelay = new WebSocketServer({ host: '127.0.0.1', port: 0, perMessageDeflate: false });
+      await new Promise((resolve) => fakeRelay.once('listening', resolve));
+      const serverPeer = new Promise((resolve) => fakeRelay.once('connection', resolve));
+      const standalone = await connectLocalHostAgent({
+        endpoint: `ws://127.0.0.1:${fakeRelay.address().port}/agent`,
+        agentToken, deviceId: 'independent-host', workspace: inside,
+      });
+      const peer = await serverPeer;
+      try {
+        const closed = new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(Error('Host failed to close oversized frame')), 3_000);
+          standalone.socket.once('close', () => { clearTimeout(timer); resolve(); });
+        });
+        peer.send('X'.repeat(300_000));
+        await closed;
+        assert.equal(standalone.socket.readyState, WebSocket.CLOSED);
+      } finally {
+        peer.terminate();
+        await standalone.close();
+        await new Promise((resolve) => fakeRelay.close(resolve));
+      }
     });
     await t.test('source contains no third-party egress, tools or process invocations', async () => {
       const sources = [

@@ -1,6 +1,6 @@
 # Read-only paired host MCP fixture (ABR-94)
 
-`index.mjs` exposes `connectLocalHostAgent({ endpoint, agentToken, deviceId, workspace })`. It establishes an **outbound WebSocket connection only to a local loopback `/agent` endpoint**, authenticated by a separate >=32-character secret and fixed device identity. Neither inbound internet access nor external relay registration is enabled.
+`index.mjs` exposes `connectLocalHostAgent({ endpoint, agentToken, deviceId, workspace })`. It establishes an **outbound WebSocket connection only to an explicit IPv4 `ws://127.0.0.1:<port>/agent` endpoint; ambiguous `localhost` DNS/IPv6 resolution is rejected**, authenticated by a separate >=32-character secret and fixed device identity. Neither inbound internet access nor external relay registration is enabled.
 
 The only tool handler is a bounded UTF-8 `read_file` scoped to an approved absolute workspace. It checks realpath and symlinks, refuses root directories and nonregular files, caps file contents at 256 KiB and complete serialized WS responses at 512 KiB, rejecting oversized JSON safely and using nonblocking descriptors to reject FIFOs, while implementing bounded line pagination with full-source SHA-256. It does not spawn commands, fetch external URLs, upload source files, write content or call Linear/GitHub. Requests through `tools/call` are checked again by the relay.
 

@@ -1,6 +1,6 @@
 # Local-only MCP relay foundation (ABR-94)
 
-`index.mjs` independently implements a **test-only** local Streamable-HTTP-like JSON-RPC subset plus an outbound WebSocket paired-agent channel. It binds solely to 127.0.0.1 with an ephemeral port; no production server, OAuth, Cloudflare listener, profile deployment, or agent execution is activated.
+`index.mjs` independently implements a **test-only** local Streamable-HTTP-like JSON-RPC subset plus an outbound WebSocket paired-agent channel. It binds solely to 127.0.0.1 with an ephemeral port and accepts only explicit 127.0.0.1 Host/Origin identities; no production server, OAuth, Cloudflare listener, profile deployment, or agent execution is activated.
 
 `createLocalMcpRelay({ clientToken, agentToken, deviceId, profile })` accepts separate >=32-character test secrets and a fixed approved device identity. Only `list_devices` and bounded `read_file` are executable. All other tool names, device IDs, websocket credentials, origin/header spoofing and public capability-link paths are denied; profile names cannot elevate authority. HTTP body and pending-request lifetimes are limited; serialized host replies have a separate wire-byte cap and protocol errors close only the paired connection, never the listener. The protocol fixture is pinned to 2025-06-18 and **does not claim conformance to current external MCP clients**; full protocol/Auth/HTTP deployment belongs to ABR-95.
 

@@ -24,12 +24,12 @@ function authorized(header, secret) {
   return provided.length === expected.length && timingSafeEqual(provided, expected);
 }
 function local(req) {
-  if (!/^((127\.0\.0\.1)|(localhost))(:\d{1,5})?$/.test(req.headers.host ?? '')) return false;
+  if (!/^127\.0\.0\.1(:\d{1,5})?$/.test(req.headers.host ?? '')) return false;
   if (!['127.0.0.1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) return false;
   if (!req.headers.origin) return true;
   try {
     const origin = new URL(req.headers.origin);
-    return origin.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(origin.hostname)
+    return origin.protocol === 'http:' && origin.hostname === '127.0.0.1'
       && origin.port === (req.headers.host?.split(':')[1] ?? '');
   } catch { return false; }
 }

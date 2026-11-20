@@ -11,7 +11,7 @@ function under(root, candidate) {
   return candidate === root || candidate.startsWith(root + path.sep);
 }
 export async function connectLocalHostAgent({ endpoint, agentToken, deviceId, workspace }) {
-  if (typeof endpoint !== 'string' || !/^ws:\/\/(127\.0\.0\.1|localhost):\d+\/agent$/.test(endpoint))
+  if (typeof endpoint !== 'string' || !/^ws:\/\/127\.0\.0\.1:\d+\/agent$/.test(endpoint))
     throw TypeError('Only the local loopback agent endpoint is accepted');
   if (typeof workspace !== 'string' || !path.isAbsolute(workspace))
     throw TypeError('An absolute approved workspace is required');
