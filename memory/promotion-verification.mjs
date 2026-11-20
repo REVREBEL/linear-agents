@@ -28,12 +28,12 @@ function latestReviewsByUser(reviews) {
       Number.isSafeInteger(r.id) && typeof r.state === "string" &&
       typeof r.submitted_at === "string"), "invalid GitHub review response");
   const latest = new Map();
-  // GitHub returns reviews in submission order; reviewer decisions are
-  // superseded by subsequent states, including dismissal and changes request.
+  // Comment-only reviews do not change an earlier approval or changes request.
+  // Later decisions and dismissals do supersede earlier decisions.
   for (const r of [...reviews].sort((a, b) =>
     Date.parse(a.submitted_at) - Date.parse(b.submitted_at) || a.id - b.id)) {
     requireCondition(Number.isFinite(Date.parse(r.submitted_at)), "invalid review timestamp");
-    latest.set(r.user.login.toLowerCase(), r);
+    if (r.state.toUpperCase() !== "COMMENTED") latest.set(r.user.login.toLowerCase(), r);
   }
   return latest;
 }
