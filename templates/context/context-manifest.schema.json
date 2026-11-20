@@ -154,7 +154,7 @@
         "source": {
           "type": "string",
           "minLength": 1,
-          "description": "For non-repo documents only: a reviewed Git-owned README path relative to the repository root"
+          "description": "For non-repo documents only: a reviewed Git-owned README path relative to the repository root. Must not be set for root: repo."
         }
       }
     }
