@@ -98,6 +98,10 @@ The [README discipline policy](../docs/blueprints/agent-context/README_DISCIPLIN
 
 `test_qwen_local_context_pilot.py` verifies the standalone Qwen Local research candidate matches the 16-entry canonical catalog and separate schema, the isolated OpenCode 1.x example only permits local `ollama/qwen3.5:9b-opencode`, and a D5 full-context handoff replays against the pinned Git source without original host paths. It also enforces that the candidate is **not** silently added to executable Registry v2. See [E1 pilot evidence](../docs/blueprints/agent-context/QWEN_LOCAL_PILOT.md) for blocked live headless execution and missing Qwen Worker readiness. Run `python3 scripts/test_qwen_local_context_pilot.py`; CI runs the same test. This is a non-dispatching context/source regression.
 
+## Fresh-session six-root context acceptance (ABR-86 / E2)
+
+`test_context_fresh_session.py` launches new Python CLI processes from unrelated directories and checks the exact six-document `--topic jobs` dependency graph, full README bodies, SHA-256 and Git provenance, deterministic replay, strict missing-host failure, explicit partial policy and D5 source-pinned handoff verification after the disposable host files disappear. Fixtures use Git-reviewed host template README bytes; native Ubuntu/macOS/Windows CI verifies portability. The [E2 acceptance guide](../docs/blueprints/agent-context/FRESH_SESSION.md) includes a successful live Ubuntu host test and the one-line command. This does not invoke providers, dispatch agents or install host tools.
+
 ## Host-only infrastructure
 
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.

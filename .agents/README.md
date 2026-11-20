@@ -69,6 +69,10 @@ The [D4 coverage guide](../docs/blueprints/agent-context/README_COVERAGE.md) and
 
 The [D5 handoff envelope contract](../docs/blueprints/agent-context/HANDOFFS.md) and [creator/verifier](../scripts/agent-context-handoff.py) put the entire pinned C1–C5 context bundle and instruction into a canonical JSON or Markdown agent handoff. A fresh session can validate original Git source bytes using `--check-source`, without needing the sender's private host roots. Handoff skill instructions enforce full artifact delivery, no partial-context ambiguity, and strict separation from Bridge execution authority. Regression tests run in CI.
 
+## Fresh-session complete job context (ABR-86 / E2)
+
+A newly started agent session can retrieve the job lifecycle's **entire six-document graph** with one existing resolver command: `python3 scripts/agent_context_cli.py --topic jobs --format json` from the Git root, or run `python3 /path/to/linear-agents/scripts/agent_context_cli.py --repo-root /path/to/linear-agents --topic jobs --format json` from elsewhere. The `repo.jobs` README requires `repo.bridge`, which requires `repo.agents` and all three optional `/opt` root README sources. Strict retrieval is complete only with six full source-linked documents, `partial: false`, and no missing sources. A missing selected host README fails unless explicitly allowed and reported with `--allow-partial`. The [E2 fresh-session acceptance](../docs/blueprints/agent-context/FRESH_SESSION.md) and `scripts/test_context_fresh_session.py` prove this in separate new Python processes across native CI systems; the Ubuntu live host check also retrieved the six reviewed READMEs. This reads documentation only and does not launch a model or access private native profiles.
+
 ## Update discipline
 
 Update this README and its manifest together when document IDs, aliases, source paths, dependencies, or bootstrap semantics change. Update nearest owning READMEs in the same PR as behavioral, configuration, security, routing, or deployment changes. Context metadata does **not** authorize filesystem access, credential use, code execution, or deployments.
