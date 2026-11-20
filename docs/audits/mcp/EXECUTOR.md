@@ -35,7 +35,7 @@ runuser -u bridge -- node scripts/mcp-executor-probe.mjs --strict
 
 A separate root-run *test-only* sandbox fixture succeeds (unshared PID/network/filesystem). **That does not satisfy production acceptance for the `bridge` OS principal.** The production service must NOT elevate to root or bypass Bubblewrap. A system administrator must explicitly approve a narrow AppArmor/user-namespace policy permitting this particular host-agent identity/Bubblewrap binary, with no global AppArmor restriction disablement; its exact profile must be tested **as `bridge`**. ABR-96 cannot honestly be marked fully operational until that gate succeeds.
 
-The [candidate unit](../../../scripts/linux/systemd/desktopcommander-mcp-host-agent.service.example) is deliberately **non-startable**: optional approval-marker condition, `User=bridge`, `ExecStartPre` strict probe, and `ExecStart=/usr/bin/false`. ABR-97 must supply/review a paired host-agent entrypoint, actual runtime and AppArmor permissions before replacing that sentinel. It is source-only; no service unit is installed or enabled.
+The [candidate unit](../../../scripts/linux/systemd/desktopcommander-mcp-host-agent.service.example) is deliberately **non-startable**: optional approval-marker condition, `User=bridge`, `ExecStartPre` strict probe executed through a service-pinned Volta PATH, and `ExecStart=/usr/bin/false`. ABR-97 must supply/review a paired host-agent entrypoint, actual runtime and AppArmor permissions before replacing that sentinel. It is source-only; no service unit is installed or enabled.
 
 ## Independent acceptance and rollout checklist
 

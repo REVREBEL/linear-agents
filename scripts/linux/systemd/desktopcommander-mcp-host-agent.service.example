@@ -14,12 +14,13 @@ Type=exec
 User=bridge
 Group=bridge
 WorkingDirectory=/home/bridge/agent-bridge
+Environment=PATH=/home/bridge/.volta/bin:/usr/bin:/bin
 UMask=0077
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ReadWritePaths=/home/bridge/.local/state
-ExecStartPre=/home/bridge/.volta/tools/image/node/26.13.1/bin/node /home/bridge/agent-bridge/scripts/mcp-executor-probe.mjs --strict
+ExecStartPre=/usr/bin/env node /home/bridge/agent-bridge/scripts/mcp-executor-probe.mjs --strict
 ExecStart=/usr/bin/false
 KillMode=control-group
 TimeoutStopSec=8
