@@ -1099,9 +1099,9 @@ test("P4 local task preparation writes one canonical prompt, retains routing met
     agyConversationMode:"reuse-existing",agyConversationId:"conversation-1"};
   const activeTaskMemory={
     read:async(rootArg,id)=>{calls.push("read");assert.equal(rootArg,root);assert.equal(id,"issue-1");return {note:"safe checkpoint"};},
-    recoveryPreamble:prior=>{calls.push("recovery");assert.equal(prior.note,"safe checkpoint");return "Resume safe checkpoint";},
     update:async(rootArg,id,patch)=>{calls.push("update");assert.equal(rootArg,root);assert.equal(id,"issue-1");
-      assert.equal(patch.state,"active");assert.equal(patch.lastJobKey,"antigravity:delivery-1");},
+      assert.equal(patch.state,"active");assert.equal(patch.lastJobKey,"antigravity:delivery-1");
+      assert.equal(patch.tenantId,"org-1");assert.equal(patch.agentId,"antigravity");},
   };
   const jobStore={transition:async(key,state,patch)=>{
     calls.push("queued");
@@ -1123,9 +1123,10 @@ test("P4 local task preparation writes one canonical prompt, retains routing met
       logger:{log:()=>{},warn:()=>{}},
     });
     const persisted=JSON.parse(await fs.readFile(result.filename,"utf8"));
-    assert.deepEqual(calls,["drain","read","prompt","direct","recovery","memu","update","queued"]);
+    assert.deepEqual(calls,["drain","read","prompt","direct","memu","update","queued"]);
     assert.equal(result.workspace,root);
-    assert.equal(result.routedJob.payload.data.promptContext,"Resume safe checkpoint\n\nOriginal instruction");
+    // Legacy unscoped checkpoint text is not copied into an active agent prompt.
+    assert.equal(result.routedJob.payload.data.promptContext,"Original instruction");
     assert.equal(persisted.payload.data.promptContext,result.routedJob.payload.data.promptContext);
     assert.equal(JSON.stringify(persisted).includes("UNTRUSTED MEMORY"),false);
     assert.equal(persisted.resolvedRouting.linearProjectId,"project-1");

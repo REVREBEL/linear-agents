@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { verifiedRecoveryPreamble } from "../../memory/verified-recovery.mjs";
 
 /**
  * Prepare a Linux-local task before any agent is launched. The bridge injects
@@ -28,7 +29,21 @@ export async function prepareLocalAgentTask({
     await drainProgressWrites();
     const priorTask = await activeTaskMemory.read(route.repositoryRoot, issueId);
     const originalTask = extractDirectTask(extractPromptContext(job));
-    const recovery = activeTaskMemory.recoveryPreamble(priorTask);
+    // The legacy store is keyed by repository+issue and is not independently
+    // agent/tenant isolated. Inject only checkpoints with the verified scope
+    // recorded by a prior Bridge admission. All other records stay on disk.
+    const requestedScope = {
+      tenantId: job.organizationId,
+      agentId: agent,
+      repositoryRoot: route.repositoryRoot,
+      issueId,
+    };
+    const recovery = verifiedRecoveryPreamble(priorTask, requestedScope);
+    const sameScope = priorTask?.tenantId === requestedScope.tenantId &&
+      priorTask?.agentId === requestedScope.agentId &&
+      priorTask?.repositoryRoot === requestedScope.repositoryRoot &&
+      priorTask?.issueId === requestedScope.issueId &&
+      typeof requestedScope.tenantId === "string" && requestedScope.tenantId.length > 0;
     const longTermMemory = await retrieveMemuMemory(
       "Repository: " + (route.repositoryRoot || "") + ". Coding conventions, previous failures, testing practices.",
       { scope: {
@@ -42,10 +57,22 @@ export async function prepareLocalAgentTask({
     if (longTermMemory) logger.log("[memU recall] retrieved context withheld from agent prompt");
     const directTask = recovery ? recovery + "\n\n" + originalTask : originalTask;
     await activeTaskMemory.update(route.repositoryRoot, issueId, {
+      // A concurrent update after the initial read must not let a new tenant
+      // adopt stale progress or overwrite a newer active session.
+      expectedRevision: priorTask?.revision ?? 0,
       state: "active", lastJobKey: jobKey, lastAgent: agent,
+      tenantId: job.organizationId || null, agentId: agent,
       lastWorkspace: workspace,
       lastSessionId: job.agentSessionId || job.payload?.data?.agentSessionId || null,
       lastSeenAt: new Date().toISOString(),
+      // Legacy repo+issue checkpoints are shared on disk. Strip all prior
+      // session-derived fields when ownership changes, even if the prior
+      // context was not injected into the agent prompt.
+      ...(!sameScope ? {
+        progress: [], lastProgressAt: null, lastVerifiedResult: null,
+        nextAction: null, artifacts: [], promotion: null, source: null,
+        lastProviderSessionId: null, expiresAt: null,
+      } : {}),
     });
     // Persist and dispatch one canonical prompt. The raw Linear webhook embeds
     // the same issue in agentSession.issue and promptContext; keeping it
