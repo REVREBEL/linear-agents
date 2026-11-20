@@ -156,7 +156,8 @@ export function createStructuralTools({ workspaceRoots, authority, approvedAtomi
         Buffer.byteLength(args.replacement) > 16_384)
       throw Error('INVALID_AST_REPLACEMENT');
     const changing = args.dryRun === false;
-    const result = await source(scope, args, 'ast_rewrite', changing);
+    // A rewrite must detect ambiguity independently of any search display limit.
+    const result = await source(scope, { ...args, maxResults: 2 }, 'ast_rewrite', changing);
     if (args.expectedSha256 !== undefined &&
         (!SHA.test(args.expectedSha256) ||
          result.sourceSha256 !== args.expectedSha256))
