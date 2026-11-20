@@ -1,4 +1,5 @@
 import test from "node:test";
+import fs from "node:fs/promises";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir, chmod, rm, symlink } from "node:fs/promises";
 import os from "node:os";
@@ -140,5 +141,34 @@ test("orphaned incomplete staging files are invisible after a crash", async () =
     await writeFile(path.join(root, ".staging-crashed-write"), "{unclosed", { mode: 0o600 });
     assert.equal((await journal.listPending(scope)).length, 1);
     assert.equal((await journal.stageVerified(args(github()))).created, false);
+  });
+});
+
+test("a receipt growing after stat is rejected with bounded I/O", async () => {
+  await temp(async root => {
+    const journal = createPromotionJournal({ root });
+    const item = await journal.stageVerified(args(github()));
+    const filename = path.join(root, item.receipt.id + ".json");
+    const originalOpen = fs.open;
+    let unboundedRead = false;
+    try {
+      fs.open = async (...openArgs) => {
+        const handle = await originalOpen(...openArgs);
+        const originalStat = handle.stat.bind(handle);
+        const originalReadFile = handle.readFile.bind(handle);
+        handle.stat = async (...statArgs) => {
+          const result = await originalStat(...statArgs);
+          await fs.appendFile(filename, "x".repeat(16385));
+          return result;
+        };
+        handle.readFile = (...readArgs) => {
+          unboundedRead = true;
+          return originalReadFile(...readArgs);
+        };
+        return handle;
+      };
+      await assert.rejects(journal.read({ scope, prNumber: 253, headSha: sha }), /oversized journal/);
+      assert.equal(unboundedRead, false, "must never use an unbounded read");
+    } finally { fs.open = originalOpen; }
   });
 });
