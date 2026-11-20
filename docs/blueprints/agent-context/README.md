@@ -30,6 +30,10 @@ The [E3 memory boundary tests and evidence](MEMORY_ISOLATION.md) distinguish per
 
 The [second-repository pilot](SECOND_REPOSITORY_PILOT.md) passed against a disposable Git clone of a separate Payload/Next.js TypeScript application. It validates portable project-specific README IDs and two non-Bridge host roots, independent source-linked Git provenance, nearest-owner path/changed-file selection and D5 replay. The manifest now supports a reviewed `source` for arbitrary non-repository host documentation; existing Bridge host aliases retain their stricter historical mappings. Native CI verifies the independent-repository fixture without modifying another production checkout.
 
+## E5 provenance-linked consolidated README site (ABR-89)
+
+The [E5 static documentation site contract](PROVENANCE_SITE.md) now defines a reproducible, versioned HTML site generated from **every Git-tracked folder README**, including the exact Markdown sources, SHA-256, source Git HEAD/tree and last-changing Git commits. The generator works from committed Git objects only, and a strict check catches any artifact drift. GitHub Actions produces a downloadable SHA-named site artifact on relevant changes, with no automatic deployment, new docs authority or source README rewriting.
+
 ## Package contents
 
 - `templates/context/agent-profile.v2.template.yaml`: **corrected** complete candidate profile template conforming to the uploaded per-entry schema.
