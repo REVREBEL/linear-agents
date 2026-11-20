@@ -412,18 +412,43 @@ test('ABR-96 revoked queued write never launches; in-flight process is terminate
   t.after(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
   const scope = service.issueFromVerifiedIdentity(grantA);
   const observer = service.issueFromVerifiedIdentity(grantA);
+  // Synchronize on proof that the process is alive in the sandbox, not
+  // an elapsed sleep. CI scheduling can delay the revocation beyond 1 second.
+  const startMarker = path.join(project, 'started-before-revocation');
+  const releaseMarker = path.join(project, 'release-after-revocation');
   const long = service.spawnJob(scope, py(
-    'import time;from pathlib import Path;time.sleep(1);Path("late-from-revoked").write_text("BAD")',
+    [
+      'from pathlib import Path',
+      'import time',
+      'Path("started-before-revocation").write_text("RUNNING")',
+      'while not Path("release-after-revocation").exists():',
+      '    time.sleep(0.02)',
+      'Path("late-from-revoked").write_text("BAD")',
+    ].join('\n'),
     { write: true },
   ), { idempotencyKey: 'revoke-long-run-01' });
   const queued = service.spawnJob(scope, py(
     'from pathlib import Path;Path("queued-from-revoked").write_text("BAD")',
     { write: true },
   ), { idempotencyKey: 'revoke-queued-002' });
-  // Ensure process entered running state before revocation is applied.
-  for (let i = 0; i < 25 && service.getJob(scope, long.jobId).state === 'queued'; i++) {
-    await delay(10);
+  // Wait for the actual child to create its ready marker before revoking.
+  // The child cannot reach the side effect until a different marker is
+  // explicitly released, so a slow or loaded CI runner cannot race this test.
+  let started = false;
+  const readyDeadline = Date.now() + 5_000;
+  while (Date.now() < readyDeadline) {
+    try {
+      started = (await readFile(startMarker, 'utf8')) === 'RUNNING';
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    if (started) break;
+    const state = service.getJob(scope, long.jobId).state;
+    assert.equal(state, 'running', 'Child must remain active until revocation');
+    await delay(25);
   }
+  assert.equal(started, true, 'Child never became ready to test in-flight revocation');
+  assert.equal(service.getJob(scope, long.jobId).state, 'running');
   assert.equal(service.revokeScope(scope), true);
   assert.throws(() => service.getJob(scope, long.jobId), /EXECUTION_NOT_AUTHORIZED/);
   const first = await terminal(() => service.getJob(observer, long.jobId));
@@ -431,7 +456,10 @@ test('ABR-96 revoked queued write never launches; in-flight process is terminate
   assert.equal(first.state, 'cancelled');
   assert.equal(second.state, 'cancelled');
   assert.equal(second.errorCode, 'AUTHORIZATION_REVOKED');
-  await delay(1_100);
+  // Even after releasing the would-be write gate, a cancelled process
+  // must not resume or create files in its prior authorized workspace.
+  await writeFile(releaseMarker, 'RELEASE');
+  await delay(150);
   await assert.rejects(stat(path.join(project, 'late-from-revoked')), /ENOENT/);
   await assert.rejects(stat(path.join(project, 'queued-from-revoked')), /ENOENT/);
 });
