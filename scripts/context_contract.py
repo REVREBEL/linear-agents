@@ -236,6 +236,11 @@ def validate_context_contract(repo_root, manifest=None):
         root, path = locator["root"], validate_relative_document_path(locator["path"])
         if root not in roots:
             raise ValueError(f"Unknown context document root: {doc_id} -> {root}")
+        source = locator.get("source")
+        if source is not None:
+            validate_relative_document_path(source)
+            if root == "repo":
+                raise ValueError(f"Repository context source must be its own path: {doc_id}")
         if root == "repo":
             target = base / path
             resolved = target.resolve()
@@ -245,13 +250,18 @@ def validate_context_contract(repo_root, manifest=None):
         elif doc_id in HOST_SOURCE_DOCS:
             # The three reviewed host README sources are fixed counterparts
             # of their manifest aliases, not arbitrary host paths.
-            if root != HOST_DOCUMENT_ROOTS[doc_id] or path != "README.md":
+            if (root != HOST_DOCUMENT_ROOTS[doc_id] or path != "README.md"
+                    or (source is not None and source != HOST_SOURCE_DOCS[doc_id])):
                 raise ValueError(f"Host source-backed context alias mismatch: {doc_id}")
             target = require_context_source(
                 base / HOST_SOURCE_DOCS[doc_id], base, doc_id
             )
+        elif source is not None:
+            # Portable projects declare their own reviewed host README source.
+            # Do not read arbitrary host documents as unreviewed topic metadata.
+            target = require_context_source(base / source, base, doc_id)
         else:
-            # Other optional host-only documents need not exist at schema time.
+            # Host-only documents without a reviewed source are unindexed.
             if roots[root]["required"]:
                 raise ValueError(f"Required host context document has no Git source: {doc_id}")
             continue

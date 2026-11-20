@@ -150,6 +150,11 @@
         "path": {
           "type": "string",
           "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "For non-repo documents only: a reviewed Git-owned README path relative to the repository root"
         }
       }
     }
