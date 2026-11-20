@@ -52,6 +52,8 @@ jobs:
         run: node --test scripts/test-mcp-documents.mjs
       - name: Real AST and Git semantics in required OS sandbox
         run: sudo env ABR98_REQUIRE_SANDBOX=1 "$(command -v node)" --test scripts/test-mcp-structure.mjs
+      - name: Preserve interactive REPL and cancellation in actual Linux sandbox
+        run: sudo env ABR96_REQUIRE_SANDBOX=1 "$(command -v node)" --test scripts/test-mcp-executor.mjs
       - name: Representative core/focused/full schema benchmark
         run: npm run mcp:profiles:benchmark
       - name: Preserve previous MCP foundation, OAuth, executor and device contracts

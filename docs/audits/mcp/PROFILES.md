@@ -54,7 +54,7 @@ The existing ABR-96 standalone terminal, cancellation and async job methods are 
 
 - `npm run mcp:profiles:test`: pure profile/authorization and real OAuth relay integration, actual sandboxed Git, Babel AST reads/diffs and controlled atomic-writer fixture, offline PDF bytes/edit integrity, and deterministic REPL prompt fixtures
 - `npm run mcp:foundation:test`, `mcp:oauth:test`, `mcp:executor:test`, `mcp:devices:test`, `bridge:test`, `test:reliability`: retained baseline, including ABR-96 cancel/reconnect/process-tree tests
-- GitHub Actions `mcp-profiles.yml` is read-only and offline except locked package install; the test runner installs temporary Bubblewrap solely to test the sandbox; it cannot enroll real devices or start a production host
+- GitHub Actions `mcp-profiles.yml` is read-only and offline except locked package install; the runner installs temporary Bubblewrap and runs both ABR-98 Git/AST and strict ABR-96 interactive REPL/cancellation tests inside a test-only OS namespace; it cannot enroll real devices or start a production host
 - Capture **real** `tools/list` and `tools/call` JSON input/result golden fixtures across all approved 30 connected tools, evaluate enhanced search/edit/PDF fidelity and both device platforms, then run ABR-100 end-to-end live client and safety gates before production promotion
 
 ## Rollback
