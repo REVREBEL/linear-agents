@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isCheckpointExpired } from "../../memory/active-task-memory.mjs";
+import { verifiedRecoveryPreamble } from "../../memory/verified-recovery.mjs";
 
 /**
  * Prepare a Linux-local task before any agent is launched. The bridge injects
@@ -26,9 +28,15 @@ export async function prepareLocalAgentTask({
     const filename = path.join(taskDir, `${safeJobId}.json`);
     const issueId = job.issueMetadata?.id || job.issueId || null;
     await drainProgressWrites();
-    const priorTask = await activeTaskMemory.read(route.repositoryRoot, issueId);
     const originalTask = extractDirectTask(extractPromptContext(job));
-    const recovery = activeTaskMemory.recoveryPreamble(priorTask);
+    // The legacy store is keyed by repository+issue and is not independently
+    // agent/tenant isolated. Inject only checkpoints with verified prior scope.
+    const requestedScope = {
+      tenantId: job.organizationId,
+      agentId: agent,
+      repositoryRoot: route.repositoryRoot,
+      issueId,
+    };
     const longTermMemory = await retrieveMemuMemory(
       "Repository: " + (route.repositoryRoot || "") + ". Coding conventions, previous failures, testing practices.",
       { scope: {
@@ -40,13 +48,34 @@ export async function prepareLocalAgentTask({
     );
     // Never put untrusted recalled text into a coding agent's instruction stream.
     if (longTermMemory) logger.log("[memU recall] retrieved context withheld from agent prompt");
-    const directTask = recovery ? recovery + "\n\n" + originalTask : originalTask;
-    await activeTaskMemory.update(route.repositoryRoot, issueId, {
-      state: "active", lastJobKey: jobKey, lastAgent: agent,
-      lastWorkspace: workspace,
-      lastSessionId: job.agentSessionId || job.payload?.data?.agentSessionId || null,
-      lastSeenAt: new Date().toISOString(),
+    // Read, verify and update under the checkpoint store's exclusive lock.
+    // An earlier read + CAS could race with progress emitted during memU
+    // retrieval, after job admission had already claimed the delivery.
+    let recovery = "";
+    await activeTaskMemory.update(route.repositoryRoot, issueId, priorTask => {
+      recovery = verifiedRecoveryPreamble(priorTask, requestedScope);
+      const sameScope = priorTask?.tenantId === requestedScope.tenantId &&
+        priorTask?.agentId === requestedScope.agentId &&
+        priorTask?.repositoryRoot === requestedScope.repositoryRoot &&
+        priorTask?.issueId === requestedScope.issueId &&
+        typeof requestedScope.tenantId === "string" && requestedScope.tenantId.length > 0;
+      return {
+        expectedRevision: priorTask?.revision ?? 0,
+        state: "active", lastJobKey: jobKey, lastAgent: agent,
+        tenantId: job.organizationId || null, agentId: agent,
+        lastWorkspace: workspace,
+        lastSessionId: job.agentSessionId || job.payload?.data?.agentSessionId || null,
+        lastSeenAt: new Date().toISOString(),
+        // Repo+issue storage is shared. Never carry stale session-derived
+        // fields into another owner's job or a newly renewed checkpoint.
+        ...(!sameScope || isCheckpointExpired(priorTask) ? {
+          progress: [], lastProgressAt: null, lastVerifiedResult: null,
+          nextAction: null, artifacts: [], promotion: null, source: null,
+          lastProviderSessionId: null, expiresAt: null,
+        } : {}),
+      };
     });
+    const directTask = recovery ? recovery + "\n\n" + originalTask : originalTask;
     // Persist and dispatch one canonical prompt. The raw Linear webhook embeds
     // the same issue in agentSession.issue and promptContext; keeping it
     // duplicates instructions and unnecessarily expands downstream context.

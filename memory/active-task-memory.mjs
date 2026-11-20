@@ -94,6 +94,9 @@ export function createActiveTaskMemory(root) {
           version: 1, schemaVersion: 2, revision: (prior?.revision ?? 0) + 1,
           repositoryRoot: repo, issueId: issue,
           state, status,
+          // Scoped attribution must survive routine progress and lifecycle
+          // updates; otherwise a subsequent job cannot verify provenance.
+          tenantId: prior?.tenantId ?? null, agentId: prior?.agentId ?? null,
           lastJobKey: prior?.lastJobKey || null,
           lastAgent: prior?.lastAgent || null, lastWorkspace: prior?.lastWorkspace || null,
           lastSessionId: prior?.lastSessionId || null, lastProviderSessionId: prior?.lastProviderSessionId || null, lastSeenAt: prior?.lastSeenAt || null,

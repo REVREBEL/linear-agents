@@ -1098,10 +1098,13 @@ test("P4 local task preparation writes one canonical prompt, retains routing met
     chatgptAutoSend:true,agentRole:"coding",codeReviewRole:"review",
     agyConversationMode:"reuse-existing",agyConversationId:"conversation-1"};
   const activeTaskMemory={
-    read:async(rootArg,id)=>{calls.push("read");assert.equal(rootArg,root);assert.equal(id,"issue-1");return {note:"safe checkpoint"};},
-    recoveryPreamble:prior=>{calls.push("recovery");assert.equal(prior.note,"safe checkpoint");return "Resume safe checkpoint";},
-    update:async(rootArg,id,patch)=>{calls.push("update");assert.equal(rootArg,root);assert.equal(id,"issue-1");
-      assert.equal(patch.state,"active");assert.equal(patch.lastJobKey,"antigravity:delivery-1");},
+    update:async(rootArg,id,patch)=>{assert.equal(rootArg,root);assert.equal(id,"issue-1");
+      // The store now reads and authorizes under one exclusive-lock callback.
+      calls.push("read");
+      const fields=patch({note:"safe checkpoint"});
+      calls.push("update");
+      assert.equal(fields.state,"active");assert.equal(fields.lastJobKey,"antigravity:delivery-1");
+      assert.equal(fields.tenantId,"org-1");assert.equal(fields.agentId,"antigravity");},
   };
   const jobStore={transition:async(key,state,patch)=>{
     calls.push("queued");
@@ -1123,9 +1126,10 @@ test("P4 local task preparation writes one canonical prompt, retains routing met
       logger:{log:()=>{},warn:()=>{}},
     });
     const persisted=JSON.parse(await fs.readFile(result.filename,"utf8"));
-    assert.deepEqual(calls,["drain","read","prompt","direct","recovery","memu","update","queued"]);
+    assert.deepEqual(calls,["drain","prompt","direct","memu","read","update","queued"]);
     assert.equal(result.workspace,root);
-    assert.equal(result.routedJob.payload.data.promptContext,"Resume safe checkpoint\n\nOriginal instruction");
+    // Legacy unscoped checkpoint text is not copied into an active agent prompt.
+    assert.equal(result.routedJob.payload.data.promptContext,"Original instruction");
     assert.equal(persisted.payload.data.promptContext,result.routedJob.payload.data.promptContext);
     assert.equal(JSON.stringify(persisted).includes("UNTRUSTED MEMORY"),false);
     assert.equal(persisted.resolvedRouting.linearProjectId,"project-1");
@@ -1146,8 +1150,7 @@ test("P4 local task preparation fails before queued transition on write or memor
       route:{repositoryRoot:root,scopeKey:"scope-2",launchDirectory:root},
       agent:"gemini",jobKey:"gemini:key",safeJobId:"job-2",
       jobStore:{transition:async()=>{queued=true;}},
-      activeTaskMemory:{read:async()=>{throw Error("memory unavailable");},
-        recoveryPreamble:()=>"",update:async()=>{}},
+      activeTaskMemory:{update:async()=>{throw Error("memory unavailable");}},
       drainProgressWrites:async()=>{},
       retrieveMemuMemory:async()=>"",
       extractDirectTask:v=>v,

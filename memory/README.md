@@ -18,6 +18,7 @@ This folder implements **issue-scoped short-term recovery checkpoints**, GitHub 
 | Source | Responsibility |
 | --- | --- |
 | `active-task-memory.mjs` | Issue/repository-keyed filesystem checkpoints with revision conflicts, atomic writes, bounded/redacted progress, expiration and recovery context |
+| `verified-recovery.mjs` | ABR-90 M1: validates tenant, agent, repository and issue attribution before injecting a bounded, redacted recovery preamble into a Linux coding-agent task; does **not** independently isolate legacy per-issue files |
 | `local-agent-checkpoint.mjs` | Best-effort mirror of verified job-ledger transitions; refuses stale job keys; the ledger remains authoritative |
 | `opencode-session-checkpoint.mjs` | OpenCode progress/session observations, guarded by the current issue/job relationship |
 | `github-task-memory.mjs` | Per-PR short-term state under the Bridge job directory (`github-events/task-memory/`), separate from memU |
