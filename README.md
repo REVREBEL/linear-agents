@@ -506,6 +506,10 @@ The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge
 
 [The remote MCP upstream/source audit](docs/audits/mcp/README.md) and [tool parity contract](docs/audits/mcp/tool-parity.json) document the planned self-hosted Desktop Commander port (30 connected tools, 42 BRC agent tools, three relay tools). This branch adds an **offline/local, read-only relay+host fixture** using pinned `ws@8.21.0` with no production listener, OAuth, command execution, third-party file transfer, or deployment. The existing `bridge/server/agent-bridge-runtime.mjs`, `/jobs` identity, review inbox and job ledger remain authoritative. See ABR-95–100 for staged completion and deployment decisions.
 
+### ABR-59 — Verified memU commit executor and disposable canary (M4)
+
+A default-unwired commit executor now requires independently verified source evidence, GitHub same-SHA approval/CI, matching completed Linear issue, and a durable one-shot journal claim before memU `commit`. Uncertain outcomes block automatic replays. The installed memU CLI successfully committed and retrieved a synthetic learning from a disposable SQLite store with local `nomic-embed-text`, without touching the live PostgreSQL memory database. See [M4 contract](docs/ABR59_COMMIT_EXECUTOR.md).
+
 ### ABR-59 — Durable verified memory-promotion receipts (M3)
 
 A private local journal can record authenticated GitHub-review/CI verification proof with exact tenant/agent/repository/issue and PR SHA keys. Receipts publish atomically, suppress duplicate staging, and can be enumerated after restart. They remain **awaiting executor**, not committed memU memory; the separate, approved actual memU commit path is not yet enabled. See [ABR-59 M3 journal contract](docs/ABR59_PROMOTION_JOURNAL.md).
