@@ -13,7 +13,7 @@
 
 ## Portable configuration and one-command usage
 
-The complete metadata example lives at `templates/context/examples/nextjs-app/`. An unrelated repository can adapt the sample `.agents/context.yaml`, the three owning Git README files, and two Git-owned host sources, then copy the **portable** Python modules `agent_context_cli.py`, `context_contract.py`, `context_resolver.py` and optionally `agent-context-handoff.py`, plus the two context JSON schemas.
+The complete metadata example lives at `docs/blueprints/agent-context/examples/nextjs-app/`. An unrelated repository can adapt the sample `.agents/context.yaml`, the three owning Git README files, and two Git-owned host sources, then copy the **portable** Python modules `agent_context_cli.py`, `context_contract.py`, `context_resolver.py` and optionally `agent-context-handoff.py`, plus the two context JSON schemas.
 
 Example after configuring independent host README root paths:
 

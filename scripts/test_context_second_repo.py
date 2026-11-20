@@ -15,7 +15,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SAMPLE = ROOT / "templates/context/examples/nextjs-app"
+SAMPLE = ROOT / "docs/blueprints/agent-context/examples/nextjs-app"
 SCHEMAS = ("context-frontmatter.schema.json", "context-manifest.schema.json")
 MODULES = ("agent_context_cli.py", "context_contract.py", "context_resolver.py",
            "agent-context-handoff.py")
