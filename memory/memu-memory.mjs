@@ -7,7 +7,26 @@ function warnRecall(reason, logger = console, now = Date.now()) {
   logger.warn(`[memU recall] ${reason}; continuing without long-term memory`);
 }
 
-export function compactRecall(result, limit = 5) {
+// memU CLI 0.10 does not enforce a structured agent/repo/issue search filter.
+// Only accept independently attributed matches. Missing metadata fails closed.
+const SCOPE_KEYS = ["tenantId", "agentId", "repositoryId", "issueId"];
+export function verifiedRecallScope(scope) {
+  if (!scope || typeof scope !== "object" || Array.isArray(scope)) return null;
+  const keys = SCOPE_KEYS;
+  if (!keys.every(key => typeof scope[key] === "string" &&
+      scope[key].trim().length > 0 && scope[key].length <= 512 &&
+      !/[\u0000-\u001f]/.test(scope[key]))) return null;
+  return Object.fromEntries(keys.map(key => [key, scope[key]]));
+}
+function scopedHit(hit, scope) {
+  if (!hit || typeof hit !== "object") return false;
+  const origin = hit.scope ?? hit.metadata?.scope ?? hit.metadata;
+  if (!origin || typeof origin !== "object") return false;
+  return Object.entries(scope).every(([key, value]) =>
+    Object.hasOwn(origin, key) && origin[key] === value);
+}
+
+export function compactRecall(result, limit = 5, scope = null) {
   // memU CLI 0.10+ returns segments/files/resources; older adapters returned hits.
   // Prefer segments to avoid duplicating their parent recall-file content.
   const candidates = Array.isArray(result?.segments) && result.segments.length
@@ -15,7 +34,8 @@ export function compactRecall(result, limit = 5) {
     : Array.isArray(result?.hits) ? result.hits
     : Array.isArray(result?.files) ? result.files
     : Array.isArray(result?.resources) ? result.resources : [];
-  const texts = candidates.slice(0, Math.max(0, Math.min(limit, 5))).map(hit => {
+  const approved = scope ? candidates.filter(hit => scopedHit(hit, scope)) : candidates;
+  const texts = approved.slice(0, Math.max(0, Math.min(limit, 5))).map(hit => {
     if (!hit || typeof hit !== "object") return "";
     const description = typeof hit.description === "string" ? hit.description : "";
     const content = typeof hit.text === "string" ? hit.text
@@ -34,10 +54,16 @@ export async function retrieveMemuMemory(query, {
   enabled = process.env.MEMU_RETRIEVAL_ENABLED === "true",
   binary = process.env.MEMU_BIN || "memu",
   timeoutMs = 5000,
+  scope = null,
   logger = console,
   spawnImpl = spawn,
 } = {}) {
   if (!enabled) return "";
+  const identity = verifiedRecallScope(scope);
+  if (!identity) {
+    warnRecall("missing verified tenant/agent/repository/issue scope", logger);
+    return "";
+  }
   return new Promise(resolve => {
     const child = spawnImpl(binary, ["retrieve", String(query).slice(0, 500)], {
       shell: false, env: process.env, stdio: ["ignore", "pipe", "pipe"],
@@ -57,7 +83,7 @@ export async function retrieveMemuMemory(query, {
     child.on("error", () => { warnRecall("spawn error", logger); finish(""); });
     child.on("close", code => {
       if (code !== 0) { warnRecall("nonzero exit", logger); return finish(""); }
-      try { finish(compactRecall(JSON.parse(out))); }
+      try { finish(compactRecall(JSON.parse(out), 5, identity)); }
       catch { warnRecall("invalid response", logger); finish(""); }
     });
   });

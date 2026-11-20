@@ -102,6 +102,10 @@ The [README discipline policy](../docs/blueprints/agent-context/README_DISCIPLIN
 
 `test_context_fresh_session.py` launches new Python CLI processes from unrelated directories and checks the exact six-document `--topic jobs` dependency graph, full README bodies, SHA-256 and Git provenance, deterministic replay, strict missing-host failure, explicit partial policy and D5 source-pinned handoff verification after the disposable host files disappear. Fixtures use Git-reviewed host template README bytes; native Ubuntu/macOS/Windows CI verifies portability. The [E2 acceptance guide](../docs/blueprints/agent-context/FRESH_SESSION.md) includes a successful live Ubuntu host test and the one-line command. This does not invoke providers, dispatch agents or install host tools.
 
+## E3 context-to-memory authority boundary (ABR-87)
+
+`memory/context-memory-isolation.test.mjs` runs fake PostgreSQL scoped CAS, memU recall, local task preparation and a real README context CLI invocation in disposable directories. It proves that context retrieval cannot initiate memU or become canonical promotion evidence, and that the optional recall path rejects incomplete and mismatched agent/issue/repository/tenant scopes. The [E3 evidence and limitations](../docs/blueprints/agent-context/MEMORY_ISOLATION.md) distinguish source-level guards from live memU storage isolation. CI runs this with the existing memU and checkpoint tests. No DB, agent CLI or service changes are performed by the tests.
+
 ## Host-only infrastructure
 
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.

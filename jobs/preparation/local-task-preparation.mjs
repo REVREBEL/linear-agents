@@ -30,7 +30,13 @@ export async function prepareLocalAgentTask({
     const originalTask = extractDirectTask(extractPromptContext(job));
     const recovery = activeTaskMemory.recoveryPreamble(priorTask);
     const longTermMemory = await retrieveMemuMemory(
-      "Repository: " + (route.repositoryRoot || "") + ". Coding conventions, previous failures, testing practices."
+      "Repository: " + (route.repositoryRoot || "") + ". Coding conventions, previous failures, testing practices.",
+      { scope: {
+        agentId: agent,
+        repositoryId: route.repositoryRoot,
+        issueId,
+        ...(job.organizationId ? { tenantId: job.organizationId } : {}),
+      } },
     );
     // Never put untrusted recalled text into a coding agent's instruction stream.
     if (longTermMemory) logger.log("[memU recall] retrieved context withheld from agent prompt");

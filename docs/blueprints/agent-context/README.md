@@ -22,6 +22,10 @@ The [Qwen Local pilot evidence and promotion gate](QWEN_LOCAL_PILOT.md) records 
 
 The [one-command E2 acceptance contract](FRESH_SESSION.md) verifies that a new CLI session can retrieve `agents/`, `bridge/`, `jobs/` and the three `/opt` host-root READMEs using the existing `--topic jobs --format json` selector, with no duplicate resolver or elevated permissions. Dedicated regressions exercise independently launched Python processes, portability, exact Git provenance, failure on a missing host source, and D5 pinned handoff replay after the original host roots disappear. The separate live Ubuntu read of all six existing sources passed. No model/Worker invocation is implied.
 
+## E3 memory isolation and no README promotion (ABR-87)
+
+The [E3 memory boundary tests and evidence](MEMORY_ISOLATION.md) distinguish per-issue operational filesystem recovery from independently agent/issue/repository/tenant-scoped PostgreSQL checkpoint prototypes. Optional memU recall is now fail-closed on missing scope and rejects unattributed or cross-scope results, while retrieved text remains withheld from coding prompts. A README context bundle cannot launch memU or satisfy the separate canonical session promotion gate. The tests explicitly document the limitations of memU's unscoped CLI and the existing per-issue operational checkpoint store; they do not claim a deployed, authenticated per-agent memory partition.
+
 ## Package contents
 
 - `templates/context/agent-profile.v2.template.yaml`: **corrected** complete candidate profile template conforming to the uploaded per-entry schema.

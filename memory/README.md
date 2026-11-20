@@ -36,6 +36,12 @@ The filesystem job ledger remains under `jobs/persistence/`; Bridge orchestratio
 - A PostgreSQL role or local installation does not establish a production database connection. See [POSTGRES_CHECKPOINT_ADAPTER.md](POSTGRES_CHECKPOINT_ADAPTER.md) for the current adapter contract and deployment gates.
 - Never include raw credentials, private session transcripts, unredacted event payloads or live checkpoint contents in README files.
 
+## Agent Context E3 scope and non-promotion (ABR-87)
+
+The [E3 acceptance contract](../docs/blueprints/agent-context/MEMORY_ISOLATION.md) distinguishes **operational** active-task files keyed by repository + issue from the separately scoped, **unconnected** PostgreSQL adapter keyed by tenant + agent + repository + issue. Never claim operational files provide independent per-agent storage. The optional memU recall adapter now requires those four nonempty scope identifiers and refuses untagged or cross-scope hits; memU 0.10 does not expose a trusted scoped query option, so this is a fail-closed output boundary, **not DB-level authorization**. Incomplete scope suppresses the memU process entirely; recalled text remains withheld from agent prompts. README context is data: it neither starts recall nor supplies an approved canonical promotion session.
+
+Run `node --test memory/context-memory-isolation.test.mjs` alongside the existing checkpoint and memU tests; fixtures cover independent checkpoint keys, restart/CAS, exact-scope filtering, no subprocess for incomplete scope, and no README-triggered memU promotion. Production memU namespaces, operational per-agent file isolation and a real multi-agent canary remain separate rollout work.
+
 ## Verification
 
 Run focused tests from the repository root, for example:
