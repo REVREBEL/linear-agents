@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { buildScopedRecallQuery } from "../../memory/scoped-recall.mjs";
 import { isCheckpointExpired } from "../../memory/active-task-memory.mjs";
 import { verifiedRecoveryPreamble } from "../../memory/verified-recovery.mjs";
 import { approvedFactoryBrainDigest, loadFactoryBrain } from "../../memory/factory-brain.mjs";
@@ -38,15 +39,17 @@ export async function prepareLocalAgentTask({
       repositoryRoot: route.repositoryRoot,
       issueId,
     };
-    const longTermMemory = await retrieveMemuMemory(
-      "Repository: " + (route.repositoryRoot || "") + ". Coding conventions, previous failures, testing practices.",
-      { scope: {
-        agentId: agent,
-        repositoryId: route.repositoryRoot,
-        issueId,
+    // This is a deterministic query from authorized route and issue fields,
+    // never reconstructed from raw issue description, model text or MCP output.
+    const recallQuery = buildScopedRecallQuery({
+      repositoryId: route.repositoryRoot, issueId, taskKind: "coding",
+    });
+    const longTermMemory = recallQuery ? await retrieveMemuMemory(recallQuery, {
+      scope: {
+        agentId: agent, repositoryId: route.repositoryRoot, issueId,
         ...(job.organizationId ? { tenantId: job.organizationId } : {}),
-      } },
-    );
+      },
+    }) : "";
     // Never put untrusted recalled text into a coding agent's instruction stream.
     if (longTermMemory) logger.log("[memU recall] retrieved context withheld from agent prompt");
     // Read, verify and update under the checkpoint store's exclusive lock.

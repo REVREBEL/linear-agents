@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { loadMemuRuntime, MEMU_INSTALLED_BINARY } from "./memu-runtime.mjs";
+import { verifiedRecallEnvelope } from "./scoped-recall.mjs";
 
 const lastWarningAt = new Map();
 function warnRecall(reason, logger = console, now = Date.now()) {
@@ -60,6 +61,10 @@ export async function retrieveMemuMemory(query, {
   scope = null,
   logger = console,
   spawnImpl = spawn,
+  // Only for Bridge-owned, independently reviewed source digest sets; this
+  // option is NOT populated from memU output or model-supplied tool results.
+  trustedDigests = null,
+  returnEnvelope = false,
 } = {}) {
   if (!enabled) return "";
   const identity = verifiedRecallScope(scope);
@@ -67,6 +72,8 @@ export async function retrieveMemuMemory(query, {
     warnRecall("missing verified tenant/agent/repository/issue scope", logger);
     return "";
   }
+  if (returnEnvelope && (!(trustedDigests instanceof Set) ||
+      trustedDigests.size === 0)) return "";
   let runtime = { binary, env: process.env };
   if (configPath) {
     try { runtime = await runtimeLoader({ configPath, binary }); }
@@ -94,7 +101,12 @@ export async function retrieveMemuMemory(query, {
     child.on("error", () => { warnRecall("spawn error", logger); finish(""); });
     child.on("close", code => {
       if (code !== 0) { warnRecall("nonzero exit", logger); return finish(""); }
-      try { finish(compactRecall(JSON.parse(out), 5, identity)); }
+      try {
+        const parsed = JSON.parse(out);
+        finish(returnEnvelope ? verifiedRecallEnvelope(parsed, {
+          scope: identity, trustedDigests,
+        }) : compactRecall(parsed, 5, identity));
+      }
       catch { warnRecall("invalid response", logger); finish(""); }
     });
   });
