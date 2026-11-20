@@ -131,6 +131,9 @@ export function createLocalMcpRelay({ clientToken, agentToken, deviceId, profile
   });
   wss.on('connection', (ws) => {
     agents.set(deviceId, ws);
+    // A paired host can still send malformed/oversized frames. Treat WS errors
+    // as disconnects; an unhandled EventEmitter error must never kill the relay.
+    ws.on('error', () => ws.terminate());
     ws.on('message', (raw) => {
       let message;
       try { message = JSON.parse(raw.toString('utf8')); } catch { return; }

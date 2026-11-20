@@ -31,6 +31,7 @@ export async function connectLocalHostAgent({ endpoint, agentToken, deviceId, wo
     socket.once('error', reject);
     socket.once('unexpected-response', (_req, res) => reject(Error('Pairing rejected: ' + res.statusCode)));
   });
+  socket.on('error', () => socket.terminate());
   socket.on('message', async (bytes) => {
     let request;
     try { request = JSON.parse(bytes.toString('utf8')); } catch { return; }
@@ -46,7 +47,7 @@ export async function connectLocalHostAgent({ endpoint, agentToken, deviceId, wo
         if (!under(root, candidate)) throw Error('OUTSIDE_AUTHORIZED_WORKSPACE');
         const absolute = await realpath(candidate);
         if (!under(root, absolute)) throw Error('OUTSIDE_AUTHORIZED_WORKSPACE');
-        file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+        file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
         const info = await file.stat();
         if (!info.isFile()) throw Error('NOT_A_REGULAR_FILE');
         if (info.size > MAX_FILE_BYTES) throw Error('FILE_TOO_LARGE');
@@ -69,7 +70,14 @@ export async function connectLocalHostAgent({ endpoint, agentToken, deviceId, wo
           ? error.message : 'READ_FAILED';
       } finally { await file?.close(); }
     }
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(response));
+    if (socket.readyState === WebSocket.OPEN) {
+      // JSON escaping expands NUL/control bytes by up to ~7x when nested.
+      // Cap the complete wire frame, rather than only the original file.
+      const wire = JSON.stringify(response);
+      socket.send(Buffer.byteLength(wire, 'utf8') <= 524_288
+        ? wire : JSON.stringify({ type: 'result', id: request.id,
+          ok: false, error: 'RESULT_TOO_LARGE' }));
+    }
   });
   return {
     socket,

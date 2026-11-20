@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, symlink, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -25,6 +26,8 @@ test('ABR-94 local relay+agent: authenticate, pair, read and fail closed', async
   await writeFile(path.join(inside, 'README.md'), '# First line\nSecond line\n', 'utf8');
   await writeFile(path.join(inside, 'large.txt'), 'Z'.repeat(90_000), 'utf8');
   await writeFile(path.join(inside, 'too-large.txt'), 'Y'.repeat(263_000), 'utf8');
+  await writeFile(path.join(inside, 'control.txt'), '\0'.repeat(120_000), 'utf8');
+  if (process.platform !== 'win32') execFileSync('mkfifo', [path.join(inside, 'pipe')]);
   await writeFile(path.join(root, 'outside.txt'), 'OUTSIDE_SECRET', 'utf8');
   await symlink(path.join(root, 'outside.txt'), path.join(inside, 'outside-link'));
   await symlink(path.join(inside, 'README.md'), path.join(inside, 'inside-link'));
@@ -114,6 +117,19 @@ test('ABR-94 local relay+agent: authenticate, pair, read and fail closed', async
       assert.equal(blocked.result.isError, true);
       assert.equal(blocked.result.content[0].text, 'FILE_TOO_LARGE');
     });
+    await t.test('control-character JSON amplification returns a bounded error without disconnect', async () => {
+      const rejected = await tool('read_file', { deviceId, path: 'control.txt', length: 1 });
+      assert.equal(rejected.result.isError, true);
+      assert.equal(rejected.result.content[0].text, 'RESULT_TOO_LARGE');
+      const afterwards = await tool('read_file', { deviceId, path: 'README.md' });
+      assert.equal(afterwards.result.isError, false);
+    });
+    await t.test('FIFO has no writer but is rejected without blocking a host worker', async () => {
+      if (process.platform === 'win32') return;
+      const rejected = await tool('read_file', { deviceId, path: 'pipe' });
+      assert.equal(rejected.result.isError, true);
+      assert.equal(rejected.result.content[0].text, 'NOT_A_REGULAR_FILE');
+    });
     await t.test('reject wrong device, traversal, absolute path and symlink escape', async () => {
       const wrong = await tool('read_file', { deviceId: 'unauthorized', path: 'README.md' });
       assert.match(wrong.result.content[0].text, /DEVICE_NOT_AUTHORIZED/);
@@ -164,6 +180,17 @@ test('ABR-94 local relay+agent: authenticate, pair, read and fail closed', async
       const denied = await call('tools/call', { name: 'read_file',
         arguments: { deviceId, path: 'README.md' } }, { token: null });
       assert.equal(denied.status, 401);
+    });
+    await t.test('oversized paired WebSocket frames disconnect safely without process crash', async () => {
+      const disconnected = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(Error('Expected oversized device frame to close')), 3_000);
+        agent.socket.once('close', () => { clearTimeout(timeout); resolve(); });
+      });
+      agent.socket.send('X'.repeat(1_100_000));
+      await disconnected;
+      const rejected = await tool('read_file', { deviceId, path: 'README.md' });
+      assert.equal(rejected.result.isError, true);
+      assert.equal(rejected.result.content[0].text, 'DEVICE_OFFLINE');
     });
     await t.test('disconnect does not create Linear job state or authorize subsequent reads', async () => {
       await agent.close();
