@@ -77,3 +77,7 @@ See [OAUTH_EDGE.md](OAUTH_EDGE.md) for the separate **OAuth resource-server** bo
 ## ABR-96 — Ubuntu executor and release-blocking AppArmor preflight
 
 [EXECUTOR.md](EXECUTOR.md) documents the standalone Bubblewrap-based execution service, durable separate SQLite job journal, interactive REPL/status/kill behavior, per-session authority and rollout gates. It records the **actual Ubuntu `bridge` service user AppArmor namespace denial**, which prevents any service activation. The source-only systemd template is deliberately non-startable; approved rootless policy and a full non-skipped service-user acceptance test are required before treating ABR-96 as operational.
+
+## ABR-97 — Actual macOS identity and device selection evidence
+
+[MACOS_HOST.md](MACOS_HOST.md) records strict SSH access from all three Ubuntu user accounts to the same macOS UID 501, the verified existing launchd Node and repository path, lack of `OSX_PROJECTS_ROOT` in the noninteractive environment and the derived projects root. The source-only device registry and scoped routing prohibit client-created authority and host fallback; production Mac process confinement, signed device enrollment and Ubuntu service-user namespace policy remain separate gates.

@@ -1,0 +1,59 @@
+name: ABR-97 MCP Device Enrollment and Host Routing
+
+on:
+  pull_request:
+    paths:
+      - 'bridge/agent/mcp-host-agent/device-*.mjs'
+      - 'bridge/agent/mcp-host-agent/macos-host-probe.mjs'
+      - 'scripts/test-mcp-device-routing.mjs'
+      - 'scripts/mcp-macos-probe.mjs'
+      - 'scripts/macos/launchd/**'
+      - 'docs/audits/mcp/**'
+      - 'package.json'
+      - '.github/workflows/mcp-devices.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bridge/agent/mcp-host-agent/device-*.mjs'
+      - 'bridge/agent/mcp-host-agent/macos-host-probe.mjs'
+      - 'scripts/test-mcp-device-routing.mjs'
+      - '.github/workflows/mcp-devices.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  two-host-offline-enrollment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify signed pairing, trusted session and Linear location routing
+        run: npm run mcp:devices:test
+      - name: Validate source-only, intentionally disabled launchd candidate
+        run: |
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          candidate = Path('scripts/macos/launchd/desktopcommander-mcp-host.plist.example')
+          with candidate.open('rb') as f:
+              plist = plistlib.load(f)
+          assert plist['Disabled'] is True
+          assert plist['RunAtLoad'] is False
+          assert plist['KeepAlive'] is False
+          assert plist['ProgramArguments'] == ['/usr/bin/false']
+          print('Launchd template syntax and disabled startup contract verified')
+          PY
+      - name: Preserve existing authenticated read-only MCP foundation
+        run: |
+          npm run mcp:foundation:test
+          npm run mcp:oauth:test
+      - name: Preserve canonical Bridge admission
+        run: npm run bridge:test
