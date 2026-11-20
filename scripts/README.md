@@ -114,6 +114,12 @@ The [README discipline policy](../docs/blueprints/agent-context/README_DISCIPLIN
 
 The independent-repo fixture now reads **all** source-controlled examples, CLI modules, and schemas from the Git object database so Windows CRLF working-copy conversions cannot alter the canonical bytes under test. `context_contract.py` uses the validated fixed reviewed source for legacy host aliases, explicitly rejects a separate `source` field on repository-owned documents, and emits an actionable error. `context_resolver.py` indexes portable source-backed host metadata only for non-repository locators. `test_context_contract.py` covers matching and mismatched legacy aliases and forbidden repository source overrides.
 
+## Versioned source-linked static README documentation (ABR-89 / E5)
+
+`build_context_docs_site.py` creates a separate static HTML site from **every Git-tracked README.md at pinned HEAD**, including full original Markdown blobs, safe rendered HTML and a versioned `provenance.json` containing Git HEAD/tree, per-document blob/last-changing commit, full SHA-256, original paths and immutable GitHub links. It reads Git objects, not checkout edits or private /opt roots. `build --output PATH` requires a new path outside the checkout; `check --output PATH` compares the complete manifest, rendered pages and raw content byte-for-byte without modifying them. The [E5 documentation site contract](../docs/blueprints/agent-context/PROVENANCE_SITE.md) records standalone operation, CI artifacts and review boundaries.
+
+`python3 scripts/test_context_docs_site.py` exercises fourteen independent Git fixture acceptance cases, including safe Markdown and GitHub-style heading anchors, provenance, deterministic site replay, changed-source invalidation and output tampering. The [README site Actions workflow](../.github/workflows/agent-context-docs-site.yml) runs tests and uploads a SHA-named, 30-day downloadable HTML site artifact with read-only contents permissions. It does not modify the repository, host an external site, publish to Pages, install a provider or deploy a bridge service.
+
 ## Host-only infrastructure
 
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.

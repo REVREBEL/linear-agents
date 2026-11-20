@@ -1,0 +1,54 @@
+name: Source-linked README Documentation Site
+
+on:
+  pull_request:
+    paths:
+      - '**/README.md'
+      - 'README.md'
+      - 'scripts/build_context_docs_site.py'
+      - 'scripts/test_context_docs_site.py'
+      - 'docs/blueprints/agent-context/PROVENANCE_SITE.md'
+      - '.github/workflows/agent-context-docs-site.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/README.md'
+      - 'README.md'
+      - 'scripts/build_context_docs_site.py'
+      - 'scripts/test_context_docs_site.py'
+      - 'docs/blueprints/agent-context/PROVENANCE_SITE.md'
+      - '.github/workflows/agent-context-docs-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned offline Markdown rendering dependencies
+        run: python -m pip install --disable-pip-version-check 'markdown-it-py==3.0.0' 'mdurl==0.1.2' 'PyYAML==6.0.2'
+      - name: Verify source-linked static documentation contracts
+        run: python scripts/test_context_docs_site.py
+      - name: Build all Git-tracked README pages from the pinned commit
+        run: python scripts/build_context_docs_site.py build --repo-root . --repository REVREBEL/linear-agents --output "$RUNNER_TEMP/agent-context-docs"
+      - name: Verify deterministic manifest, raw files and rendered pages
+        run: python scripts/build_context_docs_site.py check --repo-root . --repository REVREBEL/linear-agents --output "$RUNNER_TEMP/agent-context-docs"
+      - name: Upload versioned static HTML site with provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-linked-readme-site-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/agent-context-docs/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
