@@ -62,9 +62,16 @@ async function readReceipt(root, id) {
     if (!stat.isFile() || stat.dev !== lst.dev || stat.ino !== lst.ino ||
         stat.size > MAX_RECORD || (stat.mode & 0o077) !== 0)
       deny("journal file changed or insecure");
-    const raw = await handle.readFile("utf8");
-    if (Buffer.byteLength(raw) > MAX_RECORD) deny("oversized journal");
-    return assertRecord(JSON.parse(raw), id);
+    // Cap actual I/O as well as the earlier stat: the file can grow between them.
+    const buffer = Buffer.alloc(MAX_RECORD + 1);
+    let used = 0;
+    while (used < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, used, buffer.length - used, used);
+      if (bytesRead === 0) break;
+      used += bytesRead;
+    }
+    if (used > MAX_RECORD) deny("oversized journal");
+    return assertRecord(JSON.parse(buffer.toString("utf8", 0, used)), id);
   } finally { await handle.close(); }
 }
 /**
