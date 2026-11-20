@@ -136,3 +136,11 @@ test("native memU segment text is usable only when independently approved", () =
   const denied = envelope([{ text: approved.content, scope }]);
   assert.equal(denied.entries.length, 0);
 });
+
+test("rejects dot, traversal and empty source path segments even when digested", () => {
+  for (const sourcePath of [".", "..", "docs/.", "docs/..", "docs//file.md", "docs/../file.md", "docs/"]) {
+    const hit = { ...approved, sourcePath };
+    assert.equal(envelope([hit], { trustedDigests: new Set([recallDigest(hit)]) }).entries.length, 0, sourcePath);
+  }
+  assert.equal(envelope([approved]).entries.length, 1);
+});
