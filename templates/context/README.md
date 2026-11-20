@@ -47,3 +47,8 @@ See [Agent registry ownership](../../agents/README.md), [field mapping](profile-
 ## Verification
 
 GitHub Actions runs `scripts/validate-context-blueprint.py` for changes to these templates or the blueprint. It checks canonical/mirror byte parity, research examples against the research schema, the runtime entry against its independent schema, and intentional cross-schema rejection. No executable runtime is activated by running these checks.
+
+
+## E4 portable reviewed host sources in unrelated coding repositories (ABR-88)
+
+A second repository can use the same Context v1 schemas, CLI modules and [independent Next.js example](examples/README.md) without adopting any Agent Bridge folder names or worker registrations. For a non-repo document, `.agents/context.yaml` may declare `source: templates/context/host-roots/<custom>/README.md` as the **Git-reviewed** README source; its declared root and `path: README.md` still describe the optional real host location. The resolver checks exact host bytes against the pinned Git source and applies the normal strict/partial policy. Existing special Bridge alias IDs retain their fixed Git source and location; a conflicting `source` is rejected. The optional source is not a network URL, install instruction or execution grant. Run `python3 scripts/test_context_second_repo.py` for the independent Git/Next.js acceptance.

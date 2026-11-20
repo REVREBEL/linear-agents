@@ -106,6 +106,10 @@ The [README discipline policy](../docs/blueprints/agent-context/README_DISCIPLIN
 
 `memory/context-memory-isolation.test.mjs` runs fake PostgreSQL scoped CAS, memU recall, local task preparation and a real README context CLI invocation in disposable directories. It proves that context retrieval cannot initiate memU or become canonical promotion evidence, and that the optional recall path rejects incomplete and mismatched agent/issue/repository/tenant scopes. The [E3 evidence and limitations](../docs/blueprints/agent-context/MEMORY_ISOLATION.md) distinguish source-level guards from live memU storage isolation. CI runs this with the existing memU and checkpoint tests. No DB, agent CLI or service changes are performed by the tests.
 
+## Independent repository portability acceptance (ABR-88 / E4)
+
+`test_context_second_repo.py` creates a fresh TypeScript/Next.js Git repository using the reviewed `templates/context/examples/nextjs-app/` example, copies the portable C1–C5 Python CLI modules and v1 JSON schemas, then runs independent project discovery, four-document retrieval, SHA/source integrity, nearest-owner and changed-file selection, strict/partial host behavior, and pinned D5 handoff verification after host-root deletion. The [E4 live pilot report](../docs/blueprints/agent-context/SECOND_REPOSITORY_PILOT.md) also records a successful disposable clone of an existing unrelated Payload/Next.js codebase. It does not install application packages, execute Workers or alter the real second checkout.
+
 ## Host-only infrastructure
 
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.

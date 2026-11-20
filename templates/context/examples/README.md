@@ -1,0 +1,7 @@
+# Portable Agent Context examples
+
+The `nextjs-app/` tree is a **reusable, source-controlled example**, not a separate running service or complete application. Copy its `.agents/context.yaml` and corresponding README paths into a separate TypeScript/Next.js Git repository; install the two reviewed host README sources at the repository-relative paths declared in its manifest. Copy the Context v1 JSON schemas and the four independent Python CLI/handoff modules from the source project's `templates/context/` and `scripts/` directories. Commit the metadata to that *other repository* before source-pinned retrieval.
+
+Set `INDEPENDENT_CONTEXT_UI_ROOT` and `INDEPENDENT_CONTEXT_TOOLS_ROOT` to the actual paths containing the same Git-reviewed README bytes. The unrelated app's folder IDs are `repo.application`, `repo.collections`, `host.design-system` and `host.toolchain`; no Bridge Registry or Worker identity is required. In the other repository, run `python3 scripts/agent_context_cli.py --topic collections --format json`, or select `--path src/collections/Users.ts`. Unavailable host READMEs cause a strict failure unless explicitly reported with `--allow-partial`.
+
+The [E4 pilot report](../../../docs/blueprints/agent-context/SECOND_REPOSITORY_PILOT.md) documents the real temporary Payload/Next.js clone, and `python3 scripts/test_context_second_repo.py` recreates its portable contract in a disposable coding checkout on every supported CI OS. These examples contain no credentials, host runtime profiles or model launch steps.

@@ -26,6 +26,10 @@ The [one-command E2 acceptance contract](FRESH_SESSION.md) verifies that a new C
 
 The [E3 memory boundary tests and evidence](MEMORY_ISOLATION.md) distinguish per-issue operational filesystem recovery from independently agent/issue/repository/tenant-scoped PostgreSQL checkpoint prototypes. Optional memU recall is now fail-closed on missing scope and rejects unattributed or cross-scope results, while retrieved text remains withheld from coding prompts. A README context bundle cannot launch memU or satisfy the separate canonical session promotion gate. The tests explicitly document the limitations of memU's unscoped CLI and the existing per-issue operational checkpoint store; they do not claim a deployed, authenticated per-agent memory partition.
 
+## E4 independent Next.js repository pilot (ABR-88)
+
+The [second-repository pilot](SECOND_REPOSITORY_PILOT.md) passed against a disposable Git clone of a separate Payload/Next.js TypeScript application. It validates portable project-specific README IDs and two non-Bridge host roots, independent source-linked Git provenance, nearest-owner path/changed-file selection and D5 replay. The manifest now supports a reviewed `source` for arbitrary non-repository host documentation; existing Bridge host aliases retain their stricter historical mappings. Native CI verifies the independent-repository fixture without modifying another production checkout.
+
 ## Package contents
 
 - `templates/context/agent-profile.v2.template.yaml`: **corrected** complete candidate profile template conforming to the uploaded per-entry schema.
