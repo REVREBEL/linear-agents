@@ -240,7 +240,7 @@ def validate_context_contract(repo_root, manifest=None):
         if source is not None:
             validate_relative_document_path(source)
             if root == "repo":
-                raise ValueError(f"Repository context source must be its own path: {doc_id}")
+                raise ValueError(f"Repository documents cannot declare a separate 'source' field; they use their own 'path': {doc_id}")
         if root == "repo":
             target = base / path
             resolved = target.resolve()
@@ -254,7 +254,7 @@ def validate_context_contract(repo_root, manifest=None):
                     or (source is not None and source != HOST_SOURCE_DOCS[doc_id])):
                 raise ValueError(f"Host source-backed context alias mismatch: {doc_id}")
             target = require_context_source(
-                base / HOST_SOURCE_DOCS[doc_id], base, doc_id
+                base / (source or HOST_SOURCE_DOCS[doc_id]), base, doc_id
             )
         elif source is not None:
             # Portable projects declare their own reviewed host README source.
