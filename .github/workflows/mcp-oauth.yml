@@ -1,0 +1,41 @@
+name: ABR-95 MCP OAuth and Protocol Acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'bridge/server/mcp-relay/**'
+      - 'scripts/test-mcp-oauth.mjs'
+      - 'scripts/fixtures/oauth-local-issuer.mjs'
+      - 'docs/audits/mcp/**'
+      - 'package.json'
+      - '.github/workflows/mcp-oauth.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bridge/server/mcp-relay/**'
+      - 'scripts/test-mcp-oauth.mjs'
+      - 'scripts/fixtures/oauth-local-issuer.mjs'
+      - '.github/workflows/mcp-oauth.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oauth-and-protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+      - name: Install locked repository dependencies
+        run: npm ci
+      - name: Verify offline OAuth resource authorization and MCP protocol
+        run: npm run mcp:oauth:test
+      - name: Preserve ABR-94 relay, host and provenance contracts
+        run: npm run mcp:foundation:test
+      - name: Preserve existing Bridge dispatch and review contracts
+        run: npm run bridge:test

@@ -3,6 +3,7 @@
 import { createServer } from 'node:http';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
+import { classifyMcpRequest, modernResult, MODERN } from './protocol-compat.mjs';
 
 const VERSION = '2025-06-18'; // Minimal local smoke only; protocol matrix belongs to ABR-95.
 const LIMIT = 65_536;
@@ -61,20 +62,46 @@ function rejectSocket(socket, status) {
   socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 }
 
-export function createLocalMcpRelay({ clientToken, agentToken, deviceId, profile = 'core' }) {
-  if (typeof clientToken !== 'string' || clientToken.length < 32 ||
-      typeof agentToken !== 'string' || agentToken.length < 32 || clientToken === agentToken ||
+export function createLocalMcpRelay({ clientToken, agentToken, deviceId, profile = 'core', oauthResource = null }) {
+  if ((!oauthResource && (typeof clientToken !== 'string' || clientToken.length < 32)) ||
+      (oauthResource && (typeof oauthResource.validateBearer !== 'function' ||
+        typeof oauthResource.protectedMetadata !== 'function')) ||
+      typeof agentToken !== 'string' || agentToken.length < 32 || (!oauthResource && clientToken === agentToken) ||
       !/^[a-zA-Z0-9_-]{1,64}$/.test(deviceId ?? '') ||
       !['core', 'focused', 'full'].includes(profile)) throw TypeError('Invalid local relay configuration');
   const agents = new Map(); const pending = new Map();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1_048_576, perMessageDeflate: false });
   const server = createServer(async (req, res) => {
     if (!local(req)) return json(res, 403, { error: 'FORBIDDEN_ORIGIN' });
+    // The authorization resource metadata is public, but tools never are.
+    // Never infer the issuer or public URL from untrusted forwarding headers.
+    if (oauthResource && req.method === 'GET'
+        && (req.url === '/.well-known/oauth-protected-resource'
+          || req.url === '/.well-known/oauth-protected-resource/mcp')) {
+      return json(res, 200, oauthResource.protectedMetadata());
+    }
+    if (oauthResource && req.url === '/mcp' &&
+        ['GET', 'DELETE'].includes(req.method)) {
+      return json(res, 405, { error: 'METHOD_NOT_ALLOWED' });
+    }
     if (req.url !== '/mcp' || req.method !== 'POST')
       return json(res, 404, { error: 'NOT_FOUND' });
-    if (!authorized(req.headers.authorization, clientToken)) {
-      res.setHeader('WWW-Authenticate', 'Bearer error="invalid_token"');
-      return json(res, 401, { error: 'UNAUTHORIZED' });
+    if (oauthResource && ['forwarded', 'x-forwarded-host', 'x-forwarded-proto']
+      .some((header) => req.headers[header] !== undefined)) {
+      return json(res, 403, { error: 'UNTRUSTED_PROXY_HEADERS' });
+    }
+    const principal = oauthResource
+      ? oauthResource.validateBearer(req.headers.authorization)
+      : { ok: authorized(req.headers.authorization, clientToken) };
+    if (!principal.ok) {
+      const scopeDenied = oauthResource &&
+        ['INSUFFICIENT_SCOPE', 'PRINCIPAL_NOT_AUTHORIZED'].includes(principal.code);
+      if (oauthResource) {
+        res.setHeader('WWW-Authenticate',
+          `Bearer resource_metadata="${new URL('/.well-known/oauth-protected-resource', oauthResource.audience).href}", scope="mcp:discover", error="${scopeDenied ? 'insufficient_scope' : 'invalid_token'}"`);
+      } else res.setHeader('WWW-Authenticate', 'Bearer error="invalid_token"');
+      return json(res, scopeDenied ? 403 : 401,
+        { error: scopeDenied ? principal.code : 'UNAUTHORIZED' });
     }
     if (!req.headers['content-type']?.startsWith('application/json'))
       return json(res, 415, { error: 'UNSUPPORTED_MEDIA_TYPE' });
@@ -83,20 +110,57 @@ export function createLocalMcpRelay({ clientToken, agentToken, deviceId, profile
     catch (e) { return json(res, e.message === 'BODY_TOO_LARGE' ? 413 : 400, { error: e.message }); }
     if (!body || body.jsonrpc !== '2.0' || typeof body.method !== 'string')
       return json(res, 400, { error: 'INVALID_JSONRPC' });
-    if (body.method === 'notifications/initialized' && body.id === undefined) {
+    const wire = oauthResource ? classifyMcpRequest(req, body) :
+      { ok: true, era: 'legacy', protocolVersion: VERSION };
+    if (oauthResource && wire.era === 'modern' &&
+        !req.headers.accept?.includes('application/json') ||
+        oauthResource && wire.era === 'modern' &&
+        !req.headers.accept?.includes('text/event-stream')) {
+      return json(res, 406, { error: 'NOT_ACCEPTABLE' });
+    }
+    if (!wire.ok) {
+      return json(res, wire.status, { jsonrpc: '2.0', id: body.id ?? null,
+        error: { code: wire.code, message: wire.message,
+          ...(wire.code === -32022 ? { data: {
+            supported: [MODERN, '2025-11-25', '2025-06-18'],
+            requested: req.headers['mcp-protocol-version'] ?? body.params?.protocolVersion ?? null,
+          } } : {}) } });
+    }
+    if (body.method === 'notifications/initialized' && body.id === undefined
+        && wire.era === 'legacy') {
       res.writeHead(202, { 'Cache-Control': 'no-store' }); return res.end();
     }
     if (!['string', 'number'].includes(typeof body.id))
       return json(res, 400, { error: 'MISSING_JSONRPC_ID' });
     let result; let error;
-    if (body.method === 'initialize') {
-      if (body.params?.protocolVersion && body.params.protocolVersion !== VERSION)
+    if (body.method === 'server/discover' && wire.era === 'modern') {
+      result = { supportedVersions: [MODERN, '2025-11-25', '2025-06-18'],
+        capabilities: { tools: {} } };
+    } else if (body.method === 'initialize' && wire.era === 'legacy') {
+      if (body.params?.protocolVersion && !oauthResource &&
+          body.params.protocolVersion !== VERSION)
         error = { code: -32602, message: 'UNSUPPORTED_PROTOCOL_VERSION' };
-      else result = { protocolVersion: VERSION, capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'revrebel-mcp-local-foundation', version: '0.1.0' } };
+      else result = { protocolVersion: wire.protocolVersion,
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: { name: 'revrebel-mcp-local-foundation', version: '0.2.0' } };
     } else if (body.method === 'ping') result = {};
-    else if (body.method === 'tools/list') result = { tools: TOOL_LIST };
-    else if (body.method === 'tools/call') {
+    else if (body.method === 'tools/list') {
+      result = { tools: oauthResource
+        ? TOOL_LIST.filter((tool) => principal.tools.has(tool.name) &&
+          principal.scopes.has(tool.name === 'read_file' ? 'mcp:read' : 'mcp:discover'))
+        : TOOL_LIST };
+    } else if (body.method === 'tools/call') {
+      if (oauthResource && ['read_file', 'list_devices'].includes(body.params?.name)) {
+        const checked = oauthResource.validateBearer(req.headers.authorization, {
+          tool: body.params.name, deviceId: body.params.arguments?.deviceId ??
+            (body.params.name === 'list_devices' ? deviceId : null),
+        });
+        if (!checked.ok) {
+          res.setHeader('WWW-Authenticate', `Bearer error="insufficient_scope", scope="${
+            body.params.name === 'read_file' ? 'mcp:read' : 'mcp:discover'}"`);
+          return json(res, 403, { error: checked.code });
+        }
+      }
       if (body.params?.name === 'list_devices') {
         if (Object.keys(body.params.arguments ?? {}).length)
           error = { code: -32602, message: 'INVALID_PARAMS' };
@@ -119,8 +183,10 @@ export function createLocalMcpRelay({ clientToken, agentToken, deviceId, profile
         });
       }
     } else error = { code: -32601, message: 'METHOD_NOT_FOUND' };
-    return json(res, 200, error ? { jsonrpc: '2.0', id: body.id, error } :
-      { jsonrpc: '2.0', id: body.id, result });
+    return json(res, error && wire.era === 'modern' ?
+      (error.code === -32601 ? 404 : 400) : 200,
+      error ? { jsonrpc: '2.0', id: body.id, error } :
+        { jsonrpc: '2.0', id: body.id, result: modernResult(result, wire.era, body.method) });
   });
   server.on('upgrade', (req, socket, head) => {
     if (!local(req) || req.url !== '/agent') return rejectSocket(socket, '403 Forbidden');

@@ -69,3 +69,7 @@ The suite verifies immutable upstream provenance, the exact 30/42/3 tool matrix,
 - **ABR-100:** full two-host external-client/Agent Context C–E regression gate before any production activation.
 
 Neither initial paired-read success nor static egress checks imply safe deployment. The rollout gate remains a separately approved future action.
+
+## ABR-95 — OAuth resource and protocol compatibility
+
+See [OAUTH_EDGE.md](OAUTH_EDGE.md) for the separate **OAuth resource-server** boundary, per-request signed-token validation, client/device/tool grants, the modern MCP 2026-07-28 versus legacy 2025-11-25/2025-06-18 compatibility matrix, local-only PKCE/DCR test fixture, proposed-but-not-applied Cloudflare route, and rollback. It extends the ABR-94 audit without changing the live Bridge, adding an IdP, deploying a service, or creating public network ingress.
