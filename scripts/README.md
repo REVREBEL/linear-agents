@@ -125,3 +125,7 @@ The independent-repo fixture now reads **all** source-controlled examples, CLI m
 One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell configuration, Volta rebuilds, and central CLI/profile installation scripts are **not** part of this recovery PR. Those belong to the separate host infrastructure ownership path. Never automatically copy or run those scripts on a live server as part of npm installation or CI.
 
 `npm run types`, `npm run typecheck`, `npm run test:reliability`, `npm run bridge:test`, and `npm run registry:validate` are the primary verification commands.
+
+## Remote MCP foundation smoke (ABR-94)
+
+`test-mcp-foundation.mjs` exercises the isolated loopback MCP HTTP+WebSocket relay/host pairing with authorized UTF-8 file reads, negative device/path/symlink/secret tests, denied privileged tools and no external egress; `test-mcp-source-audit.mjs` verifies upstream SHA/bytes evidence and the complete [30/42/3 machine-readable tool catalog](../docs/audits/mcp/tool-parity.json). Run `node --test scripts/test-mcp-foundation.mjs scripts/test-mcp-source-audit.mjs` with locked root dependencies. Neither script invokes a live Bridge service, external identity system or production port. The isolated [ABR-94 audit guide](../docs/audits/mcp/README.md) defines remaining authorization/compatibility milestones.

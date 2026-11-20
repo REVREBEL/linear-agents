@@ -1,0 +1,176 @@
+{
+  "capturedAtUtc": "2026-11-20",
+  "portArchitecture": {
+    "agent": "independent local read-only WebSocket fixture",
+    "pluginAndTransferRoutes": "excluded",
+    "publicIngress": "none",
+    "relay": "independent limited Node.js HTTP+WebSocket proof",
+    "vendorStatus": "no direct upstream code vendored"
+  },
+  "purpose": "Pinned external source research for ABR-94; no upstream code is copied or activated",
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "commitDate": "2026-11-17T13:28:57Z",
+      "commitSha": "aee7115cb01bc0de21f1405b5f8e81ab56234733",
+      "license": "MIT (notice remains with original upstream; no direct files copied)",
+      "remote": "https://github.com/shahidx0x/better-remote-commander",
+      "repo": "shahidx0x/better-remote-commander",
+      "reviewedFiles": [
+        {
+          "blobSha": "b158433255d96c828d0c5ff1aa2d41cf0459d596",
+          "bytes": 1394,
+          "path": "LICENSE",
+          "sha256": "bc1154a0917ff0c33560dd7fb52a5e348038150332b8d83235e9de06bd3c2ff2"
+        },
+        {
+          "blobSha": "c9d69d221d63cf51bc2f99595c215ad63344ccfd",
+          "bytes": 3218,
+          "path": "package.json",
+          "sha256": "d04bc8bec6d915c9218847f11daf4df9ce058002b87c712552ab6c80dbfb491d"
+        },
+        {
+          "blobSha": "62bfd12f0229134e3ddfa6b61f7ef4d1596e4aea",
+          "bytes": 157207,
+          "path": "pnpm-lock.yaml",
+          "sha256": "fbfae35153d996817874dcacfb25522ae77237b3d02ad1e164067ea34752d112"
+        },
+        {
+          "blobSha": "36258495a69cc5a08f611988dfbf4d67cb23115f",
+          "bytes": 3639,
+          "path": "packages/agent/package.json",
+          "sha256": "5dc1bfef3cf47032919fa877215695d08eca22c6f0158bb21a02e65a386d6b64"
+        },
+        {
+          "blobSha": "760227f178d2c0b7b0d59e03ab5be6b37fdfdf93",
+          "bytes": 2036,
+          "path": "packages/relay/package.json",
+          "sha256": "e5ba4f8ba0d204fb9227b99e6021b4b70120ab47489de999220ce1e38976c2c8"
+        },
+        {
+          "blobSha": "8ce883fe5ed8f0a92ebdc87f3f461cdef58ab9d7",
+          "bytes": 9697,
+          "path": "packages/relay/src/mcp/server.ts",
+          "sha256": "2631fcfc38d7b9cbcf69fded3b71d07e29ee2cdb187c6a5b0d001f6173941834"
+        },
+        {
+          "blobSha": "77e132fde6d5989cdbbef9a53297c11f2ba268b4",
+          "bytes": 4175,
+          "path": "packages/relay/src/mcp/invoke.ts",
+          "sha256": "60b50e35d6b084c44e9143fa8fee12d03b037be5dc06cf5e03d57b24c6269dd2"
+        },
+        {
+          "blobSha": "180f6deaccb5c5bcfb606d1ba3865a9ec816b6b0",
+          "bytes": 2881,
+          "path": "packages/relay/src/mcp/tool-profiles.ts",
+          "sha256": "257666f06dbeb13094ae2549423bc53fdb9c847a0522f0778f9c909f28360d85"
+        },
+        {
+          "blobSha": "9d82917bfaa1adf9e4d7f689f0dcc2991e8f8e14",
+          "bytes": 9011,
+          "path": "packages/relay/src/auth/provider.ts",
+          "sha256": "eff6732fd0193cacfb0050208e572f4c8f5fdec4d159de620a00e5fc0e2c7df5"
+        },
+        {
+          "blobSha": "1891c31bb85e79f407fbf8289d9354d9cb139127",
+          "bytes": 27278,
+          "path": "packages/relay/src/app.ts",
+          "sha256": "8d301c7389054a6147df876661a756154ab4bad5929d394dc8d6e5dadd5d8274"
+        },
+        {
+          "blobSha": "39264c158b87435bce57e9c8a4e954627c30da45",
+          "bytes": 8473,
+          "path": "packages/relay/src/mcp/plugin-tools.ts",
+          "sha256": "70008dc49789320cd5bad0c6b6ee5742a1e19da5126e802bb010783969707746"
+        },
+        {
+          "blobSha": "b10cfc2d4595f79455fe7c2729df2d09ab01ab40",
+          "bytes": 10459,
+          "path": "packages/agent/src/dispatcher.ts",
+          "sha256": "675f1716c369d877323b9a5a24202c6e41dc71d9f3704f27bf20115c4e93f5b4"
+        },
+        {
+          "blobSha": "cbfe58e5d561d74e2f414039c1af98f7f258dbd9",
+          "bytes": 30313,
+          "path": "packages/agent/src/tools/brc-tools.ts",
+          "sha256": "5092c1e36f8c9339c5d53003694d0365e42095a0c712b23735375a4441ea5a95"
+        },
+        {
+          "blobSha": "7f8bc48407e806ca445d801e8450234eed424f78",
+          "bytes": 31355,
+          "path": "packages/agent/src/tools/jobs.ts",
+          "sha256": "cde6a8636ec699d9aaaede7a46aa480d4c287df15c721677e8871b1d33db9ec7"
+        },
+        {
+          "blobSha": "e36f81d5bfb08e4949b9b4aeac443f1c22cc6456",
+          "bytes": 28136,
+          "path": "packages/agent/src/tools/ast-grep.ts",
+          "sha256": "5ac0a49d2b6b0128aa1eb898797126afa17479d3ff41d127f9367681cfe3c1fe"
+        },
+        {
+          "blobSha": "d541a49af6a0c3371e1d6726a6b80de84d3e3997",
+          "bytes": 13606,
+          "path": "packages/agent/src/core/file-transfer.ts",
+          "sha256": "1aa3e0ee075ace1961af9cfda49dbdb6abedae13b0c33db54339cc1d6d8a47c0"
+        },
+        {
+          "blobSha": "29c6754a24a27c9d4dafa7a496b5d65a7eeddba3",
+          "bytes": 28493,
+          "path": "packages/agent/src/core/terminal-manager.ts",
+          "sha256": "c478ebc70f30adbaa8c7f27ccd2b00729aa285db0df0cf9ad907b0382b48f081"
+        }
+      ]
+    },
+    {
+      "commitDate": "2026-11-18T14:31:02Z",
+      "commitSha": "9a101b17e44577f0baefa4c7120f087881c5cc56",
+      "license": "MIT (notice remains with original upstream; no direct files copied)",
+      "remote": "https://github.com/wonderwhy-er/DesktopCommanderMCP",
+      "repo": "wonderwhy-er/DesktopCommanderMCP",
+      "reviewedFiles": [
+        {
+          "blobSha": "cc6ce4fa68f26cd5db3dc1ff83c8163094f28451",
+          "bytes": 1108,
+          "path": "LICENSE",
+          "sha256": "e77cff545e0506903bf6a4bf29169fa40911eb76d70d239267df10c5c59370dd"
+        },
+        {
+          "blobSha": "8165a7ad1f31bad022df4b593071d5b9cc906410",
+          "bytes": 6500,
+          "path": "package.json",
+          "sha256": "ea89f4928c804dd1f3b6c7afbc1486810dd39bf7b90d5c7bbd925c1c5f0d22cf"
+        },
+        {
+          "blobSha": "bb49e09899880d7266eee515eb6232849b25f1ee",
+          "bytes": 518690,
+          "path": "package-lock.json",
+          "sha256": "1316e836c2c5b490bb955902de514f744269282fa12cb80e003bf7a00777fa0f"
+        },
+        {
+          "blobSha": "56d35247b746f74bd45354c52a1a0144b394f8f8",
+          "bytes": 35975,
+          "path": "src/terminal-manager.ts",
+          "sha256": "8fcd95965bac973ddbb499f072a6825a86f33f56c47d4f90744124cebae33f44"
+        },
+        {
+          "blobSha": "8278dc7174a45d7d59f247cdc4c53eb1c83c477a",
+          "bytes": 89713,
+          "path": "src/remote-device/remote-channel.ts",
+          "sha256": "a6b93af665117420ccaa9162c149bab23e2af4ceb7972648005458b16dbc2da4"
+        },
+        {
+          "blobSha": "ed7de8673cd5a031e047b20f4696eaf161d5a5d1",
+          "bytes": 10723,
+          "path": "src/remote-device/README.md",
+          "sha256": "50c636945e2ec754a27bc0cc7234df8a6323f98317fea6ab3e179bf3f4269b77"
+        },
+        {
+          "blobSha": "acbe185fab417a2b6be8066ffe39444a193a8041",
+          "bytes": 76351,
+          "path": "src/server.ts",
+          "sha256": "c553118654d54842cb15bfed3ed432ca6583776bac9c4ad9b8aa1dba90c30e1f"
+        }
+      ]
+    }
+  ]
+}

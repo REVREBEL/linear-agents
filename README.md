@@ -501,3 +501,7 @@ A single `DOMAIN` and an optional `<AGENT>_PREFIX` per agent control the generat
 The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge/run_agent.py` and stores a delayed retry in the job ledger. After two hours by default (`AGY_RETRY_DELAY_MS=7200000`) it resumes the **specific** AGY conversation by ID with a short instruction. It does not use the most recent conversation in the workspace as a fallback. The retry cap is three. Actual exhaustion detection and CLI conversation-ID reporting require a live smoke test.
 
 **Issue completion vs session completion:** The inbox task file is removed only after the bridge receives an authenticated `/issue-completed` notification for an issue confirmed Done. Session termination or quota exhaustion does not remove it.
+
+## ABR-94 — Local MCP proof only
+
+[The remote MCP upstream/source audit](docs/audits/mcp/README.md) and [tool parity contract](docs/audits/mcp/tool-parity.json) document the planned self-hosted Desktop Commander port (30 connected tools, 42 BRC agent tools, three relay tools). This branch adds an **offline/local, read-only relay+host fixture** using pinned `ws@8.21.0` with no production listener, OAuth, command execution, third-party file transfer, or deployment. The existing `bridge/server/agent-bridge-runtime.mjs`, `/jobs` identity, review inbox and job ledger remain authoritative. See ABR-95–100 for staged completion and deployment decisions.
