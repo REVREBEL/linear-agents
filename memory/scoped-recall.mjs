@@ -32,6 +32,7 @@ function trustRecord(hit, expectedScope, trustedDigests, now) {
   if (!SHA.test(hit.sourceGitSha || "") ||
       !Number.isSafeInteger(hit.revision) || hit.revision <= 0 ||
       typeof hit.sourcePath !== "string" || hit.sourcePath.length > 256 ||
+      hit.sourcePath.split("/").some(part => !part || part === "." || part === "..") ||
       !/^(?!\/)(?!.*(?:^|\/)\.\.?\/)[a-zA-Z0-9_./-]+$/.test(hit.sourcePath) ||
       typeof hitBody(hit) !== "string" || !hitBody(hit) ||
       hitBody(hit).length > MAX_TEXT || typeof hit.expiresAt !== "string" ||
