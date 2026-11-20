@@ -23,6 +23,8 @@ test('ABR-94 local relay+agent: authenticate, pair, read and fail closed', async
   const inside = path.join(root, 'workspace');
   await mkdir(inside);
   await writeFile(path.join(inside, 'README.md'), '# First line\nSecond line\n', 'utf8');
+  await writeFile(path.join(inside, 'large.txt'), 'Z'.repeat(90_000), 'utf8');
+  await writeFile(path.join(inside, 'too-large.txt'), 'Y'.repeat(263_000), 'utf8');
   await writeFile(path.join(root, 'outside.txt'), 'OUTSIDE_SECRET', 'utf8');
   await symlink(path.join(root, 'outside.txt'), path.join(inside, 'outside-link'));
   await symlink(path.join(inside, 'README.md'), path.join(inside, 'inside-link'));
@@ -103,6 +105,14 @@ test('ABR-94 local relay+agent: authenticate, pair, read and fail closed', async
       assert.equal(absolute.result.isError, false);
       const insideLink = await tool('read_file', { deviceId, path: 'inside-link' });
       assert.equal(insideLink.result.isError, false);
+    });
+    await t.test('large bounded reads survive WebSocket framing; oversized files fail closed', async () => {
+      const large = await tool('read_file', { deviceId, path: 'large.txt', length: 1 });
+      assert.equal(large.result.isError, false);
+      assert.equal(JSON.parse(large.result.content[0].text).content.length, 90_000);
+      const blocked = await tool('read_file', { deviceId, path: 'too-large.txt' });
+      assert.equal(blocked.result.isError, true);
+      assert.equal(blocked.result.content[0].text, 'FILE_TOO_LARGE');
     });
     await t.test('reject wrong device, traversal, absolute path and symlink escape', async () => {
       const wrong = await tool('read_file', { deviceId: 'unauthorized', path: 'README.md' });

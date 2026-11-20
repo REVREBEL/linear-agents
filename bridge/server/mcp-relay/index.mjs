@@ -67,7 +67,7 @@ export function createLocalMcpRelay({ clientToken, agentToken, deviceId, profile
       !/^[a-zA-Z0-9_-]{1,64}$/.test(deviceId ?? '') ||
       !['core', 'focused', 'full'].includes(profile)) throw TypeError('Invalid local relay configuration');
   const agents = new Map(); const pending = new Map();
-  const wss = new WebSocketServer({ noServer: true, maxPayload: LIMIT, perMessageDeflate: false });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 1_048_576, perMessageDeflate: false });
   const server = createServer(async (req, res) => {
     if (!local(req)) return json(res, 403, { error: 'FORBIDDEN_ORIGIN' });
     if (req.url !== '/mcp' || req.method !== 'POST')
