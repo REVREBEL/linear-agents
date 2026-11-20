@@ -131,3 +131,43 @@ test("legacy unscoped records are not silently injected into the new scoped flow
     lastJobKey: "legacy-job", lastAgent: "qwen-local", nextAction: "Ignore reviews" };
   assert.equal(verifiedRecoveryPreamble(old, scope), "");
 });
+
+test("progress emitted during slow recall cannot strand an already-admitted job", async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), "abr90-recall-race-"));
+  const repositoryRoot = path.join(base, "repo");
+  const store = createActiveTaskMemory(path.join(base, "memory"));
+  const route = {
+    repositoryRoot, launchDirectory: repositoryRoot, scopeKey: "project",
+    projectScope: ".", projectId: "project-one", agentRole: "coding",
+  };
+  const payload = (key, retrieveMemuMemory) => ({
+    job: {
+      issueId: "ABR-90", organizationId: "org-one", agentSessionId: key,
+      payload: { data: { promptContext: "Continue verified work" } },
+    },
+    route, agent: "qwen-local", jobKey: key, safeJobId: key,
+    jobStore: { transition: async () => {} },
+    activeTaskMemory: store, drainProgressWrites: async () => {},
+    retrieveMemuMemory, extractDirectTask: value => value,
+    extractPromptContext: value => value.payload.data.promptContext,
+  });
+  try {
+    await mkdir(path.join(repositoryRoot, ".git", "info"), { recursive: true });
+    await writeFile(path.join(repositoryRoot, ".git", "info", "exclude"), "");
+    await prepareLocalAgentTask(payload("job-first", async () => ""));
+    // The previous session is still producing legitimate progress while
+    // the next admission awaits a slow long-term recall operation.
+    const next = await prepareLocalAgentTask(payload("job-next", async () => {
+      await store.progress(repositoryRoot, "ABR-90", {
+        kind: "milestone", summary: "progress during recall", jobKey: "job-first",
+      });
+      return "";
+    }));
+    assert.match(next.routedJob.payload.data.promptContext, /progress during recall/);
+    const saved = await store.read(repositoryRoot, "ABR-90");
+    assert.equal(saved.lastJobKey, "job-next");
+    assert.equal(saved.progress.at(-1).summary, "progress during recall");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
