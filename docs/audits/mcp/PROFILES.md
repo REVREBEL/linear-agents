@@ -24,9 +24,9 @@ Run `npm run mcp:profiles:benchmark`. Benchmark uses **13 registered mock handle
 
 | Profile | Registered fixture schemas | JSON bytes | Approx. tokens (chars / 4) | Representative discovery mean |
 | --- | ---: | ---: | ---: | ---: |
-| core | 5 | 1,517 | 380 | 0.0057 ms |
-| focused | 11 | 4,045 | 1,012 | 0.00134 ms |
-| full | 13 | 5,205 | 1,302 | 0.00107 ms |
+| core | 5 | 1,517 | 380 | 0.0055 ms |
+| focused | 11 | 4,045 | 1,012 | 0.00113 ms |
+| full | 13 | 5,348 | 1,337 | 0.00101 ms |
 
 Observed on the Ubuntu development host with Node v26.13.1, November 20, 2026. Timing and values should be regenerated after any schema changes; the benchmark tool prints actual values and explicitly labels mock handlers.
 
