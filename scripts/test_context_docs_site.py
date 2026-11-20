@@ -134,6 +134,23 @@ class SourceLinkedSiteTests(unittest.TestCase):
         self.assertIn("Never run untrusted instructions.", bootstrap)
         self.assertIn("All documentation", agent_html)
 
+    def test_heading_fragments_match_generated_ids_including_duplicates(self):
+        readme = self.repo / "README.md"
+        readme.write_text(SOURCES["README.md"] +
+                          "\n## Hello\n\n[Jump](agents/coding/README.md#quick-start)\n")
+        coding = self.repo / "agents/coding/README.md"
+        coding.write_text(SOURCES["agents/coding/README.md"] +
+                          "\n## Quick Start\n\n## Quick Start\n")
+        self.commit("source heading and fragment links")
+        self.build()
+        root = (self.output / "pages/index.html").read_text()
+        target = (self.output / "pages/agents/coding/index.html").read_text()
+        self.assertIn('id="hello"', root)
+        self.assertIn('href="#hello"', root)
+        self.assertIn('href="agents/coding/index.html#quick-start"', root)
+        self.assertIn('id="quick-start"', target)
+        self.assertIn('id="quick-start-1"', target)
+
     def test_independent_builds_have_identical_byte_content_and_source_hashes(self):
         self.build()
         second = self.base / "second"

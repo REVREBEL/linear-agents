@@ -22,7 +22,7 @@ Open **/tmp/agent-context-docs/index.html** in a browser or hand the directory t
 
 **Source versioning:** The schemaVersion (1), sourceCommit, sourceTree and buildId identify a reproducible documentation snapshot. buildId is the first 16 hex characters of a SHA-256 over canonical JSON describing source commit, repository identity and ordered per-file provenance. The manifest includes per-file Git blob SHA, original last-modifying commit, SHA-256 and file paths. Each HTML page links to its original Markdown and immutable GitHub blob source.
 
-**Rendering:** CommonMark renders with raw HTML disabled. Links to other included README files navigate within the generated site; other safe repository-relative links target the pinned GitHub commit. Unsafe URI schemes, relative path escapes and absolute host paths never become local filesystem access. Source text is documentation, not permission to execute instructions.
+**Rendering:** CommonMark renders with raw HTML disabled. Links to other included README files navigate within the generated site; other safe repository-relative links target the pinned GitHub commit. Generated headings receive stable GitHub-style fragment IDs, with numeric suffixes for duplicate headings, so original README section links remain navigable. Unsafe URI schemes, relative path escapes and absolute host paths never become local filesystem access. Source text is documentation, not permission to execute instructions.
 
 ## Determinism and drift verification
 
@@ -34,11 +34,11 @@ Run the isolated acceptance suite:
 
     python3 scripts/test_context_docs_site.py
 
-Twelve tests cover an independent fresh Git repository, source hash and Git revision identity, deterministic builds from different working directories, safe Markdown rendering and relative links, uncommitted edits being excluded, new source revision drift, changed pages and original blobs, unsafe and symlinked paths, and output-write boundaries. Tests use disposable local fixtures with no real bridge or provider.
+Fourteen tests cover an independent fresh Git repository, source hash and Git revision identity, deterministic builds from different working directories, safe Markdown rendering and relative links, uncommitted edits being excluded, new source revision drift, changed pages and original blobs, unsafe and symlinked paths, and output-write boundaries. Tests use disposable local fixtures with no real bridge or provider.
 
 ## CI artifact delivery
 
-The [Source-linked README Documentation Site workflow](../../../.github/workflows/agent-context-docs-site.yml) runs for relevant README/generator changes in pull requests and main pushes, and supports manual **Run workflow**. It checks out the actual head commit with full history, installs pinned Markdown dependencies, runs twelve tests, generates and checks the site, then uploads a read-only GitHub Actions artifact called:
+The [Source-linked README Documentation Site workflow](../../../.github/workflows/agent-context-docs-site.yml) runs for relevant README/generator changes in pull requests and main pushes, and supports manual **Run workflow**. It checks out the actual head commit with full history, installs pinned Markdown dependencies, runs fourteen tests, generates and checks the site, then uploads a read-only GitHub Actions artifact called:
 
     source-linked-readme-site-<full-Git-commit-SHA>
 

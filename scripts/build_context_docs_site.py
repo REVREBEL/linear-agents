@@ -192,10 +192,32 @@ def local_href(value, source, html_path, page_by_source, repository, head, *, im
                        urlsplit(link).path, parts.query, parts.fragment))
 
 
+def attach_heading_ids(tokens):
+    """Use familiar GitHub-style, deterministic fragment targets for headings."""
+    seen = {}
+    for index, token in enumerate(tokens[:-1]):
+        if token.type != "heading_open":
+            continue
+        inline = tokens[index + 1]
+        if inline.type != "inline":
+            continue
+        visible = "".join(
+            part.content if part.type in ("text", "code_inline", "image") else
+            " " if part.type in ("softbreak", "hardbreak") else ""
+            for part in inline.children or []
+        )
+        stem = re.sub(r"[^\w\-\s]", "", visible.casefold().strip())
+        stem = re.sub(r"\s", "-", stem) or "section"
+        count = seen.get(stem, 0)
+        seen[stem] = count + 1
+        token.attrSet("id", stem if count == 0 else f"{stem}-{count}")
+
+
 def markdown_html(body, source, html_path, page_by_source, repository, head):
     renderer = MarkdownIt("commonmark", {"html": False, "linkify": False})
     renderer.enable("table")
     tokens = renderer.parse(body)
+    attach_heading_ids(tokens)
     for token in tokens:
         for child in token.children or []:
             if child.type not in ("link_open", "image"):
