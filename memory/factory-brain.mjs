@@ -46,7 +46,7 @@ export async function loadFactoryBrain({
     if (canonicalRoot !== repositoryRoot) return "";
     const directory = path.join(canonicalRoot, ".linear-agent");
     const folderStat = await fs.lstat(directory);
-    if (!folderStat.isDirectory() || (folderStat.mode & 0o022) !== 0) return "";
+    if (!folderStat.isDirectory() || (folderStat.mode & 0o077) !== 0) return "";
     const filename = path.join(directory, FILE_NAME);
     // Open with O_NOFOLLOW; validate the opened descriptor instead of
     // trusting an lstat/read race that could follow a swapped symlink.

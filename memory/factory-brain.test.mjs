@@ -85,6 +85,20 @@ test("unapproved edits, stale revision, expiration, unsafe file and symlink fail
   });
 });
 
+test("Factory Brain directory rejects group/other access, including mode 0755", async () => {
+  await fixture(async ({ root, put }) => {
+    const scope = { repositoryRoot: root, tenantId: "tenant", agentId: "coder" };
+    const approvedDigest = await put(base(root));
+    const folder = path.join(root, ".linear-agent");
+    await fs.chmod(folder, 0o755);
+    assert.equal(await loadFactoryBrain({ ...scope, approvedDigest, now }), "");
+    await fs.chmod(folder, 0o750);
+    assert.equal(await loadFactoryBrain({ ...scope, approvedDigest, now }), "");
+    await fs.chmod(folder, 0o700);
+    assert.match(await loadFactoryBrain({ ...scope, approvedDigest, now }), /Reviewed Factory Brain/);
+  });
+});
+
 test("missing memory and invalid operator approval do not block the caller", async () => {
   await fixture(async ({ root }) => {
     const scope = { repositoryRoot: root, tenantId: "tenant", agentId: "coder" };
