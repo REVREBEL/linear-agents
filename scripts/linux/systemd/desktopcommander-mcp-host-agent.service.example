@@ -1,0 +1,30 @@
+# ABR-96 — source-only candidate, intentionally NON-STARTABLE.
+# This is NOT a deployable service: ABR-97/98 must replace /usr/bin/false
+# after the verified host-agent entrypoint and required AppArmor policy exist.
+# Never install, enable, or start this file by automation.
+[Unit]
+Description=REVREBEL DesktopCommander MCP Host Agent (CANDIDATE ONLY)
+Documentation=https://linear.app/revrebel/issue/ABR-96
+ConditionPathExists=/etc/revrebel/mcp-host-operator-approved
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=bridge
+Group=bridge
+WorkingDirectory=/home/bridge/agent-bridge
+Environment=PATH=/home/bridge/.volta/bin:/usr/bin:/bin
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/home/bridge/.local/state
+ExecStartPre=/usr/bin/env node /home/bridge/agent-bridge/scripts/mcp-executor-probe.mjs --strict
+ExecStart=/usr/bin/false
+KillMode=control-group
+TimeoutStopSec=8
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
