@@ -2,6 +2,10 @@
 
 This directory contains **versioned project commands and their tests**. It is not a deployment destination for machine-global CLI installation, private agent profiles, host credentials, or `/opt/agents` runtime state.
 
+## ABR-92 verified promotion prerequisite
+
+`scripts/memu-promote.mjs` now refuses unauthenticated standalone preparation: its JSON evidence is not trustworthy authorization. The installed core `memu` CLI has no `memorize prepare` command; read-only GitHub review and CI verification is implemented in `memory/promotion-verification.mjs`, but no evolve or commit executor is enabled. See [ABR-92 gate and activation prerequisites](../docs/ABR92_PROMOTION_GATE.md).
+
 ## Runtime and CI
 
 - `workspace-command.mjs`, `agent-worker-registry.mjs`, `registry-worker-info.mjs`, `render-wrangler.mjs`, `workspace-typecheck.mjs` and `with-env.sh` support registered Worker commands and CI.
