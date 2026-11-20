@@ -1,0 +1,58 @@
+name: ABR-96 Ubuntu MCP Executor Sandbox
+
+on:
+  pull_request:
+    paths:
+      - 'bridge/agent/mcp-host-agent/**'
+      - 'scripts/test-mcp-executor.mjs'
+      - 'scripts/mcp-executor-probe.mjs'
+      - 'scripts/linux/systemd/desktopcommander-mcp-host-agent.service.example'
+      - 'docs/audits/mcp/**'
+      - 'package.json'
+      - '.github/workflows/mcp-executor.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bridge/agent/mcp-host-agent/**'
+      - 'scripts/test-mcp-executor.mjs'
+      - 'scripts/mcp-executor-probe.mjs'
+      - '.github/workflows/mcp-executor.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-ubuntu-sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+      - name: Install repository dependencies
+        run: npm ci
+      - name: Install Linux Bubblewrap (only on ephemeral CI runner)
+        run: |
+          if ! command -v bwrap >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y bubblewrap
+          fi
+      - name: Report unprivileged namespace policy without bypass
+        run: node scripts/mcp-executor-probe.mjs
+      - name: Verify pure principal/admission tests and rootless sandbox when supported
+        run: npm run mcp:executor:test
+      - name: Verify mechanics in isolated privileged CI test sandbox
+        run: sudo env ABR96_REQUIRE_SANDBOX=1 "$(command -v node)" --test scripts/test-mcp-executor.mjs
+      - name: Verify source-only systemd unit is syntactically valid
+        run: |
+          cp scripts/linux/systemd/desktopcommander-mcp-host-agent.service.example /tmp/desktopcommander-mcp-host-agent.service
+          systemd-analyze verify /tmp/desktopcommander-mcp-host-agent.service
+      - name: Preserve existing MCP resource and host test contracts
+        run: |
+          npm run mcp:foundation:test
+          npm run mcp:oauth:test
+      - name: Preserve current Bridge dispatch contracts
+        run: npm run bridge:test

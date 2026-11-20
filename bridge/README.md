@@ -25,3 +25,7 @@ context:
 ## Authorization boundary for the local MCP proof (ABR-95)
 
 The local `server/mcp-relay/` fixture optionally requires cryptographically validated access tokens from a reviewed external issuer. This remains separate from the canonical Linear `/jobs` admission and does not grant authority to write tasks, access memory or promote work. Source contracts and deployment gates are documented in [ABR-95 OAuth and edge plan](../docs/audits/mcp/OAUTH_EDGE.md); production ingress and OAuth client configuration are not activated by source merge.
+
+## ABR-96 — Separate OS-sandbox execution adapter
+
+`agent/mcp-host-agent/execution-service.mjs` composes a **nonproduction** Ubuntu Bubblewrap executor with private scoped authority, interactive terminal handles and a distinct SQLite execution-outcome journal. It is not imported into the authoritative Bridge server or job ledger. The actual `bridge` OS user currently fails the rootless namespace preflight, so this code is not deployable until an approved narrow AppArmor policy succeeds. Details and rollback: [ABR-96 executor audit](../docs/audits/mcp/EXECUTOR.md).
