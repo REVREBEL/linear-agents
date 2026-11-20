@@ -57,8 +57,16 @@ export async function loadFactoryBrain({
       const info = await fd.stat();
       if (!info.isFile() || info.size > MAX_FILE_BYTES || info.size === 0 ||
           (info.mode & 0o077) !== 0) return "";
-      bytes = await fd.readFile();
-      if (bytes.length > MAX_FILE_BYTES) return "";
+      // Bound allocation and I/O even if the file grows after stat().
+      const buffer = Buffer.alloc(MAX_FILE_BYTES + 1);
+      let used = 0;
+      while (used < buffer.length) {
+        const { bytesRead } = await fd.read(buffer, used, buffer.length - used, used);
+        if (bytesRead === 0) break;
+        used += bytesRead;
+      }
+      if (used > MAX_FILE_BYTES) return "";
+      bytes = buffer.subarray(0, used);
     } finally { await fd.close(); }
     const hash = crypto.createHash("sha256").update(bytes).digest();
     const expected = Buffer.from(approvedDigest, "hex");
