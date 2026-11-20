@@ -137,6 +137,14 @@ export function createExecutionJobs({ runner, authority, journalDir, onAudit = (
       const [task] = pending.splice(index, 1);
       if (byId.get(task.id)?.state !== 'queued') continue;
       lastScheduledOwner = task.scopeKey;
+      // A queued capability can expire or be revoked while another job runs.
+      // Recheck the original authority immediately before starting any work.
+      try {
+        authority.requireGrant(task.scope, task.tool, task.command.workspaceId, task.command.write);
+      } catch {
+        writeOutcome(task.id, { status: 'failed', exitCode: null, errorCode: 'EXECUTION_NOT_AUTHORIZED' });
+        continue;
+      }
       statusRunning.run(now(), task.id);
       onAudit({ event: 'execution_started', jobId: task.id,
         workspaceId: task.command.workspaceId });
@@ -184,7 +192,7 @@ export function createExecutionJobs({ runner, authority, journalDir, onAudit = (
     if (!check.available) throw Error('SANDBOX_UNAVAILABLE: ' + check.error);
     const id = randomUUID();
     insert.run(id, identity.scopeKey, command.workspaceId, idempotencyKey, fingerprint, now(), durationMs);
-    pending.push({ id, command, durationMs, scopeKey: identity.scopeKey });
+    pending.push({ id, command, durationMs, scopeKey: identity.scopeKey, scope, tool });
     onAudit({ event: 'execution_queued', jobId: id,
       workspaceId: command.workspaceId, principal: identity.subject });
     queueMicrotask(pump);
