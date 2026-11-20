@@ -62,13 +62,22 @@ function rejectSocket(socket, status) {
   socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 }
 
-export function createLocalMcpRelay({ clientToken, agentToken, deviceId, profile = 'core', oauthResource = null }) {
+export function createLocalMcpRelay({
+  clientToken, agentToken, deviceId, profile = 'core',
+  oauthResource = null, toolProfileBinding = null,
+}) {
   if ((!oauthResource && (typeof clientToken !== 'string' || clientToken.length < 32)) ||
       (oauthResource && (typeof oauthResource.validateBearer !== 'function' ||
         typeof oauthResource.protectedMetadata !== 'function')) ||
       typeof agentToken !== 'string' || agentToken.length < 32 || (!oauthResource && clientToken === agentToken) ||
       !/^[a-zA-Z0-9_-]{1,64}$/.test(deviceId ?? '') ||
       !['core', 'focused', 'full'].includes(profile)) throw TypeError('Invalid local relay configuration');
+  // Expanded handlers cannot be used with the legacy static shared bearer.
+  if (toolProfileBinding && (!oauthResource ||
+      typeof toolProfileBinding.gateway?.listTools !== 'function' ||
+      typeof toolProfileBinding.gateway?.invoke !== 'function' ||
+      typeof toolProfileBinding.resolveVerifiedHandle !== 'function'))
+    throw TypeError('EXPANDED_TOOLS_REQUIRE_TRUSTED_OAUTH_BINDING');
   const agents = new Map(); const pending = new Map();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1_048_576, perMessageDeflate: false });
   const server = createServer(async (req, res) => {
@@ -144,11 +153,47 @@ export function createLocalMcpRelay({ clientToken, agentToken, deviceId, profile
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: 'revrebel-mcp-local-foundation', version: '0.2.0' } };
     } else if (body.method === 'ping') result = {};
-    else if (body.method === 'tools/list') {
+    else if (body.method === 'tools/list' && toolProfileBinding) {
+      try {
+        const handle = toolProfileBinding.resolveVerifiedHandle(principal);
+        result = { tools: toolProfileBinding.gateway.listTools(handle)
+          .filter(tool => oauthResource.validateBearer(req.headers.authorization, {
+            tool: tool.name, deviceId,
+          }).ok) };
+      } catch {
+        return json(res, 403, { error: 'TOOL_SESSION_NOT_AUTHORIZED' });
+      }
+    } else if (body.method === 'tools/list') {
       result = { tools: oauthResource
         ? TOOL_LIST.filter((tool) => principal.tools.has(tool.name) &&
           principal.scopes.has(tool.name === 'read_file' ? 'mcp:read' : 'mcp:discover'))
         : TOOL_LIST };
+    } else if (body.method === 'tools/call' && toolProfileBinding) {
+      const name = body.params?.name;
+      if (typeof name !== 'string' || name.length > 128) {
+        error = { code: -32602, message: 'INVALID_TOOL_NAME' };
+      } else {
+        const checked = oauthResource.validateBearer(req.headers.authorization, {
+          tool: name, deviceId,
+        });
+        if (!checked.ok) {
+          res.setHeader('WWW-Authenticate', 'Bearer error="insufficient_scope"');
+          return json(res, 403, { error: checked.code });
+        }
+        try {
+          const handle = toolProfileBinding.resolveVerifiedHandle(checked);
+          const value = await toolProfileBinding.gateway.invoke(
+            handle, name, body.params?.arguments ?? {});
+          result = { isError: false, content: [
+            { type: 'text', text: JSON.stringify(value) },
+          ] };
+        } catch (caught) {
+          const code = ['INVALID_PARAMS', 'TOOL_NOT_AUTHORIZED',
+            'UNAUTHORIZED_TOOL_SESSION'].includes(caught?.message)
+            ? caught.message : 'TOOL_EXECUTION_FAILED';
+          result = toolError(code);
+        }
+      }
     } else if (body.method === 'tools/call') {
       if (oauthResource && ['read_file', 'list_devices'].includes(body.params?.name)) {
         const checked = oauthResource.validateBearer(req.headers.authorization, {

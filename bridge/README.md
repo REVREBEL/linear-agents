@@ -33,3 +33,7 @@ The local `server/mcp-relay/` fixture optionally requires cryptographically vali
 ## ABR-97 — Two-host device authority
 
 `agent/mcp-host-agent/device-enrollment.mjs` and `device-routing.mjs` add signed, operator-approved canonical host records and verifier-injected human versus trusted Linear job routing. The existing `routing/hosts/host-routing.mjs` default is only applied after verified Linear admission; interactive tool arguments never create permissions or auto-fallback. See [ABR-97 Mac/Ubuntu evidence](../docs/audits/mcp/MACOS_HOST.md). These source modules are not imported by the running Bridge server or connected to production MCP tools.
+
+## ABR-98 — Profile-scoped local MCP adapters
+
+`server/mcp-relay/tool-profiles.mjs` is an opt-in verified-session tool registry with strict per-call scope and exact-name authorization; `agent/mcp-host-agent/` carries read-only Git, Babel structural source, deterministic terminal prompt and offline PDF adapters. Existing production admission and the original relay two-tool baseline remain unchanged. See [ABR-98 parity and remaining golden acceptance](../docs/audits/mcp/PROFILES.md).

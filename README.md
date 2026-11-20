@@ -553,3 +553,7 @@ The [ABR-96 executor implementation and safety gate](docs/audits/mcp/EXECUTOR.md
 ## ABR-97 — Verified macOS SSH and source-only device enrollment
 
 [ABR-97 host authorization and Mac audit](docs/audits/mcp/MACOS_HOST.md) adds separately signed/operator-approved `macos-runtime` and `rebel-server` enrollment, trusted interactive versus Linear admission, fail-closed host selection and actual read-only discovery of the current Mac launchd identity and repository root. It does not register new devices, run an MCP command on Mac, change the existing Ubuntu/Mac Bridge services or install a launchd agent. Mac OS confinement and Ubuntu `bridge` AppArmor gates remain open.
+
+## ABR-98 — MCP tool profiles, source adapters and guarded document export
+
+[ABR-98 profile/handler audit](docs/audits/mcp/PROFILES.md) adds opt-in `core`/`focused`/`full` MCP discovery, verified per-tool grants independent of profile visibility, deterministic REPL status, sandboxed read-only Git, bounded TypeScript/JavaScript AST search and dry-run patch, and an offline PDF renderer with separate document-write authority. Source-level 30/42/3 parity remains tracked; unimplemented tool behavior is not advertised, and the running Bridge, Mac and Ubuntu services are unchanged.

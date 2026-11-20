@@ -30,6 +30,23 @@ function exactIdentifier(value) {
   return typeof value === 'string' && value.length > 0 && value.length < 512
     && !value.includes('#') && !value.includes('?');
 }
+// ABR-98: tool-specific bearer scopes are distinct from tools/list. Exact
+// name grants are ANDed with these scopes; discovery never authorizes calls.
+const EXECUTE = new Set([
+  'run_command', 'start_process', 'interact_with_process', 'kill_process',
+  'force_terminate', 'spawn_job', 'run_parallel', 'cancel_job',
+]);
+const ADMIN = new Set(['set_config_value','shutdown','review_device_call','delete_file']);
+const WRITE = new Set(['write_file','edit_block','move_file','create_directory','ast_rewrite']);
+const DOC_WRITE = new Set(['write_pdf']);
+function requiredScopeForTool(tool) {
+  if (tool === null || tool === 'tools/list' || tool === 'list_devices') return 'mcp:discover';
+  if (ADMIN.has(tool)) return 'mcp:admin';
+  if (DOC_WRITE.has(tool)) return 'mcp:document:write';
+  if (WRITE.has(tool)) return 'mcp:write';
+  if (EXECUTE.has(tool)) return 'mcp:execute';
+  return 'mcp:read';
+}
 function normalizeGrants(grants) {
   if (!grants || typeof grants !== 'object' || Array.isArray(grants)) throw TypeError('Subject grants required');
   const scoped = new Map();
@@ -50,12 +67,21 @@ function normalizeGrants(grants) {
 
 export function createResourceAuthorizer({
   issuer, audience, jwks, grants, revoked = new Set(), now = () => Math.floor(Date.now() / 1000),
+  supportedScopes = ['mcp:discover', 'mcp:read'],
 }) {
   if (!exactIdentifier(issuer) || !issuer.startsWith('https://')
       || !exactIdentifier(audience) || !audience.startsWith('https://')
       || !jwks || !Array.isArray(jwks.keys) || jwks.keys.length === 0) {
     throw TypeError('Explicit HTTPS issuer/resource audience and reviewed JWKS are required');
   }
+  const knownScopes = new Set([
+    'mcp:discover', 'mcp:read', 'mcp:execute', 'mcp:write',
+    'mcp:document:write', 'mcp:admin',
+  ]);
+  if (!Array.isArray(supportedScopes) || !supportedScopes.includes('mcp:discover') ||
+      supportedScopes.some(scope => !knownScopes.has(scope)) ||
+      supportedScopes.length !== new Set(supportedScopes).size)
+    throw TypeError('REVIEWED_OAUTH_SCOPE_ADVERTISEMENT_REQUIRED');
   const keys = new Map();
   for (const jwk of jwks.keys) {
     if (typeof jwk.kid !== 'string' || !jwk.kid || !jwk.alg || !ALG[jwk.alg]
@@ -111,7 +137,7 @@ export function createResourceAuthorizer({
     if (!principal || !principal.clients.has(payload.client_id)) {
       return deny('PRINCIPAL_NOT_AUTHORIZED');
     }
-    const requiredScope = tool === 'read_file' ? 'mcp:read' : 'mcp:discover';
+    const requiredScope = requiredScopeForTool(tool);
     if (!scopes.has(requiredScope) || !principal.tools.has(tool ?? 'tools/list')) {
       return deny('INSUFFICIENT_SCOPE');
     }
@@ -127,7 +153,7 @@ export function createResourceAuthorizer({
     return {
       resource: audience,
       authorization_servers: [issuer],
-      scopes_supported: ['mcp:discover', 'mcp:read'],
+      scopes_supported: [...supportedScopes],
       bearer_methods_supported: ['header'],
     };
   }
