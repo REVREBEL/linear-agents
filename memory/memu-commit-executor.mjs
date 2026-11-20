@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { nativeScopedIdentity } from "./scoped-postgres-recall.mjs";
 import { verifyPromotionFromGitHub } from "./promotion-verification.mjs";
 import { promotionReceiptId } from "./promotion-journal.mjs";
 
@@ -30,17 +31,14 @@ export function buildVerifiedMemuPayload({ receipt, candidate }) {
   // Native memU 0.10 only supports user_id and agent_id; user_id encodes
   // tenant/repo/issue and agent_id isolates the runtime. CLI retrieve is NOT
   // authorized by these fields, so this is NOT a read-side isolation solution.
-  const scope = receipt.scope;
-  const userId = createHash("sha256").update(JSON.stringify([
-    scope.tenantId, scope.repositoryId, scope.issueId,
-  ])).digest("hex");
+  const identity = nativeScopedIdentity(receipt.scope);
   return Object.freeze({
-    user: { user_id: userId, agent_id: scope.agentId },
+    user: { user_id: identity.userId, agent_id: identity.agentId },
     resource: [],
     recall_files: [{
       track: "memory",
       name: "bridge-" + receipt.id,
-      description: "Verified task learning " + scope.issueId + " " + receipt.headSha.slice(0, 12),
+      description: "Verified task learning " + receipt.scope.issueId + " " + receipt.headSha.slice(0, 12),
       content: text,
     }],
   });
