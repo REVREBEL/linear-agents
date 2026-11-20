@@ -372,3 +372,33 @@ test('ABR-97 offline Mac host-key failure cannot masquerade as successful discov
   await assert.rejects(probeMacOverTrustedSsh({ sshAlias: 'macos', launch }),
     /MAC_SSH_HOST_KEY_NOT_TRUSTED/);
 });
+
+test('revocation during pairing verification cannot reactivate a stale challenge', async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'abr97-stale-'));
+  let store, revokeDuringVerification = false;
+  store = createDeviceEnrollment({
+    journalDir: dir, now,
+    approveOperator: context => context?.approved ? { operatorId: context.operatorId } : null,
+    verifyTransport: observed => {
+      if (revokeDuringVerification) {
+        revokeDuringVerification = false;
+        store.revoke(operator, observed.deviceId);
+      }
+      return observed;
+    },
+  });
+  t.after(async () => { store.close(); await rm(dir, { recursive: true, force: true }); });
+  const mac = makeConfig('macos-runtime');
+  enroll(store, mac);
+  const next = makeConfig('macos-runtime', key());
+  const challenge = store.requestPairing(operator, allowedConfig(next), { rotate: true });
+  revokeDuringVerification = true;
+  assert.throws(() => store.activatePairing({
+    deviceId: next.deviceId, nonce: challenge.nonce,
+    signature: signature(challenge.payload, next.privateKey),
+    previousSignature: signature(challenge.payload, mac.privateKey),
+    attestation: attestation(next),
+  }), /STALE_OR_UNKNOWN_CHALLENGE/);
+  assert.equal(store.inspect(next.deviceId).status, 'revoked');
+  assert.throws(() => store.requireOnline(next.deviceId), /DEVICE_NOT_ACTIVE/);
+});
