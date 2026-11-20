@@ -47,7 +47,10 @@ class IndependentCodingRepoTests(unittest.TestCase):
                 rel = source.relative_to(SAMPLE)
                 target = self.repo / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, target)
+                # Use committed Git bytes: a Windows checkout may carry CRLF
+                # even though the independent repo commits canonical LF.
+                git_path = source.relative_to(ROOT).as_posix()
+                target.write_bytes(git(ROOT, "show", "HEAD:" + git_path))
         for name in SCHEMAS:
             src = ROOT / "templates/context" / name
             dest = self.repo / "templates/context" / name
