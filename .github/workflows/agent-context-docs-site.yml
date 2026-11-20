@@ -27,8 +27,6 @@ jobs:
   generate-site:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      SITE_DIR: ${{ runner.temp }}/agent-context-docs
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,9 +41,9 @@ jobs:
       - name: Verify source-linked static documentation contracts
         run: python scripts/test_context_docs_site.py
       - name: Build all Git-tracked README pages from the pinned commit
-        run: python scripts/build_context_docs_site.py build --repo-root . --repository REVREBEL/linear-agents --output "$SITE_DIR"
+        run: python scripts/build_context_docs_site.py build --repo-root . --repository REVREBEL/linear-agents --output "$RUNNER_TEMP/agent-context-docs"
       - name: Verify deterministic manifest, raw files and rendered pages
-        run: python scripts/build_context_docs_site.py check --repo-root . --repository REVREBEL/linear-agents --output "$SITE_DIR"
+        run: python scripts/build_context_docs_site.py check --repo-root . --repository REVREBEL/linear-agents --output "$RUNNER_TEMP/agent-context-docs"
       - name: Upload versioned static HTML site with provenance
         uses: actions/upload-artifact@v4
         with:
