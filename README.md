@@ -506,6 +506,10 @@ The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge
 
 [The remote MCP upstream/source audit](docs/audits/mcp/README.md) and [tool parity contract](docs/audits/mcp/tool-parity.json) document the planned self-hosted Desktop Commander port (30 connected tools, 42 BRC agent tools, three relay tools). This branch adds an **offline/local, read-only relay+host fixture** using pinned `ws@8.21.0` with no production listener, OAuth, command execution, third-party file transfer, or deployment. The existing `bridge/server/agent-bridge-runtime.mjs`, `/jobs` identity, review inbox and job ledger remain authoritative. See ABR-95–100 for staged completion and deployment decisions.
 
+### ABR-92 — Trusted memU promotion verification (M1)
+
+The bridge and reliability regression suites now include `memory/promotion-verification.test.mjs`. The read-only prerequisite verifies a merged GitHub PR's exact 40-hex HEAD SHA, current authorized reviewer approval and latest passing required checks from trusted CI apps through a Bridge-owned client. The legacy `scripts/memu-promote.mjs` standalone path rejects untrusted JSON claims and does **not** invoke the unsupported core memU `memorize prepare` command. No durable evolution, commit, production activation or memory-writing adapter is included. See [ABR-92 verifier](docs/ABR92_PROMOTION_GATE.md).
+
 ### Scoped Factory Brain references (ABR-91 M1)
 
 The local task-preparation path optionally loads a private, read-only Factory Brain snapshot for the exact tenant, agent and repository when an operator pins its approved SHA256 digest. Bounded reference data never overrides Git-owned instructions, authorizes work, or edits memory. Without an approved digest, admission remains unchanged. `memory/factory-brain.test.mjs` is registered in bridge and reliability suites; see [ABR-91 Factory Brain contract](docs/ABR91_FACTORY_BRAIN.md). This is an offline implementation, **not** a production rollout, MCP integration, or PostgreSQL migration.
