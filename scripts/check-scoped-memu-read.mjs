@@ -21,6 +21,6 @@ const result = await readScopedMemuFiles({
 if (result.entries.length !== 0)
   throw Error("unexpected result for reserved synthetic scope");
 process.stdout.write(JSON.stringify({
-  readOnly: true, databaseScopeEnforced: true,
-  foreignMemoryReturned: false, recordsReturned: 0,
+  readOnly: true, approvedRecordsReturned: result.entries.length,
+  databaseScopeVerified: false,
 }) + "\n");
