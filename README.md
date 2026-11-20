@@ -506,6 +506,10 @@ The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge
 
 [The remote MCP upstream/source audit](docs/audits/mcp/README.md) and [tool parity contract](docs/audits/mcp/tool-parity.json) document the planned self-hosted Desktop Commander port (30 connected tools, 42 BRC agent tools, three relay tools). This branch adds an **offline/local, read-only relay+host fixture** using pinned `ws@8.21.0` with no production listener, OAuth, command execution, third-party file transfer, or deployment. The existing `bridge/server/agent-bridge-runtime.mjs`, `/jobs` identity, review inbox and job ledger remain authoritative. See ABR-95–100 for staged completion and deployment decisions.
 
+### ABR-59 — Private memU runtime and read-only diagnostics (M1)
+
+The optional memU recall adapter now supports direct execution of the approved absolute CLI using a privately owned, mode-0600 operator config file. A read-only diagnostic verifies the actual memU CLI and scoped PostgreSQL environment without exposing credentials. This is an **opt-in runtime boundary**, not automatic memory injection, approval-gated posting or service activation. Tests are registered in the bridge/reliability suites. See [ABR-59 runtime contract](docs/ABR59_MEMU_RUNTIME.md).
+
 ### ABR-93 — Local synthetic memory recall evaluation
 
 The bridge and reliability regression suites include `memory/evaluation/recall-benchmark.test.mjs`. The [ABR-93 benchmark](memory/evaluation/README.md) compares 768-dimensional local `nomic-embed-text` similarity to a lexical proxy on scoped, source-pinned synthetic documents. The evaluation proposes **no new reranker** or live recall activation. memU storage, indexes, operator approvals, and agent prompts remain unchanged.
