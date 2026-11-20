@@ -505,3 +505,7 @@ The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge
 ## ABR-94 — Local MCP proof only
 
 [The remote MCP upstream/source audit](docs/audits/mcp/README.md) and [tool parity contract](docs/audits/mcp/tool-parity.json) document the planned self-hosted Desktop Commander port (30 connected tools, 42 BRC agent tools, three relay tools). This branch adds an **offline/local, read-only relay+host fixture** using pinned `ws@8.21.0` with no production listener, OAuth, command execution, third-party file transfer, or deployment. The existing `bridge/server/agent-bridge-runtime.mjs`, `/jobs` identity, review inbox and job ledger remain authoritative. See ABR-95–100 for staged completion and deployment decisions.
+
+### Scoped checkpoint recovery
+
+The bridge and reliability test suites include `memory/verified-recovery.test.mjs`, covering scoped local task recovery, expired records and ownership changes. See [checkpoint recovery](docs/ABR90_M1_CHECKPOINT_RECOVERY.md) for the M1 boundary and follow-up gates.
