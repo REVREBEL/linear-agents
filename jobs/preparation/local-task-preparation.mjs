@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { isCheckpointExpired } from "../../memory/active-task-memory.mjs";
 import { verifiedRecoveryPreamble } from "../../memory/verified-recovery.mjs";
+import { approvedFactoryBrainDigest, loadFactoryBrain } from "../../memory/factory-brain.mjs";
 
 /**
  * Prepare a Linux-local task before any agent is launched. The bridge injects
@@ -75,7 +76,14 @@ export async function prepareLocalAgentTask({
         } : {}),
       };
     });
-    const directTask = recovery ? recovery + "\n\n" + originalTask : originalTask;
+    // Operator-pinned, private, reviewed lower-trust reference context. An
+    // absent approval or unavailable file does not affect task admission.
+    const brainScope = { tenantId: job.organizationId, agentId: agent,
+      repositoryRoot: route.repositoryRoot };
+    const approvedDigest = approvedFactoryBrainDigest(brainScope,
+      process.env.FACTORY_BRAIN_APPROVALS_JSON || "");
+    const factoryBrain = await loadFactoryBrain({ ...brainScope, approvedDigest });
+    const directTask = [factoryBrain, recovery, originalTask].filter(Boolean).join("\n\n");
     // Persist and dispatch one canonical prompt. The raw Linear webhook embeds
     // the same issue in agentSession.issue and promptContext; keeping it
     // duplicates instructions and unnecessarily expands downstream context.
