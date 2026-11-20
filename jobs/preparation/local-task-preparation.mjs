@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isCheckpointExpired } from "../../memory/active-task-memory.mjs";
 import { verifiedRecoveryPreamble } from "../../memory/verified-recovery.mjs";
 
 /**
@@ -66,9 +67,9 @@ export async function prepareLocalAgentTask({
       lastSessionId: job.agentSessionId || job.payload?.data?.agentSessionId || null,
       lastSeenAt: new Date().toISOString(),
       // Legacy repo+issue checkpoints are shared on disk. Strip all prior
-      // session-derived fields when ownership changes, even if the prior
+      // session-derived fields when ownership changes or the checkpoint expired, even if the prior
       // context was not injected into the agent prompt.
-      ...(!sameScope ? {
+      ...(!sameScope || isCheckpointExpired(priorTask) ? {
         progress: [], lastProgressAt: null, lastVerifiedResult: null,
         nextAction: null, artifacts: [], promotion: null, source: null,
         lastProviderSessionId: null, expiresAt: null,
