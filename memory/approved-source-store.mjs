@@ -94,17 +94,21 @@ export function createApprovedSourceStore({ root, key, verifySource, journal } =
       typeof journal?.read !== "function") deny("trusted store dependencies");
   return Object.freeze({
     async approve({ receipt, source, now = Date.now() }) {
+      // Freeze the values we authorize before any asynchronous boundary.
+      try { receipt = structuredClone(receipt); source = structuredClone(source); }
+      catch { deny("invalid approval inputs"); }
+      if (!Number.isFinite(now)) deny("invalid approval time");
       await privateRoot(root);
       validate(source, receipt, now);
       const persisted = await journal.read({
-        scope: source.scope, prNumber: receipt.prNumber, headSha: receipt.headSha,
+        scope: { ...source.scope }, prNumber: receipt.prNumber, headSha: receipt.headSha,
       });
       if (!persisted || persisted.id !== receipt.id ||
           persisted.proof?.status !== "verified-after-merge" ||
           persisted.proof?.headSha !== receipt.headSha ||
           persisted.proof?.mergeCommitSha !== receipt.proof.mergeCommitSha)
         deny("independently journaled approval missing");
-      if (await verifySource({ scope: source.scope, sourceGitSha: source.sourceGitSha,
+      if (await verifySource({ scope: { ...source.scope }, sourceGitSha: source.sourceGitSha,
         sourcePath: source.sourcePath, revision: source.revision,
         content: source.content, receiptId: receipt.id }) !== true)
         deny("independent source verification failed");
@@ -138,7 +142,7 @@ export function createApprovedSourceStore({ root, key, verifySource, journal } =
     },
     async load({ scope, receiptIds, now = Date.now() }) {
       await privateRoot(root);
-      if (!validScope(scope) || !Array.isArray(receiptIds) ||
+      if (!Number.isFinite(now) || !validScope(scope) || !Array.isArray(receiptIds) ||
           receiptIds.length > 100 || receiptIds.some(id => !SHA.test(id)))
         deny("invalid requested approval scope");
       const approvedSources = new Map(), trustedDigests = new Set();
