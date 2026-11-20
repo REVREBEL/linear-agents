@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, symlink, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, symlink, readFile, rm, rename, appendFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createLocalMcpRelay } from '../bridge/server/mcp-relay/index.mjs';
 import { connectLocalHostAgent } from '../bridge/agent/mcp-host-agent/index.mjs';
+import { openScopedFile, readBoundedFile } from '../bridge/agent/mcp-host-agent/safe-read.mjs';
 
 const clientToken = 'client-' + '1'.repeat(60);
 const agentToken = 'agent-' + '2'.repeat(60);
@@ -231,6 +232,7 @@ test('ABR-94 local relay+agent: authenticate, pair, read and fail closed', async
     await t.test('source contains no third-party egress, tools or process invocations', async () => {
       const sources = [
         '../bridge/server/mcp-relay/index.mjs', '../bridge/agent/mcp-host-agent/index.mjs',
+        '../bridge/agent/mcp-host-agent/safe-read.mjs',
       ];
       for (const source of sources) {
         const content = await readFile(new URL(source, import.meta.url), 'utf8');
@@ -241,6 +243,80 @@ test('ABR-94 local relay+agent: authenticate, pair, read and fail closed', async
   } finally {
     await agent?.close();
     await relay.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test('ABR-94 Linux dirfd containment resists deterministic parent-symlink swap', async (t) => {
+  if (process.platform !== 'linux') return t.skip('Linux /proc/self/fd required');
+  const root = await mkdtemp(path.join(tmpdir(), 'abr94-race-'));
+  const workspace = path.join(root, 'workspace');
+  const directory = path.join(workspace, 'child');
+  const outer = path.join(root, 'outside');
+  await mkdir(directory, { recursive: true });
+  await mkdir(outer);
+  await writeFile(path.join(directory, 'safe.txt'), 'PINNED_SAFE_BYTES');
+  await writeFile(path.join(outer, 'safe.txt'), 'SECRET_OUTSIDE_WORKSPACE');
+  let swizzled = false;
+  let file;
+  try {
+    file = await openScopedFile(workspace, 'child/safe.txt', {
+      onDirectoryOpened: async (relative) => {
+        if (relative !== 'child') return;
+        await rename(directory, path.join(workspace, 'child-renamed'));
+        await symlink(outer, directory);
+        swizzled = true;
+      },
+    });
+    assert.equal(swizzled, true);
+    assert.equal((await readBoundedFile(file)).toString('utf8'), 'PINNED_SAFE_BYTES');
+    await file.close();
+    file = undefined;
+    await assert.rejects(openScopedFile(workspace, 'child/safe.txt'),
+      /OUTSIDE_AUTHORIZED_WORKSPACE/);
+  } finally {
+    await file?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('ABR-94 bounded descriptor read rejects growth after a pre-read stat', async (t) => {
+  if (process.platform !== 'linux') return t.skip('Linux /proc/self/fd required');
+  const root = await mkdtemp(path.join(tmpdir(), 'abr94-growth-'));
+  const workspace = path.join(root, 'workspace');
+  await mkdir(workspace);
+  const growing = path.join(workspace, 'growing.txt');
+  await writeFile(growing, 'small');
+  let file;
+  try {
+    file = await openScopedFile(workspace, 'growing.txt');
+    assert.equal((await file.stat()).size, 5);
+    await appendFile(growing, Buffer.alloc(300_000, 65));
+    await assert.rejects(readBoundedFile(file), /FILE_TOO_LARGE/);
+    assert.equal((await file.stat()).size, 300_005);
+  } finally {
+    await file?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test('ABR-94 authorizing workspace inode is not interchangeable with a replacement root', async (t) => {
+  if (process.platform !== 'linux') return t.skip('Linux dirfd required');
+  const root = await mkdtemp(path.join(tmpdir(), 'abr94-rootid-'));
+  const workspace = path.join(root, 'approved');
+  await mkdir(workspace);
+  await writeFile(path.join(workspace, 'private.txt'), 'ALLOWED_ORIGINAL');
+  try {
+    const origin = await stat(workspace);
+    const rootIdentity = { dev: origin.dev, ino: origin.ino };
+    await rename(workspace, path.join(root, 'old-approved'));
+    await mkdir(workspace);
+    await writeFile(path.join(workspace, 'private.txt'), 'REPLACEMENT_NOT_AUTHORIZED');
+    await assert.rejects(openScopedFile(workspace, 'private.txt', { rootIdentity }),
+      /OUTSIDE_AUTHORIZED_WORKSPACE/);
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });

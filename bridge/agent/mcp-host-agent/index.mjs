@@ -1,15 +1,11 @@
 // ABR-94: read-only outbound host fixture; no commands, uploads or plugins.
 // ABR-96 will implement the OS sandboxed privileged executor.
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
-import { open, realpath, stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { openScopedFile, readBoundedFile, MAX_FILE_BYTES } from './safe-read.mjs';
 import { WebSocket } from 'ws';
 
-const MAX_FILE_BYTES = 262_144;
-function under(root, candidate) {
-  return candidate === root || candidate.startsWith(root + path.sep);
-}
 export async function connectLocalHostAgent({ endpoint, agentToken, deviceId, workspace }) {
   if (typeof endpoint !== 'string' || !/^ws:\/\/127\.0\.0\.1:\d+\/agent$/.test(endpoint))
     throw TypeError('Only the local loopback agent endpoint is accepted');
@@ -19,7 +15,9 @@ export async function connectLocalHostAgent({ endpoint, agentToken, deviceId, wo
       !/^[a-zA-Z0-9_-]{1,64}$/.test(deviceId ?? '')) throw TypeError('Missing local pairing identity');
   const root = await realpath(workspace);
   if (root === path.parse(root).root) throw TypeError('Filesystem root is not an allowed workspace');
-  if (!(await stat(root)).isDirectory()) throw TypeError('Workspace is not a directory');
+  const rootStat = await stat(root);
+  if (!rootStat.isDirectory()) throw TypeError('Workspace is not a directory');
+  const rootIdentity = { dev: rootStat.dev, ino: rootStat.ino };
   const socket = new WebSocket(endpoint, [], {
     headers: { Authorization: 'Bearer ' + agentToken, 'X-Agent-Device': deviceId },
     perMessageDeflate: false,
@@ -43,15 +41,12 @@ export async function connectLocalHostAgent({ endpoint, agentToken, deviceId, wo
         const input = request.args?.path;
         if (typeof input !== 'string' || input.length < 1 || input.length > 4_096 ||
             input.includes('\0')) throw Error('INVALID_PATH');
-        const candidate = path.resolve(root, input);
-        if (!under(root, candidate)) throw Error('OUTSIDE_AUTHORIZED_WORKSPACE');
-        const absolute = await realpath(candidate);
-        if (!under(root, absolute)) throw Error('OUTSIDE_AUTHORIZED_WORKSPACE');
-        file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+        file = await openScopedFile(root, input, { rootIdentity });
         const info = await file.stat();
         if (!info.isFile()) throw Error('NOT_A_REGULAR_FILE');
         if (info.size > MAX_FILE_BYTES) throw Error('FILE_TOO_LARGE');
-        const buffer = await file.readFile();
+        // Bounded read does not trust file size observed before concurrent growth.
+        const buffer = await readBoundedFile(file);
         const body = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
         const lines = body.split(/\r?\n/);
         const offset = request.args?.offset ?? 0;
@@ -66,7 +61,8 @@ export async function connectLocalHostAgent({ endpoint, agentToken, deviceId, wo
         delete response.error;
       } catch (error) {
         response.error = ['INVALID_PATH', 'OUTSIDE_AUTHORIZED_WORKSPACE', 'NOT_A_REGULAR_FILE',
-          'FILE_TOO_LARGE', 'INVALID_PAGINATION'].includes(error.message)
+          'FILE_TOO_LARGE', 'INVALID_PAGINATION', 'SAFE_OPEN_UNAVAILABLE',
+          'TOO_MANY_SYMLINKS'].includes(error.message)
           ? error.message : 'READ_FAILED';
       } finally { await file?.close(); }
     }

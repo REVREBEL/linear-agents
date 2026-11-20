@@ -75,10 +75,11 @@ test('all 30 connected, 42 BRC agent and 3 relay tool names have dispositions', 
 test('read-only foundation does not register privileged or external tool handlers', async () => {
   const content = await readFile(resolve(root, 'bridge/server/mcp-relay/index.mjs'), 'utf8');
   const host = await readFile(resolve(root, 'bridge/agent/mcp-host-agent/index.mjs'), 'utf8');
+  const opener = await readFile(resolve(root, 'bridge/agent/mcp-host-agent/safe-read.mjs'), 'utf8');
   for (const name of [...rejected, ...pluginTools]) {
     assert.ok(!content.includes(`name: '${name}'`), name);
   }
-  assert.ok(!/https:\/\//.test(content + host));
-  assert.ok(!/tmpfiles\.org|supabase|mcp\.desktopcommander\.app/i.test(content + host));
-  assert.ok(!/\bspawn\s*\(|\bexec\s*\(/.test(content + host));
+  assert.ok(!/https:\/\//.test(content + host + opener));
+  assert.ok(!/tmpfiles\.org|supabase|mcp\.desktopcommander\.app/i.test(content + host + opener));
+  assert.ok(!/\bspawn\s*\(|\bexec\s*\(/.test(content + host + opener));
 });
