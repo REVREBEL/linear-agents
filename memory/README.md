@@ -23,6 +23,7 @@ This folder implements **issue-scoped short-term recovery checkpoints**, GitHub 
 | `opencode-session-checkpoint.mjs` | OpenCode progress/session observations, guarded by the current issue/job relationship |
 | `github-task-memory.mjs` | Per-PR short-term state under the Bridge job directory (`github-events/task-memory/`), separate from memU |
 | `memu-memory.mjs` | Optional fail-open long-term **recall** through a bounded, timed, non-shell memU command; disabled unless `MEMU_RETRIEVAL_ENABLED=true` |
+| `factory-brain.mjs` | Private, read-only, operator-digest-approved, tenant/agent/repository-scoped Tier 2 reference data with strict size, expiry, mode and provenance checks; no mutation API. See [ABR-91](../docs/ABR91_FACTORY_BRAIN.md) |
 | `postgres-checkpoint-store.mjs` | Caller-injected PostgreSQL `query()` adapter for scoped, revision-checked snapshots; not wired into live jobs or memU promotion |
 | `migrations/` | Reviewed checkpoint table DDL and role grants, documented in [migrations/README.md](migrations/README.md) |
 | `scripts/` | Disposable PostgreSQL verification script, documented in [scripts/README.md](scripts/README.md) |
