@@ -142,3 +142,15 @@ test("legacy promotion CLI denies model-authored approval JSON without bridge Gi
       /executor unavailable/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("comment-only reviews do not replace the latest approval or changes request", async () => {
+  const comment = { ...approved()[0], id: 2, state: "COMMENTED",
+    submitted_at: "2026-11-20T08:00:00Z" };
+  const permitted = build({ reviews: [...approved(), comment] });
+  const proof = await verifyPromotionFromGitHub(input(permitted.client));
+  assert.equal(proof.approval.reviewId, 1);
+  const blocked = build({ reviews: [
+    { ...approved()[0], state: "CHANGES_REQUESTED" }, comment,
+  ] });
+  await denied(input(blocked.client), "no current authorized same-SHA approval");
+});
