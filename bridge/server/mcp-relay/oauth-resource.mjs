@@ -92,8 +92,11 @@ export function createResourceAuthorizer({
     } catch { return deny('INVALID_TOKEN'); }
     if (!verified) return deny('INVALID_TOKEN');
     const current = now();
-    if (payload.iss !== issuer || !Array.isArray(payload.aud)
-        || payload.aud.length !== 1 || payload.aud[0] !== audience
+    // RFC 7519 §4.1.3 permits a string when there is exactly one audience.
+    // Preserve our stricter single-audience resource boundary for both forms.
+    const audiences = typeof payload.aud === 'string' ? [payload.aud] : payload.aud;
+    if (payload.iss !== issuer || !Array.isArray(audiences)
+        || audiences.length !== 1 || audiences[0] !== audience
         || !Number.isInteger(payload.exp) || payload.exp <= current
         || !Number.isInteger(payload.iat) || payload.iat > current + 30
         || payload.exp - payload.iat > 3600

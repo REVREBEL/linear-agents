@@ -225,10 +225,28 @@ test('ABR-95 signed resource-server tokens protect the paired MCP device', async
       assert.equal(noSessionPrivilege.status, 200);
       assert.equal(noSessionPrivilege.body.result.tools.length, 2);
     });
+    await t.test('JWT aud accepts one exact resource as string or singleton array', async () => {
+      for (const aud of [resourceUrl, [resourceUrl]]) {
+        const token = provider.signClaimsForTest(claims({ clientId, aud }));
+        const listing = await request('tools/list', {}, { token });
+        assert.equal(listing.status, 200, JSON.stringify(aud));
+        assert.deepEqual(listing.body.result.tools.map(x => x.name),
+          ['list_devices', 'read_file']);
+        const read = await request('tools/call', {
+          name: 'read_file', arguments: { deviceId, path: 'README.md' },
+        }, { token });
+        assert.equal(read.status, 200, JSON.stringify(aud));
+        assert.equal(read.body.result.isError, false);
+      }
+    });
     await t.test('exact issuer, audience, expiry, algorithm and IDP signature required', async () => {
       const alternate = [
         { iss: 'https://forged-idp.invalid' },
         { aud: ['https://wrong-resource.invalid/mcp'] },
+        { aud: 'https://wrong-resource.invalid/mcp' },
+        { aud: [resourceUrl, 'https://wrong-resource.invalid/mcp'] },
+        { aud: [] },
+        { aud: 123 },
         { exp: now() - 1 },
         { nbf: now() + 1000 },
         { scope: 'mcp:admin' },
