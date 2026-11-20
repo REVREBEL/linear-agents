@@ -6,6 +6,10 @@ This directory contains **versioned project commands and their tests**. It is no
 
 `scripts/memu-promote.mjs` now refuses unauthenticated standalone preparation: its JSON evidence is not trustworthy authorization. The installed core `memu` CLI has no `memorize prepare` command; read-only GitHub review and CI verification is implemented in `memory/promotion-verification.mjs`, but no evolve or commit executor is enabled. See [ABR-92 gate and activation prerequisites](../docs/ABR92_PROMOTION_GATE.md).
 
+## ABR-59 read-only scoped PostgreSQL diagnostic
+
+Run `node scripts/check-scoped-memu-read.mjs` **as the bridge user** on the approved Ubuntu host. This executes a bounded, read-only, SQL-level user/agent scoped query using a reserved synthetic scope and asserts no recall content is returned. It never prints memory or modifies the live DB. See [M5 authorized read contract](../docs/ABR59_AUTHORIZED_READ.md).
+
 ## ABR-59 disposable memU commit/retrieval canary
 
 Run `TMPDIR=/var/tmp node scripts/memu-disposable-canary.mjs` **as the bridge user** on Ubuntu, not as root. This creates a private disposable SQLite database, commits one synthetic memU learning through the installed native CLI and tests its later retrieval, then deletes the temporary files; it does not touch `agent_memory`. This is not a production authorization or four-field isolation test. See [ABR-59 M4 contract](../docs/ABR59_COMMIT_EXECUTOR.md).
