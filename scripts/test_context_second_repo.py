@@ -55,11 +55,11 @@ class IndependentCodingRepoTests(unittest.TestCase):
             src = ROOT / "templates/context" / name
             dest = self.repo / "templates/context" / name
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(src, dest)
+            dest.write_bytes(git(ROOT, "show", "HEAD:" + src.relative_to(ROOT).as_posix()))
         for name in MODULES:
             dest = self.repo / "scripts" / name
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ROOT / "scripts" / name, dest)
+            dest.write_bytes(git(ROOT, "show", "HEAD:scripts/" + name))
         (self.repo / ".gitattributes").write_text(
             "*.md text eol=lf\n*.yaml text eol=lf\n*.py text eol=lf\n", encoding="utf-8")
         (self.repo / ".gitignore").write_text(

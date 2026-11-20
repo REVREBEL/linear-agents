@@ -108,7 +108,11 @@ The [README discipline policy](../docs/blueprints/agent-context/README_DISCIPLIN
 
 ## Independent repository portability acceptance (ABR-88 / E4)
 
-`test_context_second_repo.py` creates a fresh TypeScript/Next.js Git repository using the reviewed `templates/context/examples/nextjs-app/` example, copies the portable C1–C5 Python CLI modules and v1 JSON schemas, then runs independent project discovery, four-document retrieval, SHA/source integrity, nearest-owner and changed-file selection, strict/partial host behavior, and pinned D5 handoff verification after host-root deletion. The [E4 live pilot report](../docs/blueprints/agent-context/SECOND_REPOSITORY_PILOT.md) also records a successful disposable clone of an existing unrelated Payload/Next.js codebase. It does not install application packages, execute Workers or alter the real second checkout.
+`test_context_second_repo.py` creates a fresh TypeScript/Next.js Git repository using the reviewed `docs/blueprints/agent-context/examples/nextjs-app/` example, copies the portable C1–C5 Python CLI modules and v1 JSON schemas, then runs independent project discovery, four-document retrieval, SHA/source integrity, nearest-owner and changed-file selection, strict/partial host behavior, and pinned D5 handoff verification after host-root deletion. The [E4 live pilot report](../docs/blueprints/agent-context/SECOND_REPOSITORY_PILOT.md) also records a successful disposable clone of an existing unrelated Payload/Next.js codebase. It does not install application packages, execute Workers or alter the real second checkout.
+
+### E4 Kilo review follow-up (ABR-88)
+
+The independent-repo fixture now reads **all** source-controlled examples, CLI modules, and schemas from the Git object database so Windows CRLF working-copy conversions cannot alter the canonical bytes under test. `context_contract.py` uses the validated fixed reviewed source for legacy host aliases, explicitly rejects a separate `source` field on repository-owned documents, and emits an actionable error. `context_resolver.py` indexes portable source-backed host metadata only for non-repository locators. `test_context_contract.py` covers matching and mismatched legacy aliases and forbidden repository source overrides.
 
 ## Host-only infrastructure
 

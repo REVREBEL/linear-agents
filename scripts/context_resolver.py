@@ -64,7 +64,7 @@ def _index(repo_root, manifest, schema):
     for doc_id, locator in sorted(manifest["documents"].items()):
         if locator["root"] == "repo":
             source = Path(repo_root) / locator["path"]
-        elif doc_id in HOST_SOURCE_DOCS or locator.get("source"):
+        elif locator["root"] != "repo" and (doc_id in HOST_SOURCE_DOCS or locator.get("source")):
             source = Path(repo_root) / (locator.get("source") or HOST_SOURCE_DOCS[doc_id])
         else:
             # Host-only documents without a reviewed Git source remain unindexed.

@@ -124,6 +124,24 @@ class ContextContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Host source-backed context alias mismatch"):
             self.validate(changed)
 
+    def test_repo_locator_rejects_separate_source_field(self):
+        changed = copy.deepcopy(BASE_MANIFEST)
+        changed["documents"]["repo.jobs"]["source"] = "jobs/README.md"
+        with self.assertRaisesRegex(ValueError, "cannot declare a separate 'source' field"):
+            self.validate(changed)
+
+    def test_legacy_host_source_accepts_only_fixed_reviewed_path(self):
+        changed = copy.deepcopy(BASE_MANIFEST)
+        changed["documents"]["host.agent-tools"]["source"] = (
+            HOST_SOURCE_DOCS["host.agent-tools"]
+        )
+        self.assertIn("host.agent-tools", self.validate(changed)["validatedDocumentIds"])
+        changed["documents"]["host.agent-tools"]["source"] = (
+            HOST_SOURCE_DOCS["host.agent-runtimes"]
+        )
+        with self.assertRaisesRegex(ValueError, "Host source-backed context alias mismatch"):
+            self.validate(changed)
+
     def test_valid_platform_specific_roots_are_schema_valid(self):
         changed = copy.deepcopy(BASE_MANIFEST)
         changed["roots"]["host-agents"]["platformDefaults"] = {
