@@ -151,3 +151,33 @@ test("local admission includes only externally approved same-agent Factory Brain
     }
   });
 });
+
+test("a file growing after stat is rejected with bounded reads", async () => {
+  await fixture(async ({ root, filename, put }) => {
+    const approvedDigest = await put(base(root));
+    const scope = { repositoryRoot: root, tenantId: "tenant", agentId: "coder" };
+    const originalOpen = fs.open;
+    let unboundedRead = false;
+    try {
+      fs.open = async (...args) => {
+        const fd = await originalOpen(...args);
+        const originalStat = fd.stat.bind(fd);
+        const originalReadFile = fd.readFile.bind(fd);
+        fd.stat = async (...statArgs) => {
+          const result = await originalStat(...statArgs);
+          await fs.appendFile(filename, "x".repeat(40_001));
+          return result;
+        };
+        fd.readFile = (...readArgs) => {
+          unboundedRead = true;
+          return originalReadFile(...readArgs);
+        };
+        return fd;
+      };
+      assert.equal(await loadFactoryBrain({ ...scope, approvedDigest, now }), "");
+      assert.equal(unboundedRead, false, "never perform an unbounded read");
+    } finally {
+      fs.open = originalOpen;
+    }
+  });
+});
