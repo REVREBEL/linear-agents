@@ -56,13 +56,14 @@ const terminal = async (fn, deadline = 3_000) => {
   }
   throw Error('TIMED_OUT_WAITING_FOR_JOB');
 };
+async function writableTempParent() {
+  try { await access(tmpdir(), constants.W_OK); return tmpdir(); }
+  catch { return '/var/tmp'; }
+}
 async function setup(t) {
   // The actual Ubuntu host currently mounts /tmp as root-owned mode 0755;
   // /var/tmp (1777) is the writable disposable fixture location for bridge.
-  let fixtureParent = tmpdir();
-  try { await access(fixtureParent, constants.W_OK); }
-  catch { fixtureParent = '/var/tmp'; }
-  const root = await mkdtemp(path.join(fixtureParent, 'abr96-exec-'));
+  const root = await mkdtemp(path.join(await writableTempParent(), 'abr96-exec-'));
   const projects = path.join(root, 'projects');
   const project = path.join(projects, 'project-a');
   const other = path.join(root, 'outside');
@@ -370,7 +371,7 @@ test('ABR-96 journal permissions, exclusive lease and no-replay history capacity
 });
 
 test('queued jobs revalidate revoked and expired capabilities before launch', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'abr96-reauth-'));
+  const root = await mkdtemp(path.join(await writableTempParent(), 'abr96-reauth-'));
   let clock = 100_000, release;
   const launched = [];
   const authority = createExecutionAuthority({ deviceId, grants, ttlMs: 1_000, now: () => clock });
@@ -402,4 +403,55 @@ test('queued jobs revalidate revoked and expired capabilities before launch', as
     await jobs.close();
     await rm(root, { recursive: true, force: true });
   }
+
+test('ABR-96 revoked queued write never launches; in-flight process is terminated', async t => {
+  const { root, project, config } = await setup(t);
+  if (!probeSandbox().available) return t.skip('Bubblewrap namespace unavailable');
+  const service = createUbuntuExecutionService(config);
+  t.after(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
+  const scope = service.issueFromVerifiedIdentity(grantA);
+  const observer = service.issueFromVerifiedIdentity(grantA);
+  const long = service.spawnJob(scope, py(
+    'import time;from pathlib import Path;time.sleep(1);Path("late-from-revoked").write_text("BAD")',
+    { write: true },
+  ), { idempotencyKey: 'revoke-long-run-01' });
+  const queued = service.spawnJob(scope, py(
+    'from pathlib import Path;Path("queued-from-revoked").write_text("BAD")',
+    { write: true },
+  ), { idempotencyKey: 'revoke-queued-002' });
+  // Ensure process entered running state before revocation is applied.
+  for (let i = 0; i < 25 && service.getJob(scope, long.jobId).state === 'queued'; i++) {
+    await delay(10);
+  }
+  assert.equal(service.revokeScope(scope), true);
+  assert.throws(() => service.getJob(scope, long.jobId), /EXECUTION_NOT_AUTHORIZED/);
+  const first = await terminal(() => service.getJob(observer, long.jobId));
+  const second = await terminal(() => service.getJob(observer, queued.jobId));
+  assert.equal(first.state, 'cancelled');
+  assert.equal(second.state, 'cancelled');
+  assert.equal(second.errorCode, 'AUTHORIZATION_REVOKED');
+  await delay(1_100);
+  await assert.rejects(stat(path.join(project, 'late-from-revoked')), /ENOENT/);
+  await assert.rejects(stat(path.join(project, 'queued-from-revoked')), /ENOENT/);
+});
+
+test('ABR-96 expired queued write is revalidated immediately before scheduling', async t => {
+  const { root, project, config } = await setup(t);
+  if (!probeSandbox().available) return t.skip('Bubblewrap namespace unavailable');
+  const service = createUbuntuExecutionService({ ...config, capabilityTtlMs: 1_000 });
+  t.after(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
+  const scope = service.issueFromVerifiedIdentity(grantA);
+  const blocking = service.spawnJob(scope, py('import time;time.sleep(1.3)'),
+    { idempotencyKey: 'expire-blocker-001', durationMs: 2_800 });
+  const forbidden = service.spawnJob(scope, py(
+    'from pathlib import Path;Path("expired-write").write_text("BAD")',
+    { write: true },
+  ), { idempotencyKey: 'expire-write-002' });
+  await delay(1_500);
+  const renewed = service.issueFromVerifiedIdentity(grantA);
+  assert.equal(service.getJob(renewed, blocking.jobId).state, 'completed');
+  const outcome = service.getJob(renewed, forbidden.jobId);
+  assert.equal(outcome.state, 'failed');
+  assert.equal(outcome.errorCode, 'EXECUTION_NOT_AUTHORIZED');
+  await assert.rejects(stat(path.join(project, 'expired-write')), /ENOENT/);
 });

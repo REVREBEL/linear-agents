@@ -27,7 +27,11 @@ export function createUbuntuExecutionService({
   const terminals = createTerminalSessions({ runner, authority });
   return Object.freeze({
     issueFromVerifiedIdentity: authority.issueFromVerifiedIdentity,
-    revokeScope: authority.revoke,
+    revokeScope(scope) {
+      jobs.cancelScope(scope);
+      terminals.cancelScope(scope);
+      return authority.revoke(scope);
+    },
     probeSandbox: runner.probeSandbox,
     runCommand: jobs.runCommand,
     spawnJob: jobs.spawnJob,

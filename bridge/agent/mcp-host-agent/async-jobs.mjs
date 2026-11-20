@@ -101,6 +101,7 @@ export function createExecutionJobs({ runner, authority, journalDir, onAudit = (
     WHERE id=? AND state IN ('queued','running')`);
   const pending = [];
   const running = new Map();
+  const runningScopes = new Map();
   let lastScheduledOwner = null;
   let closed = false;
   let active = 0;
@@ -137,12 +138,16 @@ export function createExecutionJobs({ runner, authority, journalDir, onAudit = (
       const [task] = pending.splice(index, 1);
       if (byId.get(task.id)?.state !== 'queued') continue;
       lastScheduledOwner = task.scopeKey;
-      // A queued capability can expire or be revoked while another job runs.
-      // Recheck the original authority immediately before starting any work.
+      // Admission was valid on enqueue, but could expire or be revoked
+      // while this task waits behind other users. Recheck immediately
+      // before any process is spawned, including write permission.
       try {
-        authority.requireGrant(task.scope, task.tool, task.command.workspaceId, task.command.write);
+        authority.requireGrant(task.scope, task.tool,
+          task.command.workspaceId, task.command.write);
       } catch {
-        writeOutcome(task.id, { status: 'failed', exitCode: null, errorCode: 'EXECUTION_NOT_AUTHORIZED' });
+        writeOutcome(task.id, {
+          status: 'failed', exitCode: null, errorCode: 'EXECUTION_NOT_AUTHORIZED',
+        });
         continue;
       }
       statusRunning.run(now(), task.id);
@@ -162,8 +167,10 @@ export function createExecutionJobs({ runner, authority, journalDir, onAudit = (
       }
       active++;
       running.set(task.id, handle);
+      runningScopes.set(task.id, task.scope);
       handle.completion.then((outcome) => {
         running.delete(task.id);
+        runningScopes.delete(task.id);
         active--;
         if (!closed) writeOutcome(task.id, outcome);
         else writeOutcome(task.id, { ...outcome, status: 'interrupted', errorCode: 'EXECUTOR_STOPPED' });
@@ -192,7 +199,10 @@ export function createExecutionJobs({ runner, authority, journalDir, onAudit = (
     if (!check.available) throw Error('SANDBOX_UNAVAILABLE: ' + check.error);
     const id = randomUUID();
     insert.run(id, identity.scopeKey, command.workspaceId, idempotencyKey, fingerprint, now(), durationMs);
-    pending.push({ id, command, durationMs, scopeKey: identity.scopeKey, scope, tool });
+    pending.push({
+      id, command, durationMs, scopeKey: identity.scopeKey,
+      scope, tool, // private in-memory capability only; never serialized to SQLite
+    });
     onAudit({ event: 'execution_queued', jobId: id,
       workspaceId: command.workspaceId, principal: identity.subject });
     queueMicrotask(pump);
@@ -266,6 +276,18 @@ export function createExecutionJobs({ runner, authority, journalDir, onAudit = (
       await sleep(40);
     }
   }
+  function cancelScope(scope) {
+    // Privilege revocation terminates active work and makes queued operations
+    // terminal before any process launch, even if the caller cannot getJob.
+    for (const task of pending) {
+      if (task.scope === scope) writeOutcome(task.id, {
+        status: 'cancelled', errorCode: 'AUTHORIZATION_REVOKED',
+      });
+    }
+    for (const [id, ownerScope] of runningScopes) {
+      if (ownerScope === scope) running.get(id)?.terminate('cancelled', 'SIGTERM');
+    }
+  }
   async function close() {
     if (closed) return;
     closed = true;
@@ -279,7 +301,7 @@ export function createExecutionJobs({ runner, authority, journalDir, onAudit = (
     unlinkSync(leaseFile);
   }
   return Object.freeze({
-    spawnJob, getJob, listJobs, cancelJob, waitJobs, runCommand, runParallel, close,
+    spawnJob, getJob, listJobs, cancelJob, waitJobs, runCommand, runParallel, cancelScope, close,
     get runningCount() { return active; },
   });
 }

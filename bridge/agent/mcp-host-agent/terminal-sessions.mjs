@@ -45,7 +45,7 @@ export function createTerminalSessions({ runner, authority, maxSessions = 8 }) {
     const id = randomUUID();
     const handle = runner.spawnCommand(command, { durationMs, interactive: true });
     const item = { id, workspaceId: command.workspaceId, ownerKey: scopeInfo.scopeKey,
-      handle, outcome: null, finished: false };
+      scope, handle, outcome: null, finished: false };
     sessions.set(id, item);
     handle.completion.then(result => {
       item.finished = true;
@@ -84,6 +84,11 @@ export function createTerminalSessions({ runner, authority, maxSessions = 8 }) {
       catch { return false; }
     }).map(item => ({ processId: item.id, workspaceId, status: state(item) }));
   }
+  function cancelScope(scope) {
+    for (const session of sessions.values()) {
+      if (session.scope === scope) session.handle.terminate('cancelled', 'SIGTERM');
+    }
+  }
   async function close() {
     if (closed) return;
     closed = true;
@@ -93,7 +98,7 @@ export function createTerminalSessions({ runner, authority, maxSessions = 8 }) {
   }
   return Object.freeze({
     startProcess, readProcessOutput, interactWithProcess,
-    forceTerminate, killProcess, listSessions,
+    forceTerminate, killProcess, listSessions, cancelScope,
     listProcesses: (scope, workspaceId) => listSessions(scope, workspaceId, 'list_processes'),
     close,
   });
