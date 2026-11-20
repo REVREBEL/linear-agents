@@ -7,3 +7,5 @@ The files in this directory are reviewed CI workflows. Workflow changes are sour
 The MCP security/tool source audit and full deferred-gate list are at [ABR-94](../../docs/audits/mcp/README.md). Existing `worker-reliability.yml`, `agent-context-blueprint.yml`, `owning-readme-discipline.yml` and other workflow checks remain independent and authoritative.
 
 **ABR-95 — `mcp-oauth.yml`:** Runs offline signed-token, PKCE fixture and 2026/2025 MCP transport tests followed by existing ABR-94 foundation and Bridge regression checks. It has read-only checkout permissions and no token issuance, Cloudflare API, route, tunnel or production service action.
+
+**ABR-96 — `mcp-executor.yml`:** Installs test-only `bubblewrap` on an ephemeral Ubuntu runner, checks the nonprivileged OS namespace probe, runs sandbox/admission/journal tests with isolated fixtures, and re-runs existing Bridge/MCP regressions. The fallback root test is **explicitly test-only** and never enables a production service or satisfies the real Ubuntu `bridge` AppArmor release gate; skipped runtime cases must be reported honestly.

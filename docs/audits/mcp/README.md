@@ -73,3 +73,7 @@ Neither initial paired-read success nor static egress checks imply safe deployme
 ## ABR-95 — OAuth resource and protocol compatibility
 
 See [OAUTH_EDGE.md](OAUTH_EDGE.md) for the separate **OAuth resource-server** boundary, per-request signed-token validation, client/device/tool grants, the modern MCP 2026-07-28 versus legacy 2025-11-25/2025-06-18 compatibility matrix, local-only PKCE/DCR test fixture, proposed-but-not-applied Cloudflare route, and rollback. It extends the ABR-94 audit without changing the live Bridge, adding an IdP, deploying a service, or creating public network ingress.
+
+## ABR-96 — Ubuntu executor and release-blocking AppArmor preflight
+
+[EXECUTOR.md](EXECUTOR.md) documents the standalone Bubblewrap-based execution service, durable separate SQLite job journal, interactive REPL/status/kill behavior, per-session authority and rollout gates. It records the **actual Ubuntu `bridge` service user AppArmor namespace denial**, which prevents any service activation. The source-only systemd template is deliberately non-startable; approved rootless policy and a full non-skipped service-user acceptance test are required before treating ABR-96 as operational.

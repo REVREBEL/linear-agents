@@ -529,3 +529,7 @@ The bridge and reliability test suites include `memory/verified-recovery.test.mj
 ## ABR-95 — MCP OAuth resource and versioned protocol fixture
 
 The [ABR-95 OAuth/Cloudflare acceptance](docs/audits/mcp/OAUTH_EDGE.md) adds an opt-in, local-only verified OAuth resource-server mode and 2026-07-28/2025-11-25/2025-06-18 MCP request compatibility tests to the isolated ABR-94 proof. It never changes the production Bridge listener, worker OAuth, host routing, memory authority, Cloudflare ingress or live user access. External IdP selection, client registration and deployment remain separate approved tasks.
+
+## ABR-96 — Authenticated Ubuntu sandbox executor (source-only)
+
+The [ABR-96 executor implementation and safety gate](docs/audits/mcp/EXECUTOR.md) add separately scoped interactive Python/shell process handles and SQLite-idempotent execution jobs, in a Linux Bubblewrap namespace with no network access and a pinned project-FD mount. Its use remains **explicitly separate** from production `agent-bridge.service`, `jobs/persistence/job-store.mjs`, existing MCP `tools/call`, and Cloudflare ingress. Rootless Bubblewrap is currently **blocked by AppArmor for the real `bridge` service user**; no unsandboxed or elevated fallback is allowed. The unit candidate is inert and must be explicitly approved after successful service-user probing and ABR-97/98 host/tool integration.
