@@ -509,3 +509,7 @@ The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge
 ### Scoped checkpoint recovery
 
 The bridge and reliability test suites include `memory/verified-recovery.test.mjs`, covering scoped local task recovery, expired records and ownership changes. See [checkpoint recovery](docs/ABR90_M1_CHECKPOINT_RECOVERY.md) for the M1 boundary and follow-up gates.
+
+## ABR-95 — MCP OAuth resource and versioned protocol fixture
+
+The [ABR-95 OAuth/Cloudflare acceptance](docs/audits/mcp/OAUTH_EDGE.md) adds an opt-in, local-only verified OAuth resource-server mode and 2026-07-28/2025-11-25/2025-06-18 MCP request compatibility tests to the isolated ABR-94 proof. It never changes the production Bridge listener, worker OAuth, host routing, memory authority, Cloudflare ingress or live user access. External IdP selection, client registration and deployment remain separate approved tasks.

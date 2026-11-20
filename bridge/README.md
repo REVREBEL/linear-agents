@@ -21,3 +21,7 @@ context:
 ## Isolated MCP source audit and local-only test foundation (ABR-94)
 
 `server/mcp-relay/` and `agent/mcp-host-agent/` contain a separately instantiated **read-only local fixture** that is **not imported or enabled** by the running Bridge server. Its source provenance, exact 30/42/3 tool dispositions and security gates are documented at [ABR-94 source audit](../docs/audits/mcp/README.md). Future ABR-95–99 tasks must add authorization, the real privileged executor, multi-host routing and trusted submission as adapters, not a parallel job ledger.
+
+## Authorization boundary for the local MCP proof (ABR-95)
+
+The local `server/mcp-relay/` fixture optionally requires cryptographically validated access tokens from a reviewed external issuer. This remains separate from the canonical Linear `/jobs` admission and does not grant authority to write tasks, access memory or promote work. Source contracts and deployment gates are documented in [ABR-95 OAuth and edge plan](../docs/audits/mcp/OAUTH_EDGE.md); production ingress and OAuth client configuration are not activated by source merge.
