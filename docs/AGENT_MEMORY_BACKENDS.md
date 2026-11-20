@@ -36,6 +36,10 @@ only an operator-observable smoke test and does not influence coding.
 
 This is disabled by default until local memU is configured and tested.
 
+### Agent Context E3 scope boundary (ABR-87)
+
+The optional memU recall path now requires all four caller identifiers (tenant, agent, repository and Linear issue), and filters returned `segments`/`hits`/`files`/`resources` to exact attribution metadata. Missing or mismatched attribution produces empty recall; incomplete scope never starts a memU subprocess. The memU 0.10 CLI still searches without a structured authorized scope argument, so this is **output filtering, not database authorization**. Recalled content is still withheld from prompts. The operational file checkpoint remains repository/issue-scoped, while the unconnected PostgreSQL checkpoint adapter independently keys tenant/agent/repository/issue. README context cannot invoke memU promotion. See [E3 context acceptance](blueprints/agent-context/MEMORY_ISOLATION.md).
+
 ### Promotion after completion
 
 memU's current *developer* interface requires:

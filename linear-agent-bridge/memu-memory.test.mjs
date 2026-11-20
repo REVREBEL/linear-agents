@@ -21,7 +21,7 @@ test("disabled recall never starts a subprocess", async () => {
 });
 
 test("enabled recall tolerates absent executable", async () => {
-  assert.equal(await retrieveMemuMemory("query", { enabled: true, binary: "/does-not-exist" }), "");
+  assert.equal(await retrieveMemuMemory("query", { enabled: true, binary: "/does-not-exist", scope: { tenantId: "org-one", agentId: "qwen-local", repositoryId: "repo", issueId: "ABR-87" } }), "");
 });
 
 const verified = {
@@ -89,7 +89,7 @@ test("enabled memU failures warn without preventing task dispatch", async () => 
     await writeFile(cli, "#!/bin/sh\nprintf '%s' 'invalid-json'\n");
     await chmod(cli, 0o700);
     const result = await retrieveMemuMemory("repo", {
-      enabled: true, binary: cli, logger: { warn: message => warnings.push(message) },
+      enabled: true, binary: cli, scope: { tenantId: "org-one", agentId: "qwen-local", repositoryId: "repo", issueId: "ABR-87" }, logger: { warn: message => warnings.push(message) },
     });
     assert.equal(result, "");
     assert.equal(warnings.length, 1);

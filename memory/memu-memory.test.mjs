@@ -18,5 +18,5 @@ test("disabled recall never spawns", async () => {
 });
 
 test("enabled recall remains fail-open if executable is missing", async () => {
-  assert.equal(await retrieveMemuMemory("query", { enabled: true, binary: "/nonexistent/memu", logger: { warn() {} } }), "");
+  assert.equal(await retrieveMemuMemory("query", { enabled: true, binary: "/nonexistent/memu", scope: { tenantId: "org-one", agentId: "qwen-local", repositoryId: "repo", issueId: "ABR-87" }, logger: { warn() {} } }), "");
 });
