@@ -1,0 +1,64 @@
+id: parallel-decisions-fast
+displayName: Parallel Decisions Fast
+description: Web-grounded typed decision service (non-generative text) operating via
+  specialized endpoint POST /api/v1/decisions. Evaluates state (text or JSON) across
+  up to 100 typed questions (noul probabilities, choice distributions, rubric scores)
+  using live web evidence and citations to detect upstream API and webhook breaking
+  changes.
+kind: llm
+provider: Parallel
+model: parallel/decisions-fast:free
+runtime:
+  transport: direct_api
+  executionHost: cloudflare_worker_adapter
+  workspaceRoot: /var/agent-bridge/decisions
+linearBridge:
+  workerHost: linear-decisions.revrebel.io
+  tunnelHost: decisions-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Reflex
+  domain: Upstream API verification, webhook contract monitoring, and policy guardrails
+  top_skills:
+  - Upstream changelog and breaking change detection
+  - Live web-grounded fact checking and entity verification
+  - Guardrail rubric scoring with source citations
+routing:
+  complexity_tier: Medium
+  semantic_description: External evidence-backed decision scoring for API changes,
+    library deprecations, and upstream Linear/Cloudflare updates.
+  supported_intents:
+  - verify_upstream_api_change
+  - audit_guardrail_safety
+  - check_policy_compliance
+  task_ratings:
+    breaking_change_detection: 4.9
+    web_evidence_verification: 4.8
+    code_authoring: 1.0
+execution:
+  autonomy_level: Read-only
+  memory_scope: stateless
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 120000
+    maxRetryAttempts: 2
+    exhaustionPattern: 429|rate_limited
+permissions:
+  sourceWrite: false
+  directoryMoves: false
+  gitCommit: false
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: system_standing
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist: []
+  handoff_targets:
+  - human_supervisor

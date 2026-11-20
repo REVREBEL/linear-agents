@@ -1,0 +1,72 @@
+id: flint
+displayName: Recursive Flint 1.0
+description: Open-weight 39.8B MoE coding model (2.5B active parameters per token)
+  with a 262K context window, built by Recursive's Eureka Machine. Scores 89.7% on
+  SWE-bench Pro v2 and 54.9% on Terminal-Bench 2.1, optimized for multi-turn terminal
+  commands, complex codebase investigations, and multi-file refactoring.
+kind: cli_agent
+provider: Recursive
+model: recursive/flint-v1.0:free
+runtime:
+  transport: headless_cli
+  executionHost: ubuntu_agent_server
+  binaryPath: /usr/local/bin/opencode
+  commandTemplate: opencode run --model recursive/flint-v1.0:free --format json --prompt
+    {{PROMPT}}
+  workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+linearBridge:
+  workerHost: linear-flint.revrebel.io
+  tunnelHost: flint-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  - session_prompted
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Goal-based
+  domain: Autonomous codebase navigation, deep debugging, and multi-turn refactoring
+  top_skills:
+  - Terminal-Bench command execution
+  - SWE-bench multi-file codebase navigation
+  - Concurrency and backend refactoring
+routing:
+  complexity_tier: High
+  semantic_description: Multi-turn codebase search, architectural bug diagnosis, and
+    complex feature implementation.
+  supported_intents:
+  - diagnose_bug
+  - complex_refactor
+  - multi_file_edit
+  - investigate_codebase
+  task_ratings:
+    bug_investigation: 4.9
+    multi_file_refactor: 4.8
+    test_repair: 4.4
+execution:
+  autonomy_level: Executor
+  memory_scope: session_isolated
+  sessionContinuityFlag: --session-id {{SESSION_ID}}
+  quotaPolicy:
+    resumable: true
+    defaultRetryDelayMs: 3600000
+    maxRetryAttempts: 3
+    exhaustionPattern: 429|resource_exhausted
+permissions:
+  sourceWrite: true
+  directoryMoves: true
+  gitCommit: true
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Medium
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist:
+  - github/list_commits
+  - github/get_diff
+  handoff_targets:
+  - gemma-4-31b
+  - human_supervisor

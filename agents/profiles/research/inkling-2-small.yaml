@@ -1,0 +1,75 @@
+id: inkling-2-small
+displayName: Thinking Machines Inkling 2 Small
+description: 594B sparse MoE multimodal model (17B active parameters per token) by
+  Thinking Machines Lab (Mira Murati) featuring a 1M context window (256K on serverless).
+  Reaches 86.3% on SWE-Bench Pro v2 (Hard) and 71.8% on EnterpriseBench-CoreCraft.
+  Operates as an elite reasoning and multimodal coding agent for deep architectural
+  reviews, complex issue decomposition, and high-complexity Linear tickets.
+kind: cli_agent
+provider: Thinking Machines Lab
+model: thinkingmachines/inkling-2-small:free
+runtime:
+  transport: headless_cli
+  executionHost: ubuntu_agent_server
+  binaryPath: /usr/local/bin/opencode
+  commandTemplate: opencode run --model thinkingmachines/inkling-2-small:free --format
+    json --prompt {{PROMPT}}
+  workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+linearBridge:
+  workerHost: linear-inkling.revrebel.io
+  tunnelHost: inkling-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  - session_prompted
+  - code_review_verdict
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Goal-based
+  domain: Complex systems reasoning, multimodal UI analysis, and enterprise-grade
+    software engineering
+  top_skills:
+  - Deep reasoning & root-cause decomposition
+  - Hard SWE-bench bug resolution
+  - Multimodal UI & architectural review
+routing:
+  complexity_tier: High
+  semantic_description: Elite multimodal reasoning and autonomous engineering for
+    complex bug diagnosis, architectural validation, and multi-system refactoring.
+  supported_intents:
+  - solve_hard_bug
+  - architectural_review
+  - implement_complex_feature
+  - analyze_visual_regressions
+  task_ratings:
+    hard_bug_resolution: 4.9
+    architectural_review: 4.9
+    multimodal_analysis: 4.8
+execution:
+  autonomy_level: Executor
+  memory_scope: session_isolated
+  sessionContinuityFlag: --session-id {{SESSION_ID}}
+  quotaPolicy:
+    resumable: true
+    defaultRetryDelayMs: 7200000
+    maxRetryAttempts: 3
+    exhaustionPattern: 429|quota_exceeded|timeout
+permissions:
+  sourceWrite: true
+  directoryMoves: true
+  gitCommit: true
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Medium
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist:
+  - github/list_commits
+  - github/get_diff
+  handoff_targets:
+  - gemma-4-31b
+  - human_supervisor

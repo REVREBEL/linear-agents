@@ -1,0 +1,73 @@
+id: gemma-4-31b
+displayName: Google Gemma 4 31B Instruct
+description: Dense 30.7B multimodal instruction-tuned model by Google DeepMind with
+  a 262K context window under Apache 2.0. Supports text, image, and video inputs with
+  native tool calling and structured outputs, suited for architectural reviews, UI
+  screenshot verification, and cross-repo engineering.
+kind: cli_agent
+provider: Google
+model: google/gemma-4-31b-it:free
+runtime:
+  transport: headless_cli
+  executionHost: ubuntu_agent_server
+  binaryPath: /usr/local/bin/opencode
+  commandTemplate: opencode run --model google/gemma-4-31b-it:free --format json --prompt
+    {{PROMPT}}
+  workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+linearBridge:
+  workerHost: linear-gemma.revrebel.io
+  tunnelHost: gemma-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  - session_prompted
+  - code_review_verdict
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Goal-based
+  domain: Multimodal systems architecture, UI/frontend review, and comprehensive code
+    verification
+  top_skills:
+  - UI screenshot and visual regression analysis
+  - Cross-cutting architectural reviews
+  - Structured tool calling and specification authoring
+routing:
+  complexity_tier: High
+  semantic_description: Multimodal engineering analysis, Storybook and UI visual review,
+    system architecture verification, and documentation.
+  supported_intents:
+  - review_pull_request
+  - analyze_ui_screenshot
+  - review_architecture
+  - generate_specifications
+  task_ratings:
+    code_review: 4.8
+    multimodal_ui_review: 4.9
+    architecture_design: 4.7
+execution:
+  autonomy_level: Executor
+  memory_scope: session_isolated
+  sessionContinuityFlag: --session-id {{SESSION_ID}}
+  quotaPolicy:
+    resumable: true
+    defaultRetryDelayMs: 3600000
+    maxRetryAttempts: 3
+    exhaustionPattern: 429|quota_exceeded
+permissions:
+  sourceWrite: true
+  directoryMoves: false
+  gitCommit: true
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist:
+  - github/list_commits
+  - github/get_diff
+  handoff_targets:
+  - human_supervisor

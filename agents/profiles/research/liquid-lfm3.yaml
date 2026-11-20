@@ -1,0 +1,66 @@
+id: liquid-lfm3
+displayName: LiquidAI LFM3 1.7B
+description: Compact 1.7B text model featuring a 256K context window and ultra-fast
+  throughput (190 tokens/sec), post-trained for reasoning-before-answering and structured
+  tool output. Acts as a control-plane advisor for webhook classification, triage,
+  checkpoint extraction, and recovery packaging.
+kind: llm
+provider: LiquidAI
+model: liquid/lfm-3-1.7b:free
+runtime:
+  transport: direct_api
+  executionHost: cloudflare_worker_or_ubuntu
+  workspaceRoot: /var/agent-bridge/control-plane
+linearBridge:
+  workerHost: linear-control.revrebel.io
+  tunnelHost: control-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  - session_prompted
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Utility-based
+  domain: Edge control-plane triage, event extraction, and workflow routing
+  top_skills:
+  - Normalized webhook payload classification
+  - Structured checkpoint summary extraction
+  - Error taxonomy categorization
+routing:
+  complexity_tier: Low
+  semantic_description: Advisory routing, structured event triage, and recovery packet
+    preparation. Not authorized for standalone multi-file code editing.
+  supported_intents:
+  - classify_webhook
+  - summarize_checkpoint
+  - extract_linear_metadata
+  - suggest_agent_routing
+  task_ratings:
+    event_classification: 4.8
+    metadata_extraction: 4.7
+    code_generation: 2.1
+execution:
+  autonomy_level: Recommender
+  memory_scope: stateless
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 60000
+    maxRetryAttempts: 2
+    exhaustionPattern: 429|rate_limited
+permissions:
+  sourceWrite: false
+  directoryMoves: false
+  gitCommit: false
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  mcpToolAllowlist: []
+  handoff_targets:
+  - north-mini-code
+  - flint
+  - gemma-4-31b

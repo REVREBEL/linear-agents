@@ -1,0 +1,72 @@
+id: codellama
+displayName: Meta Code Llama (Ollama)
+description: Meta open-weights code generation model hosted on-premises via local
+  Ollama. Operates as an air-gapped, privacy-sensitive local fallback on the Ubuntu
+  runner for syntax generation, unit test authoring, and script repairs without outbound
+  internet or cloud API transmission.
+kind: cli_agent
+provider: Meta / Ollama
+model: ollama/codellama:latest
+runtime:
+  transport: headless_cli
+  executionHost: ubuntu_agent_server
+  binaryPath: /usr/local/bin/opencode
+  commandTemplate: opencode run --model ollama/codellama:latest --format json --prompt
+    {{PROMPT}}
+  workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+linearBridge:
+  workerHost: linear-codellama.revrebel.io
+  tunnelHost: codellama-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  - session_prompted
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Goal-based
+  domain: On-premise air-gapped code generation, unit test writing, and localized
+    scripting
+  top_skills:
+  - Air-gapped offline code generation
+  - Python & TypeScript unit test creation
+  - Docstring & documentation generation
+routing:
+  complexity_tier: Medium
+  semantic_description: Local air-gapped coding agent for sensitive repositories,
+    private data pipelines, and offline backup when cloud inference is unavailable.
+  supported_intents:
+  - generate_unit_tests
+  - offline_code_edit
+  - document_code
+  - fix_local_syntax
+  task_ratings:
+    unit_test_generation: 4.2
+    offline_privacy: 5.0
+    multi_file_refactor: 3.0
+execution:
+  autonomy_level: Supervised
+  memory_scope: session_isolated
+  sessionContinuityFlag: --session-id {{SESSION_ID}}
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 10000
+    maxRetryAttempts: 2
+    exhaustionPattern: connection_refused|out_of_memory
+permissions:
+  sourceWrite: true
+  directoryMoves: false
+  gitCommit: true
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist:
+  - github/list_commits
+  handoff_targets:
+  - codegeex4
+  - human_supervisor

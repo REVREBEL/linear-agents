@@ -1,0 +1,73 @@
+id: ernie-5-5-flash
+displayName: Baidu ERNIE 5.5 Flash Preview
+description: 280B sparse MoE model (14B active parameters per token) featuring a 1,024,000
+  token context window. Built by Baidu and accessible on OpenRouter and Qianfan. Designed
+  for high-speed agentic execution, rapid repo scanning, iterative multi-file edits,
+  and long-horizon planning in headless Ubuntu OpenCode.
+kind: cli_agent
+provider: Baidu
+model: baidu/ernie-5.5-flash-preview:free
+runtime:
+  transport: headless_cli
+  executionHost: ubuntu_agent_server
+  binaryPath: /usr/local/bin/opencode
+  commandTemplate: opencode run --model baidu/ernie-5.5-flash-preview:free --format
+    json --prompt {{PROMPT}}
+  workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+linearBridge:
+  workerHost: linear-ernie.revrebel.io
+  tunnelHost: ernie-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  - session_prompted
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Goal-based
+  domain: High-throughput autonomous coding, massive repository context ingestion,
+    and script generation
+  top_skills:
+  - 1M-token codebase indexing & cross-file search
+  - Fast iterative script & test authoring
+  - Full-stack web application development
+routing:
+  complexity_tier: High
+  semantic_description: High-speed autonomous coding with 1M token context for whole-repo
+    analysis, multi-file code modifications, and pipeline debugging.
+  supported_intents:
+  - scan_codebase
+  - implement_feature
+  - fix_bug
+  - generate_scripts
+  task_ratings:
+    codebase_search: 4.9
+    feature_implementation: 4.6
+    scripting: 4.7
+execution:
+  autonomy_level: Executor
+  memory_scope: session_isolated
+  sessionContinuityFlag: --session-id {{SESSION_ID}}
+  quotaPolicy:
+    resumable: true
+    defaultRetryDelayMs: 3600000
+    maxRetryAttempts: 3
+    exhaustionPattern: 429|quota_exceeded|daily_limit_reached
+permissions:
+  sourceWrite: true
+  directoryMoves: true
+  gitCommit: true
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Medium
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist:
+  - github/list_commits
+  - github/get_diff
+  handoff_targets:
+  - north-mini-code
+  - human_supervisor

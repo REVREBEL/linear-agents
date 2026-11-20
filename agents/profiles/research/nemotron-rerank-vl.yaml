@@ -1,0 +1,60 @@
+id: nemotron-rerank-vl
+displayName: NVIDIA Llama Nemotron Rerank VL 1B V2
+description: 1.7B multimodal cross-encoder reranking model by NVIDIA for vision RAG
+  pipelines. Evaluates relevance of document pages (text, tables, charts, PDF page
+  images) against text queries, outputting logit scores to refine candidate sets retrieved
+  from PostgreSQL 17 + pgvector/memU without generating text.
+kind: llm
+provider: NVIDIA
+model: nvidia/llama-nemotron-rerank-vl-1b-v2:free
+runtime:
+  transport: direct_api
+  executionHost: ubuntu_memory_pipeline
+  workspaceRoot: /var/agent-bridge/memory
+linearBridge:
+  workerHost: linear-memory.revrebel.io
+  tunnelHost: memory-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Reflex
+  domain: Multimodal document and long-term memory retrieval reranking
+  top_skills:
+  - Cross-encoder query-document relevance scoring
+  - Multimodal table and chart ranking
+  - PDF page relevance evaluation
+routing:
+  complexity_tier: Low
+  semantic_description: Reranks retrieved candidate chunks and visual documents from
+    pgvector/memU before prompt assembly.
+  supported_intents:
+  - rerank_memory_candidates
+  - score_document_relevance
+  - rank_visual_artifacts
+  task_ratings:
+    document_reranking: 4.9
+    visual_table_relevance: 4.8
+execution:
+  autonomy_level: Read-only
+  memory_scope: stateless
+  quotaPolicy:
+    resumable: false
+    defaultRetryDelayMs: 60000
+    maxRetryAttempts: 2
+    exhaustionPattern: 429|rate_limited
+permissions:
+  sourceWrite: false
+  directoryMoves: false
+  gitCommit: false
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Low
+  credential_model: system_standing
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - DATABASE_URL
+  mcpToolAllowlist: []
+  handoff_targets: []

@@ -1,0 +1,71 @@
+id: north-mini-code
+displayName: Cohere North Mini Code
+description: Cohere 30B MoE model (3B active parameters) with a 256K context window
+  under Apache 2.0. Tailored for agentic coding, Git worktree inspection, bug repairs,
+  unit test generation, and automated CI fixes in headless Ubuntu OpenCode.
+kind: cli_agent
+provider: Cohere
+model: cohere/north-mini-code:free
+runtime:
+  transport: headless_cli
+  executionHost: ubuntu_agent_server
+  binaryPath: /usr/local/bin/opencode
+  commandTemplate: opencode run --model cohere/north-mini-code:free --format json
+    --prompt {{PROMPT}}
+  workspaceRoot: /var/agent-bridge/worktrees/{{SESSION_ID}}
+linearBridge:
+  workerHost: linear-north.revrebel.io
+  tunnelHost: north-agent.revrebel.io
+  supportedEvents:
+  - session_created
+  - session_prompted
+  completionMode: worker_callback
+taxonomy:
+  agent_type: Goal-based
+  domain: Software engineering, CI repair, and automated testing
+  top_skills:
+  - Git commit investigation & diff inspection
+  - TypeScript & Python unit test repair
+  - CI/CD workflow failure resolution
+routing:
+  complexity_tier: High
+  semantic_description: Autonomous software development, test generation, and bounded
+    file editing within approved Git worktrees.
+  supported_intents:
+  - implement_feature
+  - fix_ci_failure
+  - write_tests
+  - refactor_module
+  task_ratings:
+    ci_repair: 4.8
+    test_generation: 4.7
+    feature_implementation: 4.3
+execution:
+  autonomy_level: Executor
+  memory_scope: session_isolated
+  sessionContinuityFlag: --session-id {{SESSION_ID}}
+  quotaPolicy:
+    resumable: true
+    defaultRetryDelayMs: 3600000
+    maxRetryAttempts: 3
+    exhaustionPattern: 429|quota_exceeded|rate_limited
+permissions:
+  sourceWrite: true
+  directoryMoves: true
+  gitCommit: true
+  gitPush: false
+  autoMerge: false
+  deployment: false
+security:
+  blast_radius: Medium
+  credential_model: ephemeral_session
+  envStripPatterns:
+  - BRIDGE_SHARED_SECRET
+  - LINEAR_API_KEY
+  - GITHUB_TOKEN
+  mcpToolAllowlist:
+  - github/list_commits
+  - github/get_diff
+  handoff_targets:
+  - gemma-4-31b
+  - human_supervisor
