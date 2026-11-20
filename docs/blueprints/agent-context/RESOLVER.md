@@ -43,8 +43,3 @@ Neither `gitSha`, a README, a research profile, nor a topic match grants agent e
 Run `python3 scripts/test_context_resolver.py`, `python3 scripts/test_agent_context_cli.py` and `python3 scripts/test_install_agent_context.py` in a clean reviewed checkout. Tests use temporary host roots and Git fixtures so no real native CLI profile or service state changes.
 
 After an approved resolver change merges, run the reviewed `scripts/install-agent-context.py --apply` and `--check` on Ubuntu, then confirm direct CLI retrieval and that all available README contents remain complete. If a Git-owned host README changes, reconcile it separately through `scripts/reconcile-host-root-readmes.py`. C4's path/partial behavior is documented in [SAFETY.md](SAFETY.md); C5 owns expanded cross-platform acceptance.
-
-
-## E4 reviewed custom host source paths
-
-For a second coding repository, a manifest entry such as `host.design-system: {root: host-ui, path: README.md, source: templates/context/host-roots/design-system/README.md}` is selected and verified like the legacy three host documents. The Git-owned `source` supplies indexed topics/owners, exact bytes, SHA-256 and last-modifying Git SHA, while `root` and `path` identify the actual host-installed README. A mismatch fails rather than being tolerated by `--allow-partial`; only genuinely missing optional host files are partial. This extension does not require importing the Agent Bridge research catalog or running its agents. See [E4 independent repository acceptance](SECOND_REPOSITORY_PILOT.md).

@@ -42,8 +42,3 @@ Hashes are *integrity checks*, not cryptographic signatures or proof of sender i
 4. Keep contextBundle.partial, missingDocuments, unmatchedPaths, document versions and original source paths visible. Do not discard dependency or provenance evidence.
 
 **Scope:** D5 adds a required skill workflow and portable envelope creator/verifier, with regression tests for independent-session replay and tampering. It does not rewrite old Linear comments, modify the live Bridge webhook transport, automatically post oversized bundles, or install a new binary in /opt. Existing senders have their own prompt limits; use a durable attachment when necessary. A future transport adapter can reuse this canonical envelope without inventing another provenance format.
-
-
-## E4 portability: pinned custom host source replay
-
-The `--check-source` verifier now reconstructs pinned Git-owned metadata from each non-repo locator's optional reviewed `source` (falling back to the existing fixed legacy host sources only when no custom source is declared). It verifies the same dependency closure, selected IDs, byte content and original source-path provenance. The independent Next.js pilot exercises a source-pinned JSON handoff after its separate UI and toolchain host roots disappear, with no Agent Bridge worker IDs in its manifest. See [E4 acceptance](SECOND_REPOSITORY_PILOT.md).

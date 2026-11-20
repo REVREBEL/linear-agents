@@ -64,10 +64,11 @@ def _index(repo_root, manifest, schema):
     for doc_id, locator in sorted(manifest["documents"].items()):
         if locator["root"] == "repo":
             source = Path(repo_root) / locator["path"]
-        elif doc_id in HOST_SOURCE_DOCS or locator.get("source"):
-            source = Path(repo_root) / (locator.get("source") or HOST_SOURCE_DOCS[doc_id])
+        elif doc_id in HOST_SOURCE_DOCS:
+            source = Path(repo_root) / HOST_SOURCE_DOCS[doc_id]
         else:
-            # Host-only documents without a reviewed Git source remain unindexed.
+            # Host-only optional documents without reviewed Git metadata
+            # cannot be selected by topic or path until their metadata exists.
             continue
         metadata = read_frontmatter(source, schema)
         if metadata["id"] != doc_id:
@@ -214,9 +215,9 @@ def _source_entry(repo_root, manifest, root_paths, doc_id, metadata, head, reaso
     if manifest["documents"][doc_id]["root"] == "repo":
         git_path = manifest["documents"][doc_id]["path"]
     else:
-        git_path = locator.get("source") or HOST_SOURCE_DOCS.get(doc_id)
-        if git_path is None:
+        if doc_id not in HOST_SOURCE_DOCS:
             raise ValueError(f"No reviewed Git source for host document: {doc_id}")
+        git_path = HOST_SOURCE_DOCS[doc_id]
     raw = target.read_bytes()
     committed = git(repo_root, "show", f"HEAD:{git_path}")
     dirty = raw != committed

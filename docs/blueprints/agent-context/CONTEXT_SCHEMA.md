@@ -40,8 +40,3 @@ The C1 `select_host_root` helper **selects an absolute path string only**. It do
 From the project root, run `python3 scripts/validate-context-contract.py` for the full v1 manifest and documentation graph. Run `python3 scripts/test_context_contract.py` for negative tests covering duplicate keys, omitted metadata, traversal, cycles, missing/escaping documents, and Linux/macOS/Windows overrides. The existing `scripts/validate-context-blueprint.py` and scoped GitHub Actions workflow also invoke this contract.
 
 When the schema or reusable templates change, first merge the reviewed PR; then explicitly republish the Git sources on Ubuntu using `python3 scripts/publish-context-templates.py --apply` and verify `--check`. This keeps `/opt/agent-tools/templates/context/` versioned without running any agent, restarting services, or changing `/opt/agents/` native state.
-
-
-## E4 extension: portable reviewed non-repo README sources
-
-The `documents` locator now permits an optional `source` field for **non-repo** documents. It must be a normalized, traversal-free Git-relative README path within the project's own checkout, with a frontmatter `context.id` matching the locator's ID. A custom root may declare an absolute default and a platform-native environment override while `source` provides the repository-controlled metadata and byte-for-byte source. Repo-owned locators cannot redirect their source. Existing `host.agent-runtimes`, `host.agent-tools`, and `host.global-tools` keep the fixed source/root/path contract, rejecting a conflicting `source`. Optional host documents lacking reviewed Git `source` stay unindexed, rather than becoming a trust shortcut. See [E4 second-repository pilot](SECOND_REPOSITORY_PILOT.md).

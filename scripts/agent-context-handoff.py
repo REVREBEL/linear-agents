@@ -191,7 +191,7 @@ def pinned_context_index(root, commit, manifest):
     index, sources = {}, {}
     for doc_id, locator in sorted(manifest["documents"].items()):
         source_path = (locator["path"] if locator["root"] == "repo"
-                       else locator.get("source") or HOST_SOURCE_DOCS.get(doc_id))
+                       else HOST_SOURCE_DOCS.get(doc_id))
         if source_path is None:
             continue  # Same unindexed optional host-document policy as C3.
         raw = git(root, "show", commit + ":" + source_path)
@@ -384,7 +384,7 @@ def verify_handoff(envelope, *, allow_partial=False, repo_root=None,
             else:
                 # Host README bytes are linked to committed managed templates,
                 # not to a private /opt runtime root on the original host.
-                expected = origin.get("source") or HOST_SOURCE_DOCS.get(item["id"])
+                expected = HOST_SOURCE_DOCS.get(item["id"])
             if item["gitSourcePath"] != expected:
                 raise ValueError("Pinned Git source path does not match context manifest")
             if item["id"] not in sources:

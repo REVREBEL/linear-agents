@@ -36,7 +36,6 @@ on:
       - 'scripts/test_context_handoff.py'
       - 'scripts/test_qwen_local_context_pilot.py'
       - 'scripts/test_context_fresh_session.py'
-      - 'scripts/test_context_second_repo.py'
       - 'memory/**'
       - 'scripts/memu-promote.mjs'
       - 'jobs/preparation/local-task-preparation.mjs'
@@ -103,8 +102,6 @@ jobs:
         run: python scripts/test_context_fresh_session.py
       - name: Test E3 scoped checkpoints and no README-driven memU promotion
         run: node --test memory/context-memory-isolation.test.mjs memory/memu-memory.test.mjs memory/postgres-checkpoint-store.test.mjs linear-agent-bridge/memu-memory.test.mjs
-      - name: Test E4 portable context in an independent Next.js Git repository
-        run: python scripts/test_context_second_repo.py
       - name: Validate reviewed Agent Context CLI artifact
         run: python scripts/install-agent-context.py --validate
       - name: Test guarded Agent Context CLI installation
@@ -161,10 +158,6 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: python scripts/test_context_fresh_session.py
-      - name: Native OS E4 unrelated Next.js Git repository portability
-        env:
-          PYTHONUTF8: '1'
-        run: python scripts/test_context_second_repo.py
       - name: Native OS versioned context handoff and pinned Git replay
         env:
           PYTHONUTF8: '1'
