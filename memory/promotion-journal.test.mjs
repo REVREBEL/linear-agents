@@ -172,3 +172,37 @@ test("a receipt growing after stat is rejected with bounded I/O", async () => {
     } finally { fs.open = originalOpen; }
   });
 });
+
+test("new journal root and missing ancestors are synced in containing-parent order", async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), "abr59-parent-sync-"));
+  try {
+    const root = path.join(base, "nested-one", "nested-two", "receipts");
+    const synced = [];
+    const syncDir = async directory => {
+      synced.push(directory);
+      const handle = await import("node:fs/promises").then(m =>
+        m.open(directory, m.constants.O_RDONLY | m.constants.O_DIRECTORY));
+      try { await handle.sync(); } finally { await handle.close(); }
+    };
+    const result = await createPromotionJournal({ root, syncDir })
+      .stageVerified(args(github()));
+    assert.equal(result.created, true);
+    assert.deepEqual(synced, [
+      base, path.join(base, "nested-one"),
+      path.join(base, "nested-one", "nested-two"), root,
+    ]);
+    assert.equal((await createPromotionJournal({ root }).read({
+      scope, prNumber: 253, headSha: sha,
+    })).id, result.receipt.id);
+  } finally { await rm(base, { recursive: true, force: true }); }
+});
+test("failed parent-directory fsync prevents acknowledgement of publication", async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), "abr59-fsync-fail-"));
+  try {
+    const root = path.join(base, "missing-parent", "receipts");
+    await assert.rejects(createPromotionJournal({ root, syncDir: async directory => {
+      if (directory === base) throw Error("parent fsync failure");
+    } }).stageVerified(args(github())), /parent fsync failure/);
+    assert.deepEqual(await readdir(path.join(base, "missing-parent")), []);
+  } finally { await rm(base, { recursive: true, force: true }); }
+});

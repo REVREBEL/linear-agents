@@ -25,9 +25,35 @@ export function promotionReceiptId({ scope, prNumber, headSha }) {
     ...IDENTITY_KEYS.map(k => identity[k]), prNumber, headSha,
   ])).digest("hex");
 }
-async function privateDirectory(root) {
+async function syncDirectory(directory) {
+  const handle = await fs.open(directory,
+    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW);
+  try { await handle.sync(); } finally { await handle.close(); }
+}
+async function privateDirectory(root, syncDir = syncDirectory) {
   if (!path.isAbsolute(root)) deny("journal root must be absolute");
-  await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  // mkdir(recursive:true) alone is not durable: sync each containing parent
+  // immediately after its new child directory entry is published.
+  const missing = [];
+  let cursor = root;
+  while (true) {
+    try {
+      const stat = await fs.lstat(cursor);
+      if (!stat.isDirectory()) deny("journal path component is not a directory");
+      break;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      missing.push(cursor);
+      const parent = path.dirname(cursor);
+      if (parent === cursor) deny("journal parent cannot be resolved");
+      cursor = parent;
+    }
+  }
+  for (const directory of missing.reverse()) {
+    try { await fs.mkdir(directory, { mode: 0o700 }); }
+    catch (error) { if (error.code !== "EEXIST") throw error; }
+    await syncDir(path.dirname(directory));
+  }
   const stat = await fs.lstat(root);
   if (!stat.isDirectory() || (stat.mode & 0o077) !== 0 ||
       (process.getuid && stat.uid !== process.getuid()))
@@ -78,15 +104,16 @@ async function readReceipt(root, id) {
  * Durable, scope-isolated authorization receipt. Only the real authenticated
  * GitHub verifier is allowed to create records. There is NO memU mutation API.
  */
-export function createPromotionJournal({ root }) {
-  if (typeof root !== "string" || !path.isAbsolute(root))
+export function createPromotionJournal({ root, syncDir = syncDirectory }) {
+  if (typeof root !== "string" || !path.isAbsolute(root) ||
+      typeof syncDir !== "function")
     deny("journal root must be absolute");
   return Object.freeze({
     async stageVerified({
       github, scope, prNumber, expectedHeadSha, requiredChecks, allowedCheckApps,
       permittedReviewers, now = () => new Date().toISOString(),
     }) {
-      await privateDirectory(root);
+      await privateDirectory(root, syncDir);
       // Always reverify on every stage attempt, including duplicate receipts.
       const proof = await verifyPromotionFromGitHub({
         github, scope, prNumber, expectedHeadSha, requiredChecks,
@@ -123,8 +150,7 @@ export function createPromotionJournal({ root }) {
         } catch (error) {
           if (error.code !== "EEXIST") throw error;
         }
-        const directory = await fs.open(root, fs.constants.O_RDONLY);
-        try { await directory.sync(); } finally { await directory.close(); }
+        await syncDir(root);
         if (!created) {
           const existing = await readReceipt(root, id);
           return { created: false, receipt: existing };
@@ -135,7 +161,7 @@ export function createPromotionJournal({ root }) {
       }
     },
     async read({ scope, prNumber, headSha }) {
-      await privateDirectory(root);
+      await privateDirectory(root, syncDir);
       const id = promotionReceiptId({ scope, prNumber, headSha });
       try {
         const receipt = await readReceipt(root, id);
@@ -149,7 +175,7 @@ export function createPromotionJournal({ root }) {
       }
     },
     async listPending(scope) {
-      await privateDirectory(root);
+      await privateDirectory(root, syncDir);
       const identity = scopeIdentity(scope);
       const entries = await fs.readdir(root);
       if (entries.length > 5000) deny("journal inventory too large");
