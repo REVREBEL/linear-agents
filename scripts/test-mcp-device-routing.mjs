@@ -402,3 +402,79 @@ test('revocation during pairing verification cannot reactivate a stale challenge
   assert.equal(store.inspect(next.deviceId).status, 'revoked');
   assert.throws(() => store.requireOnline(next.deviceId), /DEVICE_NOT_ACTIVE/);
 });
+
+test('ABR-97 two enrollment instances cannot consume the same signed challenge twice', async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'abr97-concurrent-pair-'));
+  const mac = makeConfig('macos-runtime');
+  let other, challenger, consumed = 0;
+  const first = createDeviceEnrollment({
+    journalDir: dir, now,
+    approveOperator: context => context?.approved ? { operatorId: context.operatorId } : null,
+    verifyTransport: observed => {
+      if (challenger) {
+        consumed++;
+        const { challenge } = challenger;
+        const accepted = other.activatePairing({
+          deviceId: mac.deviceId, nonce: challenge.nonce,
+          signature: signature(challenge.payload, mac.privateKey),
+          attestation: attestation(mac),
+        });
+        assert.equal(accepted.status, 'active');
+        challenger = null;
+      }
+      return observed;
+    },
+  });
+  other = createStore(dir);
+  t.after(async () => {
+    first.close();
+    other.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const challenge = first.requestPairing(operator, allowedConfig(mac));
+  challenger = { challenge };
+  assert.throws(() => first.activatePairing({
+    deviceId: mac.deviceId, nonce: challenge.nonce,
+    signature: signature(challenge.payload, mac.privateKey),
+    attestation: attestation(mac),
+  }), /STALE_OR_UNKNOWN_CHALLENGE/);
+  assert.equal(consumed, 1);
+  assert.equal(first.requireOnline(mac.deviceId).generation, 1);
+  assert.equal(other.requireOnline(mac.deviceId).generation, 1);
+  assert.equal(first.inspect(mac.deviceId).status, 'active');
+});
+
+test('ABR-97 replacing a pending challenge during verification invalidates the older signed proof', async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'abr97-replaced-pair-'));
+  const mac = makeConfig('macos-runtime');
+  let alternate, replacement;
+  const first = createDeviceEnrollment({
+    journalDir: dir, now,
+    approveOperator: context => context?.approved ? { operatorId: context.operatorId } : null,
+    verifyTransport: observed => {
+      replacement = alternate.requestPairing(operator, allowedConfig(mac));
+      return observed;
+    },
+  });
+  alternate = createStore(dir);
+  t.after(async () => {
+    first.close();
+    alternate.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const original = first.requestPairing(operator, allowedConfig(mac));
+  assert.notEqual(original.nonce, 'unknown');
+  assert.throws(() => first.activatePairing({
+    deviceId: mac.deviceId, nonce: original.nonce,
+    signature: signature(original.payload, mac.privateKey),
+    attestation: attestation(mac),
+  }), /STALE_OR_UNKNOWN_CHALLENGE/);
+  assert.equal(first.inspect(mac.deviceId), null);
+  const newlyApproved = alternate.activatePairing({
+    deviceId: mac.deviceId, nonce: replacement.nonce,
+    signature: signature(replacement.payload, mac.privateKey),
+    attestation: attestation(mac),
+  });
+  assert.equal(newlyApproved.generation, 1);
+  assert.equal(newlyApproved.status, 'active');
+});
