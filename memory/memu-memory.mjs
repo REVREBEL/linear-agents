@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { loadMemuRuntime, MEMU_INSTALLED_BINARY } from "./memu-runtime.mjs";
 
 const lastWarningAt = new Map();
 function warnRecall(reason, logger = console, now = Date.now()) {
@@ -52,7 +53,9 @@ export function compactRecall(result, limit = 5, scope = null) {
  */
 export async function retrieveMemuMemory(query, {
   enabled = process.env.MEMU_RETRIEVAL_ENABLED === "true",
-  binary = process.env.MEMU_BIN || "memu",
+  binary = process.env.MEMU_BIN || MEMU_INSTALLED_BINARY,
+  configPath = process.env.MEMU_RUNTIME_CONFIG_PATH || null,
+  runtimeLoader = loadMemuRuntime,
   timeoutMs = 5000,
   scope = null,
   logger = console,
@@ -64,10 +67,18 @@ export async function retrieveMemuMemory(query, {
     warnRecall("missing verified tenant/agent/repository/issue scope", logger);
     return "";
   }
+  let runtime = { binary, env: process.env };
+  if (configPath) {
+    try { runtime = await runtimeLoader({ configPath, binary }); }
+    catch { warnRecall("runtime configuration unavailable", logger); return ""; }
+  }
   return new Promise(resolve => {
-    const child = spawnImpl(binary, ["retrieve", String(query).slice(0, 500)], {
-      shell: false, env: process.env, stdio: ["ignore", "pipe", "pipe"],
-    });
+    let child;
+    try {
+      child = spawnImpl(runtime.binary, ["retrieve", String(query).slice(0, 500)], {
+        shell: false, env: runtime.env, stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch { warnRecall("spawn error", logger); resolve(""); return; }
     let out = "", settled = false;
     const finish = value => {
       if (settled) return;

@@ -6,6 +6,10 @@ This directory contains **versioned project commands and their tests**. It is no
 
 `scripts/memu-promote.mjs` now refuses unauthenticated standalone preparation: its JSON evidence is not trustworthy authorization. The installed core `memu` CLI has no `memorize prepare` command; read-only GitHub review and CI verification is implemented in `memory/promotion-verification.mjs`, but no evolve or commit executor is enabled. See [ABR-92 gate and activation prerequisites](../docs/ABR92_PROMOTION_GATE.md).
 
+## ABR-59 host memU runtime verification
+
+`node scripts/check-memu-runtime.mjs` is a **read-only, host-specific** diagnostic; run under the Bridge service account. It checks the private host config, approved absolute memU binary and local PostgreSQL pgvector version, stored-vector dimensions and aggregate counts without printing database DSNs, API keys or session content. It does not activate memory retrieval or mutation. See [ABR-59 runtime contract](../docs/ABR59_MEMU_RUNTIME.md).
+
 ## Runtime and CI
 
 - `workspace-command.mjs`, `agent-worker-registry.mjs`, `registry-worker-info.mjs`, `render-wrangler.mjs`, `workspace-typecheck.mjs` and `with-env.sh` support registered Worker commands and CI.
