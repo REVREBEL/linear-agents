@@ -93,6 +93,20 @@ test("local task preparation records verified scope and resumes only the same te
     const same = await prepareLocalAgentTask(payload("qwen-local", "org-one", "job-b", "session-b"));
     assert.match(same.routedJob.payload.data.promptContext, /Prior job: job-a/);
     assert.match(same.routedJob.payload.data.promptContext, /Source tests passed/);
+    // Expired same-scope data must not make fresh progress permanently expired.
+    await store.update(repositoryRoot, "ABR-90", {
+      expiresAt: "2000-01-01T00:00:00.000Z",
+      nextAction: "stale action",
+    });
+    const resumed = await prepareLocalAgentTask(payload("qwen-local", "org-one", "job-expired", "session-expired"));
+    assert.doesNotMatch(resumed.routedJob.payload.data.promptContext, /Source tests passed|stale action/);
+    const renewed = await store.read(repositoryRoot, "ABR-90");
+    assert.equal(renewed.expiresAt, null);
+    assert.deepEqual(renewed.progress, []);
+    await store.progress(repositoryRoot, "ABR-90", { summary: "fresh progress", jobKey: "job-expired" });
+    const afterExpiry = await prepareLocalAgentTask(payload("qwen-local", "org-one", "job-fresh", "session-fresh"));
+    assert.match(afterExpiry.routedJob.payload.data.promptContext, /fresh progress/);
+    assert.doesNotMatch(afterExpiry.routedJob.payload.data.promptContext, /stale action|Source tests passed/);
     const otherAgent = await prepareLocalAgentTask(payload("chatgpt-cli", "org-one", "job-c", "session-c"));
     assert.doesNotMatch(otherAgent.routedJob.payload.data.promptContext, /Prior job: job-b/);
     assert.deepEqual((await store.read(repositoryRoot, "ABR-90")).progress, []);
