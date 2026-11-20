@@ -22,7 +22,8 @@ This folder implements **issue-scoped short-term recovery checkpoints**, GitHub 
 | `local-agent-checkpoint.mjs` | Best-effort mirror of verified job-ledger transitions; refuses stale job keys; the ledger remains authoritative |
 | `opencode-session-checkpoint.mjs` | OpenCode progress/session observations, guarded by the current issue/job relationship |
 | `github-task-memory.mjs` | Per-PR short-term state under the Bridge job directory (`github-events/task-memory/`), separate from memU |
-| `memu-memory.mjs` | Optional fail-open long-term **recall** through a bounded, timed, non-shell memU command; disabled unless `MEMU_RETRIEVAL_ENABLED=true` |
+| `memu-memory.mjs` | Optional fail-open long-term **recall** through a bounded, timed, non-shell memU command; disabled unless `MEMU_RETRIEVAL_ENABLED=true`; optionally uses host-owned memU runtime config |
+| `memu-runtime.mjs` / `memu-runtime-diagnostic.mjs` | ABR-59 M1: private mode-0600 host config loader, approved absolute CLI and fixed read-only PostgreSQL health probe; see [runtime contract](../docs/ABR59_MEMU_RUNTIME.md) |
 | `evaluation/` | ABR-93 synthetic-only, scoped and source-pinned Ollama embedding/lexical ranking evaluation and model decision; see [benchmark report](evaluation/README.md). No production recall or reranker changes |
 | `promotion-verification.mjs` | ABR-92 M1: GitHub-client-injected same-SHA, merged PR, current authorized reviewer and passing trusted CI verification gate; **no** long-term memory write. See [promotion verification contract](../docs/ABR92_PROMOTION_GATE.md) |
 | `factory-brain.mjs` | Private, read-only, operator-digest-approved, tenant/agent/repository-scoped Tier 2 reference data with strict size, expiry, mode and provenance checks; no mutation API. See [ABR-91](../docs/ABR91_FACTORY_BRAIN.md) |
