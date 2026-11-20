@@ -403,6 +403,7 @@ test('queued jobs revalidate revoked and expired capabilities before launch', as
     await jobs.close();
     await rm(root, { recursive: true, force: true });
   }
+});
 
 test('ABR-96 revoked queued write never launches; in-flight process is terminated', async t => {
   const { root, project, config } = await setup(t);
