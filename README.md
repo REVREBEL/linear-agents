@@ -506,6 +506,10 @@ The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge
 
 [The remote MCP upstream/source audit](docs/audits/mcp/README.md) and [tool parity contract](docs/audits/mcp/tool-parity.json) document the planned self-hosted Desktop Commander port (30 connected tools, 42 BRC agent tools, three relay tools). This branch adds an **offline/local, read-only relay+host fixture** using pinned `ws@8.21.0` with no production listener, OAuth, command execution, third-party file transfer, or deployment. The existing `bridge/server/agent-bridge-runtime.mjs`, `/jobs` identity, review inbox and job ledger remain authoritative. See ABR-95–100 for staged completion and deployment decisions.
 
+### ABR-59 — Durable signed source-approval authority (M6)
+
+An **unwired** approval store now seals independently source-verified learning records only after checking an existing journal proof. A private 0700 directory and 0600 records use atomic publication and an operator-supplied HMAC key. Restart loading verifies the signature, exact tenant/agent/repo/issue and expiry, and produces the trusted receipt mappings/digests required by the M5 reader. This does **not** activate memory injection or make the service a general-purpose signing authority. See [M6 contract](docs/ABR59_APPROVAL_AUTHORITY.md).
+
 ### ABR-59 — Read-only database-scoped memU recall (M5)
 
 A new **unwired** PostgreSQL reader applies scoped `user_id` and `agent_id` filters to both parent recall files and child segments *before* any content leaves the database, then checks the result against separate approved source material and digests. An isolated synthetic-scope SQL probe passed against live `agent_memory` in read-only mode. This is not database row-level security, automatic prompt injection or a production-ready trusted source loader. See [M5 contract](docs/ABR59_AUTHORIZED_READ.md).
