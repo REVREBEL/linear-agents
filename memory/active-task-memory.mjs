@@ -102,6 +102,11 @@ export function createActiveTaskMemory(root) {
           lastSessionId: prior?.lastSessionId || null, lastProviderSessionId: prior?.lastProviderSessionId || null, lastSeenAt: prior?.lastSeenAt || null,
           lastVerifiedResult: prior?.lastVerifiedResult || null,
           progress: prior?.progress || [], lastProgressAt: prior?.lastProgressAt || null,
+          // Bridge-verified MCP tool receipt hashes. Bounded durable replay
+          // rejection survives checkpoint lifecycle transitions and restarts.
+          recordedToolReceipts: prior?.recordedToolReceipts || [],
+          hostId: prior?.hostId || null, branch: prior?.branch || null,
+          repositoryId: prior?.repositoryId || null,
           promotion: prior?.promotion || null,
           expiresAt: prior?.expiresAt || null, nextAction: prior?.nextAction || null,
           artifacts: prior?.artifacts || [], source: prior?.source || null,
