@@ -211,6 +211,21 @@ export function createMcpBridgeIntegration({
     });
   }
   async function sourceLinkedHandoff(handle, envelope) {
+    // Preserve the exact JSON data checked by the trusted D5 verifier.
+    try {
+      const json = JSON.stringify(envelope);
+      if (typeof json !== 'string' || Buffer.byteLength(json, 'utf8') > 2_000_000)
+        throw Error('invalid');
+      envelope = JSON.parse(json);
+      const freeze = value => {
+        if (value && typeof value === 'object') {
+          for (const child of Object.values(value)) freeze(child);
+          Object.freeze(value);
+        }
+        return value;
+      };
+      freeze(envelope);
+    } catch { throw Error('INVALID_D5_CONTEXT_ENVELOPE'); }
     const { grant } = await requireJob(handle);
     if (typeof verifyD5Handoff !== 'function')
       throw Error('CANONICAL_D5_VERIFIER_NOT_CONFIGURED');
