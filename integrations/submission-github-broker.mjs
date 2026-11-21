@@ -6,11 +6,12 @@ const ID=/^[1-9][0-9]{0,15}$/;
 const SHA=/^[a-f0-9]{40}$/;
 const REPO=/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const REF=/^[A-Za-z0-9][A-Za-z0-9_./-]{0,200}$/;
-const APPROVED={contents:'read',pull_requests:'read',checks:'read',statuses:'read',metadata:'read'};
+const READ={contents:'read',pull_requests:'read',checks:'read',statuses:'read',metadata:'read'};
 const fail=()=>Error('GITHUB_SUBMISSION_BROKER_DENIED');
 const validRef=v=>typeof v==='string'&&REF.test(v)&&!v.includes('..')&&!v.includes('//')&&!v.endsWith('/')&&!v.endsWith('.lock');
-export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=fetch,now=Date.now}={}){
+export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=fetch,now=Date.now,allowPublication=false}={}){
   if(!Array.isArray(mappings)||typeof loadPrivateKey!=='function'||typeof fetchImpl!=='function')throw fail();
+  const APPROVED=Object.freeze({...READ,pull_requests:allowPublication?'write':'read'});
   const map=new Map(),cache=new Map(),inflight=new Map();
   for(const m of mappings){
     if(!m||typeof m.agentId!=='string'||!REPO.test(m.repository)||
@@ -49,14 +50,14 @@ export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=
       const {data:installation}=await request('/repos/'+m.repository+'/installation',jwt);
       if(String(installation.id)!==m.installationId||String(installation.app_id)!==m.appId||
          installation.suspended_at||!installation.permissions||
-         !Object.keys(APPROVED).every(k=>['read','write','admin'].includes(installation.permissions[k])))throw fail();
+         !Object.keys(APPROVED).every(k=>APPROVED[k]==='write' ? installation.permissions[k]==='write' : ['read','write','admin'].includes(installation.permissions[k])))throw fail();
       const {data:issued}=await request('/app/installations/'+m.installationId+'/access_tokens',jwt,'POST',
         {repository_ids:[Number(m.repositoryNumericId)],permissions:APPROVED});
       const exp=Date.parse(issued.expires_at);
       if(typeof issued.token!=='string'||issued.token.length<20||issued.token.length>4096||/[\x00-\x20\x7f]/.test(issued.token)||
         !Number.isFinite(exp)||exp<=now()+60_000||exp>now()+3660000||
         !issued.permissions||Object.entries(issued.permissions).some(([k,v])=>APPROVED[k]!==v)||
-        !Object.keys(APPROVED).every(k=>issued.permissions[k]==='read')||
+        !Object.keys(APPROVED).every(k=>issued.permissions[k]===APPROVED[k])||
         !Array.isArray(issued.repositories)||issued.repositories.length!==1||
         String(issued.repositories[0].id)!==m.repositoryNumericId||issued.repositories[0].full_name!==m.repository)throw fail();
       const record={token:issued.token,expiresAt:exp};cache.set(m,record);return record;
@@ -74,7 +75,38 @@ export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=
     const read=async suffix=>request(prefix+suffix,await token(m));
     const {data:repo}=await read('');
     if(String(repo.id)!==m.repositoryNumericId||repo.full_name!==m.repository||repo.archived||repo.disabled)throw fail();
+    const validatePr=pr=>{
+      if(!Number.isSafeInteger(pr?.number)||pr.number<1||
+        pr.html_url!==`https://github.com/${m.repository}/pull/${pr.number}`||
+        pr.head?.repo?.full_name!==m.repository||pr.base?.repo?.full_name!==m.repository||
+        pr.head?.ref!==s.branch||pr.base?.ref!==s.base||pr.head?.sha!==s.headSha||
+        pr.state!=='open'||typeof pr.draft!=='boolean')throw fail();
+      return Object.freeze({number:pr.number,url:pr.html_url,headSha:pr.head.sha,draft:pr.draft,
+        authorId:String(pr.user?.id),body:typeof pr.body==='string'?pr.body:''});
+    };
+    const publication=allowPublication?{
+      async findOpenPull(){
+        if(!validRef(s.branch)||!validRef(s.base)||!SHA.test(s.headSha))throw fail();
+        const q=new URLSearchParams({state:'all',head:m.repository.split('/')[0]+':'+s.branch,per_page:'100'});
+        const {data,link}=await read('/pulls?'+q);
+        if(link.includes('rel="next"')||!Array.isArray(data)||data.length>1)throw fail();
+        return data.length?validatePr(data[0]):null;
+      },
+      async getPull(number){
+        if(!Number.isSafeInteger(number)||number<1)throw fail();
+        return validatePr((await read('/pulls/'+number)).data);
+      },
+      async createPull({title,body,draft,authorize}){
+        if(typeof title!=='string'||title.length>200||typeof body!=='string'||body.length>12000||
+          typeof draft!=='boolean'||typeof authorize!=='function'||!validRef(s.branch)||!validRef(s.base)||!SHA.test(s.headSha))throw fail();
+        const credential=await token(m);
+        await authorize();
+        return validatePr((await request(prefix+'/pulls',credential,'POST',
+          {title,body,head:s.branch,base:s.base,draft})).data);
+      },
+    }:{};
     return Object.freeze({
+      ...publication,
       async branchHead(branch){
         if(!validRef(branch))throw fail();
         const {data}=await read('/git/ref/heads/'+branch.split('/').map(encodeURIComponent).join('/'));

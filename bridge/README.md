@@ -49,3 +49,7 @@ The local `server/mcp-relay/` fixture optionally requires cryptographically vali
 ## ABR-17 M2 — Submission capability and preflight
 
 The opt-in `orchestration/submission-ingress.mjs`, `handlers/submission-channel.mjs` and `orchestration/submission-git-preflight.mjs` reuse the canonical job ledger and Linux sandbox. Launcher-bound scopes and current capability liveness remain enforced across M1 effects. No additional server or production route is started. See [submission contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+## ABR-17 M3 — Provider handoff
+
+`orchestration/submission-publication.mjs` composes the existing coordinator, host-only GitHub/Linear/Worker adapters and review inbox. Before any new publication or downstream mutation it revalidates exact head/readiness and job capability. Draft PRs remain pending; review queueing is not reviewer ACK. See [submission contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).

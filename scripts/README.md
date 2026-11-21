@@ -177,3 +177,7 @@ ABR-17 authorization race regression: deterministic held ledger reads exercise r
 ## ABR-17 M2 — Private submission CLI and fixtures
 
 `submit-work.mjs <issue-id> <summary>` requires trusted launcher-inherited duplex FD 3. No credentials, host URL or job ID are accepted in args/environment. `npm run submission:m2:test` checks the real child IPC path, scoped capabilities and revocation across M1, signed mocked GitHub broker exchanges, and actual Linux-confined Git reads against disposable fixtures. Provider deployment and linked worktree/Mac support remain gated.
+
+## ABR-17 M3 — Provider adapter regressions
+
+`npm run submission:m3:test` covers actual HTTP/GraphQL client request construction with signed fixture keys and simulated provider responses, durable PR reuse, draft/manual-ready recovery, lost responses at all external API stages, exact Linear actor/session/activity attribution, stale-head rejection, closed prior PR refusal, route denial and explicit failed/blocked Worker completion. The real disk-backed outbox and inbox are used. No live provider requests.

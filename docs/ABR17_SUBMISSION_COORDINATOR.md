@@ -132,3 +132,81 @@ M3 will add real scoped publication authority, actual PR/head/base and CI
 revalidation at the mutation boundary, Linear and Worker adapters, and
 independent recovery. M4 must integrate the existing dispatcher/runner
 transport and remove credential exposure in legacy provider contracts.
+
+## M3 — Verified provider publication and recovery
+
+The coordinator remains disabled by default. M3 adds host-only provider
+clients and composition, not a deployed dispatcher integration. All tokens
+and private keys are obtained through approved host callbacks, never from
+agent inputs. The broker defaults to read-only; its explicitly enabled
+publication permission adds only pull_requests:write scoped to the configured
+repository ID and verified installation, with no contents write. No Git push,
+force-update, merge, or deployment is performed.
+
+The repository's configured agent mapping must include the verified GitHub
+bot user ID and the ready/draft policy. GitHub PR history for the exact
+branch is queried with state=all; closed, mismatched or ambiguous history
+is refused rather than replaced. An existing open PR must have the issue
+marker, configured bot author, pinned repository/head/base and original
+PR number for a revision. A new PR records its initial verified head.
+Revisions use the same PR (the existing pre-pushed branch advances it),
+with new evidence in Linear and the canonical review inbox. All configured
+checks are independently read at publication and again before downstream
+mutations. A draft is an intentional external effect; the outbox remains
+pending at github_published until an explicitly authorized operator marks
+the PR ready and the read-only recovery verifies it. M3 does not
+automatically convert drafts or wait for PR-only CI. M1's pre-pushed,
+pre-verified-check policy is retained.
+
+Linear uses a fixed GraphQL endpoint, a private token loader, and explicit
+tenant/organization, agent app user, exact team and workflow state mapping.
+Comment publication includes the PR, exact submitted head, configured
+verified-check status, sanitized descriptive summary and deterministic
+operation marker. Verify the saved comment and author using a bounded full
+connection; a missing, duplicate or conflicting result is not proof.
+Transition only to the configured started-type In Review state in the
+same team. Independently read back the actual state. A missing or ambiguous
+review routing destination prevents publication. The existing durable
+ChatGPT user-review inbox receives the canonical ready_for_review event;
+queued does not imply reviewer notification or acknowledgment. ABR-18 must
+reconcile webhook and coordinator event deduplication across event types.
+
+Worker completion uses the mapped HTTPS /complete endpoint, the actual
+existing agentSessionId/organizationId/status/activityType/body contract,
+and never forwards the Worker secret to an agent. Before writing, read
+the scoped Linear session and require the expected issue and app user.
+Completed status requires In Review and the verified review inbox.
+Then independently query Linear AgentSession activities, verifying
+the exact operation marker, content type, author, archived/ephemeral/signal
+state, session status and latest activity. Worker request statuses are
+completed/failed, whereas Linear session statuses are complete/error.
+A transport acknowledgment is not a verified completed session. Source:
+https://linear.app/developers/agent-interaction and
+https://linear.app/developers/agent-best-practices (Agent Session lifecycle,
+Agent Activity union, activity queries); the existing shared Worker
+delivery-coordinator contract owns /complete routing.
+
+An explicit trusted failure or blocked submission is a distinct
+received → failed/blocked journal path: terminal error activity only, no
+GitHub publication, In Review or reviewer queue. It cannot overwrite a
+successful or uncertain submission. Known terminal failure retries are
+read-only; pending ambiguous failure effects require independent observation.
+Existing runner integration must supply this explicit outcome, not infer it
+from an agent's prose or provider timeout. Recovery requires trusted
+operator/host approval and only performs reads of the pending operation.
+No automatic replay, no second task authority.
+
+### Actual evidence and remaining gates
+
+M3 tests run real source clients using fixed provider URLs and injected
+fixture transport, test-only RSA keys, actual canonical ledger, SQLite
+outbox and review inbox. The direct Linear read-back contract is tested
+with provider-shaped fixture responses; credentials, installed app
+permissions, GraphQL schema/actor compatibility and production behavior
+are not verified by these fixtures. M2 covers actual confined Git reads.
+Missing/changed live evidence remains pending or denied, not fabricated
+success. M4 must wire the authenticated dispatcher and provider finish paths,
+including explicit failure handling, canonical ledger fields, trusted
+credential source, ABR-99 coordinator binding, and the minimized common
+skill. M5 must independently verify actual permissions, Linux/Mac policy,
+approved staging issue and real provider lifecycle before enabling.
