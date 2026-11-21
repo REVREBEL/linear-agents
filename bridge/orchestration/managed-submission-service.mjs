@@ -1,6 +1,7 @@
 // M4 composition loaded only on explicit operator activation. The native
 // launcher boundary is external and must be approved per host in M5.
 import { createMcpBridgeIntegration } from './mcp-milestone-integration.mjs';
+import { acquireSubmissionLease } from '../../jobs/persistence/submission-exclusive-lease.mjs';
 import { createSubmissionOutbox } from '../../jobs/persistence/submission-outbox.mjs';
 import { createSubmissionCoordinator } from './submission-coordinator.mjs';
 import { createSubmissionIngress } from './submission-ingress.mjs';
@@ -11,6 +12,8 @@ import { createManagedSubmissionRunner } from './managed-submission-runner.mjs';
 import { createSubmissionGithubBroker } from '../../integrations/submission-github-broker.mjs';
 import { createSubmissionLinearWorker } from '../../integrations/submission-linear-worker.mjs';
 import { lstatSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { probeSandbox } from '../agent/mcp-host-agent/sandbox-runner.mjs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -32,6 +35,24 @@ export async function loadManagedSubmissionHost(){
   return mod.createHostBinding();
 }
 
+// Startup gate: source fixtures do not authorize runtime activation. The
+// root-owned binding must explicitly approve the exact clean release SHA
+// and service host identity after a successful service-UID sandbox probe.
+export async function verifyManagedSubmissionActivation(binding,repositoryRoot){
+  if(process.platform!=='linux'||!process.getuid?.()||
+    typeof binding?.verifyActivation!=='function')throw deny();
+  const env={PATH:'/usr/bin:/bin',LANG:'C',GIT_OPTIONAL_LOCKS:'0'};
+  const git=args=>execFileSync('/usr/bin/git',['-C',repositoryRoot,...args],
+    {encoding:'utf8',timeout:3000,env}).trim();
+  const head=git(['rev-parse','HEAD']);
+  if(!/^[a-f0-9]{40}$/.test(head)||
+    git(['status','--porcelain','--untracked-files=no'])!=='')throw deny();
+  const probe=probeSandbox();
+  if(!probe.available||probe.uid!==process.getuid())throw deny();
+  if(await binding.verifyActivation(Object.freeze({head,uid:probe.uid,
+    hostId:'rebel-server',repositoryRoot}))!==true)throw deny();
+}
+
 export function createManagedSubmissionService({hostBinding:b,jobStore,jobsDir,
   projectsRoot,reviewInbox,reviewRoutingConfig,now=Date.now,
   allowRootForIsolatedTests=false,agyRunnerPath}){
@@ -45,6 +66,8 @@ export function createManagedSubmissionService({hostBinding:b,jobStore,jobsDir,
   const gitPreflight=createSubmissionGitPreflight({projectsRoot,workspaces:b.workspaces,
     githubBroker:broker,allowRootForIsolatedTests});
   const launchProvider=createManagedProviderLauncher({providerConfigs:b.providerConfigs,isolatedSpawn:b.isolatedSpawn,agyRunnerPath});
+  const lease=acquireSubmissionLease(jobsDir);
+  try {
   const outbox=createSubmissionOutbox(jobsDir);
   const launchProofs=new WeakMap();
   const ingress=createSubmissionIngress({jobStore,mappings:b.githubMappings,enabled:true,
@@ -74,4 +97,35 @@ export function createManagedSubmissionService({hostBinding:b,jobStore,jobsDir,
     verifyToolReceipt,verifyD5Handoff})=>createMcpBridgeIntegration({
     jobStore,memory,reviewInbox,verifyAdmittedJob,verifyToolReceipt,verifyD5Handoff,
     submitAdmittedWork:runner.submitAdmittedWork,now})});
+  } catch(error){lease.release();throw error;}
+}
+
+
+// Offline operator-only composition. No native launcher, publication token,
+// or active runner grant. The host must attest quiescence per job; the lease
+// excludes another managed runtime or recovery reader on the same ledger.
+export function createManagedRecoveryService({hostBinding:b,jobStore,jobsDir,
+  projectsRoot,reviewInbox,reviewRoutingConfig,now=Date.now,allowRootForIsolatedTests=false}){
+  if(!b||typeof b.verifyRecoveryRequest!=='function'||
+    typeof b.verifyOperatorRecovery!=='function'||typeof b.assertQuiescent!=='function')throw deny();
+  const lease=acquireSubmissionLease(jobsDir);
+  let outbox;
+  try{
+    outbox=createSubmissionOutbox(jobsDir);
+    const githubBroker=createSubmissionGithubBroker({mappings:b.githubMappings,
+      loadPrivateKey:b.loadPrivateKey,allowObservation:true,now});
+    const linearWorker=createSubmissionLinearWorker({mappings:b.linearMappings,
+      loadLinearToken:b.loadLinearToken,loadWorkerSecret:()=>{throw deny();}});
+    const gitPreflight=createSubmissionGitPreflight({projectsRoot,workspaces:b.workspaces,
+      githubBroker,allowRootForIsolatedTests});
+    const {adapters,verifyRecovery}=createSubmissionPublicationAdapters({
+      gitPreflight,githubBroker,linearWorker,reviewInbox,reviewRoutingConfig,
+      publicationPolicies:b.publicationPolicies,verifyRecoveryRequest:b.verifyRecoveryRequest});
+    const coordinator=createSubmissionCoordinator({jobStore,outbox,enabled:true,now,
+      verifyAdmission:()=>null,adapters,verifyRecovery,
+      operatorRecovery:{verify:b.verifyOperatorRecovery,assertExclusive:lease.isHeld,
+        assertQuiescent:b.assertQuiescent}});
+    return Object.freeze({recoverInterrupted:coordinator.recoverInterrupted,
+      close:()=>{try{outbox.close();}finally{lease.release();}}});
+  }catch(error){try{outbox?.close();}finally{lease.release();}throw error;}
 }

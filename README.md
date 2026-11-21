@@ -593,3 +593,7 @@ The [submission coordinator milestone](docs/ABR17_SUBMISSION_COORDINATOR.md) pro
 ## ABR-17 M4 — Managed provider finish paths
 
 The [submission coordinator contract](docs/ABR17_SUBMISSION_COORDINATOR.md) describes the opt-in authenticated Linux managed dispatch for AGY, Trae and OpenCode, one shared IPC/MCP finish operation, and the required protected host binding. Native provider isolation and descriptor propagation remain M5 operational gates.
+
+## ABR-17 M5 — Operational acceptance
+
+See [M5 operational evidence and rollback](docs/ABR17_SUBMISSION_COORDINATOR.md#m5--operational-evidence-operator-recovery-and-rollback). Managed activation is fail-closed until the clean release is independently approved and the actual non-root service sandbox passes. Source fixtures and observed host blockers are tracked separately.

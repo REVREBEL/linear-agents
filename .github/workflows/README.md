@@ -25,3 +25,5 @@ The MCP security/tool source audit and full deferred-gate list are at [ABR-94](.
 **ABR-17 M4:** Submission coordinator CI adds managed native launch/IPC and shared MCP finish regression tests using the previous provider-shaped HTTP fixtures. No real agent launch, private deployment binding or production activation.
 
 The M4 workflow runs the AGY Python unit suite in a disposable venv as well as Node managed-dispatch fixtures.
+
+**ABR-17 M5:** strict isolated Linux fixture CI includes the real FD/sandbox canary, exclusive lock/crash test, offline receipt recovery and root activation refusal. The host readiness report must separately verify actual service UID conditions at rollout.

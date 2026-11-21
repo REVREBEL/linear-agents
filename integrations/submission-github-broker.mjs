@@ -9,7 +9,7 @@ const REF=/^[A-Za-z0-9][A-Za-z0-9_./-]{0,200}$/;
 const READ={contents:'read',pull_requests:'read',checks:'read',statuses:'read',metadata:'read'};
 const fail=()=>Error('GITHUB_SUBMISSION_BROKER_DENIED');
 const validRef=v=>typeof v==='string'&&REF.test(v)&&!v.includes('..')&&!v.includes('//')&&!v.endsWith('/')&&!v.endsWith('.lock');
-export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=fetch,now=Date.now,allowPublication=false}={}){
+export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=fetch,now=Date.now,allowPublication=false,allowObservation=false}={}){
   if(!Array.isArray(mappings)||typeof loadPrivateKey!=='function'||typeof fetchImpl!=='function')throw fail();
   const APPROVED=Object.freeze({...READ,pull_requests:allowPublication?'write':'read'});
   const map=new Map(),cache=new Map(),inflight=new Map();
@@ -84,7 +84,7 @@ export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=
       return Object.freeze({number:pr.number,url:pr.html_url,headSha:pr.head.sha,draft:pr.draft,
         authorId:String(pr.user?.id),body:typeof pr.body==='string'?pr.body:''});
     };
-    const publication=allowPublication?{
+    const publication={
       async findOpenPull(){
         if(!validRef(s.branch)||!validRef(s.base)||!SHA.test(s.headSha))throw fail();
         const q=new URLSearchParams({state:'all',head:m.repository.split('/')[0]+':'+s.branch,per_page:'100'});
@@ -96,17 +96,17 @@ export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=
         if(!Number.isSafeInteger(number)||number<1)throw fail();
         return validatePr((await read('/pulls/'+number)).data);
       },
-      async createPull({title,body,draft,authorize}){
+      ...(allowPublication?{async createPull({title,body,draft,authorize}){
         if(typeof title!=='string'||title.length>200||typeof body!=='string'||body.length>12000||
           typeof draft!=='boolean'||typeof authorize!=='function'||!validRef(s.branch)||!validRef(s.base)||!SHA.test(s.headSha))throw fail();
         const credential=await token(m);
         await authorize();
         return validatePr((await request(prefix+'/pulls',credential,'POST',
           {title,body,head:s.branch,base:s.base,draft})).data);
-      },
-    }:{};
+      }}:{}),
+    };
     return Object.freeze({
-      ...publication,
+      ...(allowPublication||allowObservation?publication:{}),
       async branchHead(branch){
         if(!validRef(branch))throw fail();
         const {data}=await read('/git/ref/heads/'+branch.split('/').map(encodeURIComponent).join('/'));
