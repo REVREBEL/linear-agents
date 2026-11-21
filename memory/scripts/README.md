@@ -32,3 +32,5 @@ Context ID: `repo.memory.scripts`; dependencies: `repo.memory` and `repo.memory.
 ## Host authority controls (ABR-59 M11)
 
 `manage-host-authority-key.py` is a root-only operator command for key initialization, rotation, and revocation. `verify-host-evidence.mjs` performs the separately configured read-only evidence canary; credentials and live canary acceptance remain operator gates. See [M11 contract](../../docs/ABR59_HOST_MEMORY_AUTHORITY.md).
+
+The root-only `discover-linear-oauth-identity.mjs WORKSPACE_UUID` bootstrap reports the candidate app actor and workspace UUIDs for operator pinning, without printing or persisting access tokens. The evidence canary uses the dedicated client credential files and may create or renew its private token cache; neither command enables the running Bridge service or writes to Linear or memU.

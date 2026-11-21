@@ -2,6 +2,7 @@ import { createSign } from "node:crypto";
 import { readOperatorFile } from "./host-memory-authority.mjs";
 import { createGitHubReviewClient } from "./github-review-client.mjs";
 import { createLinearCompletionClient } from "./linear-completion-client.mjs";
+import { createLinearOAuthLifecycle } from "./linear-oauth-lifecycle.mjs";
 
 const REPO=/^[A-Za-z0-9_-][A-Za-z0-9_.-]*\/[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,7 +38,7 @@ function jwtFor(appId,pem){
 }
 /** Operator provisions credentials directly in a private root. No inherited
  * environment, CLI fallback, agent-owned PEM, token printing or arbitrary URLs.
- * The only POSTs mint a repository-limited read-only token or query Linear. */
+ * The only POSTs mint restricted provider tokens or query Linear. */
 export async function createHostEvidenceClients({root,job,fetchImpl=fetch}={}){
   try {
     job=structuredClone(job);
@@ -70,21 +71,14 @@ export async function createHostEvidenceClients({root,job,fetchImpl=fetch}={}){
       if(!pending)pending=mint().finally(()=>{pending=null;});
       return pending;
     }
-    async function linearToken(){
-      const token=(await readOperatorFile(root,"linear-oauth.token",4096)).toString("utf8").trim();
-      if(!tokenOk(token))throw deny();
-      const v=await jsonRequest(fetchImpl,"https://api.linear.app/graphql",token,
-        {query:"query BridgeAuthorityIdentity { viewer { id } organization { id } }"});
-      if(v.errors?.length||v.data?.viewer?.id!==config.linearActorId||
-        v.data?.organization?.id!==config.linearWorkspaceId)throw deny();
-      return token;
-    }
+    const linearOAuth=createLinearOAuthLifecycle({root,workspaceId:config.linearWorkspaceId,
+      actorId:config.linearActorId,fetchImpl});
     // Narrow the adapter to one pinned repository even for an erroneous call.
     const client=createGitHubReviewClient({tokenProvider:githubToken,fetchImpl});
     const github=Object.freeze(Object.fromEntries(["getPullRequest","listReviews","listCheckRuns","getCollaboratorPermission"].map(name=>
       [name,(repository,...args)=>{if(repository!==config.repositoryId)throw deny();return client[name](repository,...args);}])));
-    const clientLinear=createLinearCompletionClient({tokenProvider:linearToken,teamId:config.linearTeamId,github,
-      repositoryId:config.repositoryId,prNumber:job.prNumber,headSha:job.headSha,fetchImpl});
+    const clientLinear=createLinearCompletionClient({tokenProvider:()=>linearOAuth.getToken(),teamId:config.linearTeamId,github,
+      repositoryId:config.repositoryId,prNumber:job.prNumber,headSha:job.headSha,fetchImpl:linearOAuth.fetchGraphQL});
     const linear=Object.freeze({getIssue(id){if(id!==job.scope.issueId)throw deny();return clientLinear.getIssue(id);}});
     return Object.freeze({github,linear});
   } catch {throw deny();}
