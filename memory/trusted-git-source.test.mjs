@@ -150,3 +150,16 @@ test("real Git attestation authorizes M6 signing only for exact reviewed content
     assert.equal(loaded.approvedSources.get(receipt.id).content, CONTENT);
   });
 });
+
+test("Git replacement refs cannot substitute content at a reviewed commit", async () => {
+  await fixture(async ({ root, sha, candidate, verify }) => {
+    const replacement = "Unreviewed replacement content.";
+    await writeFile(path.join(root, SOURCE_PATH), replacement);
+    git(root, "add", SOURCE_PATH);
+    git(root, "commit", "-qm", "Replacement commit");
+    const replacementSha = git(root, "rev-parse", "HEAD");
+    git(root, "replace", sha, replacementSha);
+    assert.equal(await verify(candidate), true);
+    assert.equal(await verify({ ...candidate, content: replacement }), false);
+  });
+});
