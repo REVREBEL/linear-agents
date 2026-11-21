@@ -106,3 +106,15 @@ test("unverified candidate authority blocks commit before persistent claim", asy
     assert.equal((await readdir(args.journalRoot)).filter(x=>x.endsWith(".commit-started")).length,0);
   });
 });
+
+test("journal root cannot be substituted and verification policy cannot be downgraded",async()=>setup(async args=>{
+  let writes=0;
+  const commitImpl=async()=>{writes++;};
+  const other=await mkdtemp(path.join(os.tmpdir(),"abr59-other-root-"));
+  try{
+    await assert.rejects(executeVerifiedMemuCommit({...args,journalRoot:other,commitImpl}),/journal root mismatch/);
+    await assert.rejects(executeVerifiedMemuCommit({...args,allowedCheckApps:["other"],commitImpl}),/immutable review policy/);
+    await assert.rejects(executeVerifiedMemuCommit({...args,permittedReviewers:["reviewer"],commitImpl}),/immutable review policy/);
+    assert.equal(writes,0);
+  }finally{await rm(other,{recursive:true,force:true});}
+}));

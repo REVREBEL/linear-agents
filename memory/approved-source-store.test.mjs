@@ -13,7 +13,7 @@ import { PassThrough } from "node:stream";
 const scope={tenantId:"tenant1",agentId:"qwen",repositoryId:"REVREBEL/linear-agents",issueId:"ABR-59"};
 const receipt={scope,prNumber:257,headSha:"a".repeat(40),
   state:"verified-awaiting-executor",proof:{status:"verified-after-merge",
-    headSha:"a".repeat(40),mergeCommitSha:"c".repeat(40)}};
+    headSha:"a".repeat(40),mergeCommitSha:"c".repeat(40),repository:scope.repositoryId,prNumber:257}};
 receipt.id=promotionReceiptId(receipt);
 const source={scope,sourceGitSha:receipt.headSha,sourcePath:"docs/review.md",revision:1,
   content:"Verified note about isolated source-bound memory.",
@@ -24,7 +24,7 @@ async function fixture(run){
   try {
     const verifySource=async args=>args.content===source.content &&
       args.sourceGitSha===receipt.headSha && args.receiptId===receipt.id;
-    const journal={read:async()=>receipt};
+    const journal={read:async()=>receipt,readConfirmed:async()=>receipt};
     return await run({root,key,verifySource,journal,
       store:createApprovedSourceStore({root,key,verifySource,journal})});
   } finally { await rm(root,{recursive:true,force:true}); }
@@ -129,7 +129,7 @@ test("unknown receipts return empty, no unsanctioned full-directory scan",async(
 test("caller-forged receipt without independently journaled proof is rejected",async()=>{
   await fixture(async ({root,key,verifySource})=>{
     const forged=createApprovedSourceStore({root,key,verifySource,
-      journal:{read:async()=>null}});
+      journal:{read:async()=>null,readConfirmed:async()=>null}});
     await assert.rejects(forged.approve({receipt,source,now}),
       /independently journaled approval/);
     const {readdir}=await import("node:fs/promises");

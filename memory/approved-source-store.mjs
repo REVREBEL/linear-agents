@@ -1,6 +1,8 @@
-import { createHmac, timingSafeEqual, randomUUID } from "node:crypto";
+import { createHmac, timingSafeEqual, randomUUID, createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { buildVerifiedMemuPayload } from "./memu-commit-executor.mjs";
 import { recallDigest, verifiedRecallEnvelope } from "./scoped-recall.mjs";
 import { promotionReceiptId } from "./promotion-journal.mjs";
 
@@ -91,7 +93,14 @@ async function readRecord(filename) {
 export function createApprovedSourceStore({ root, key, verifySource, journal } = {}) {
   if (!path.isAbsolute(root || "") || !Buffer.isBuffer(key) || key.length < 32 ||
       typeof verifySource !== "function" ||
-      typeof journal?.read !== "function") deny("trusted store dependencies");
+      typeof journal?.read !== "function" || typeof journal?.readConfirmed !== "function") deny("trusted store dependencies");
+  key = Buffer.from(key);
+  async function confirmed(receipt, source) {
+    const digest = createHash("sha256").update(JSON.stringify(buildVerifiedMemuPayload({receipt,candidate:source}))).digest("hex");
+    const persisted = await journal.readConfirmed({scope:source.scope,prNumber:receipt.prNumber,headSha:receipt.headSha,digest});
+    if (!isDeepStrictEqual(persisted, receipt)) deny("exact confirmed commit required");
+    return digest;
+  }
   return Object.freeze({
     async approve({ receipt, source, now = Date.now() }) {
       // Freeze the values we authorize before any asynchronous boundary.
@@ -103,10 +112,7 @@ export function createApprovedSourceStore({ root, key, verifySource, journal } =
       const persisted = await journal.read({
         scope: { ...source.scope }, prNumber: receipt.prNumber, headSha: receipt.headSha,
       });
-      if (!persisted || persisted.id !== receipt.id ||
-          persisted.proof?.status !== "verified-after-merge" ||
-          persisted.proof?.headSha !== receipt.headSha ||
-          persisted.proof?.mergeCommitSha !== receipt.proof.mergeCommitSha)
+      if (!isDeepStrictEqual(persisted, receipt))
         deny("independently journaled approval missing");
       if (await verifySource({ scope: { ...source.scope }, sourceGitSha: source.sourceGitSha,
         sourcePath: source.sourcePath, revision: source.revision,
@@ -116,8 +122,10 @@ export function createApprovedSourceStore({ root, key, verifySource, journal } =
         scope: source.scope, trustedDigests: new Set([recallDigest(source)]), now,
       }).entries.length !== 1)
         deny("source content failed lower-trust sanitizer");
+      const commitDigest = await confirmed(receipt, source);
       const payload = Object.freeze({
-        version: 1, receiptId: receipt.id, scope: source.scope,
+        version: 2, receiptId: receipt.id, scope: source.scope,
+        receipt, commitDigest,
         sourceGitSha: source.sourceGitSha, sourcePath: source.sourcePath,
         revision: source.revision, expiresAt: source.expiresAt,
         content: source.content, digest: recallDigest(source),
@@ -151,13 +159,15 @@ export function createApprovedSourceStore({ root, key, verifySource, journal } =
         try { record = await readRecord(path.join(root, id + ".json")); }
         catch (error) { if (error.code === "ENOENT") continue; throw error; }
         const item = inspect(record, key);
-        if (item.version !== 1 || item.receiptId !== id ||
+        if (item.version !== 2 || item.receiptId !== id ||
             item.scope == null || SCOPE.some(k => item.scope[k] !== scope[k]) ||
             typeof item.expiresAt !== "string" ||
             !Number.isFinite(Date.parse(item.expiresAt)) ||
             Date.parse(item.expiresAt) <= now ||
             !SHA.test(item.digest) || recallDigest(item) !== item.digest)
           deny("unapproved, expired or foreign source record");
+        validate(item, item.receipt, now);
+        if (await confirmed(item.receipt, item) !== item.commitDigest) deny("commit digest mismatch");
         approvedSources.set(id, item);
         trustedDigests.add(item.digest);
       }

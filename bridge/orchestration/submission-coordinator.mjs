@@ -105,7 +105,9 @@ function checkReceipt(step,value,s,row) {
   throw Error('INVALID_SUBMISSION_STAGE');
 }
 export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,isAdmissionLive=()=>true,verifyRecovery=null,adapters,enabled=false,now=Date.now}) {
-  if(!jobStore?.get||!outbox?.claim||typeof verifyAdmission!=='function'||typeof isAdmissionLive!=='function'||
+  if(typeof jobStore?.get!=="function"||
+     ["claim","get","intent","advance"].some(name=>typeof outbox?.[name]!=="function")||
+     typeof verifyAdmission!=="function"||typeof isAdmissionLive!=="function"||
      !adapters||Object.values(methods).some(name=>typeof adapters[name]!=='function'))
     throw TypeError('TRUSTED_SUBMISSION_ADAPTERS_REQUIRED');
   const handles=new WeakMap();
