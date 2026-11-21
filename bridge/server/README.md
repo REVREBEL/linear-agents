@@ -11,3 +11,5 @@ The stable systemd/LaunchAgent path `linear-agent-bridge/agent-bridge.mjs` is a 
 ## ABR-17 M4 — Managed submission selection
 
 `BRIDGE_MANAGED_SUBMISSION_ENABLED=true` requires the protected Linux host binding at /etc/agent-bridge/managed-submission-host.mjs before starting the existing HTTP runtime. For AGY, Trae and chatgpt-cli, authenticated /jobs enters managed admission, not legacy dispatch; unapproved Mac routes are denied. No public submission endpoint. Default off preserves the legacy runtime. The host binding and operational enablement are M5 gates.
+
+Legacy AGY quota retry recovery remains per-record, independent of managed submission enablement. Managed waiting-quota records never resume via the legacy timer; both startup and timer execution use the same predicate.

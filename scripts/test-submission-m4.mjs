@@ -159,3 +159,17 @@ test('M4 concurrent managed launches for one checkout are denied before native s
   x.getChild().kill();await completion;
   assert.deepEqual(x.effects,[]);
 });
+
+
+test('M4 startup recovers only legacy quota waits, even when managed service is enabled',async()=>{
+  const {isLegacyQuotaRetry}=await import('../bridge/orchestration/agy-quota-recovery.mjs');
+  const {readFile}=await import('node:fs/promises');
+  const resumeAt='2026-11-21T00:00:00Z';
+  const records=[{key:'legacy',state:'waiting_quota',resumeAt},
+    {key:'managed',state:'waiting_quota',resumeAt,submissionMode:'managed'},
+    {key:'invalid',state:'waiting_quota',resumeAt:'not a date'}];
+  assert.deepEqual(records.filter(isLegacyQuotaRetry).map(r=>r.key),['legacy']);
+  const runtime=await readFile(new URL('../bridge/server/agent-bridge-runtime.mjs',import.meta.url),'utf8');
+  assert.ok(runtime.includes('if (isLegacyQuotaRetry(record)) scheduleAgyResume(record.key, record.resumeAt);'));
+  assert.ok(runtime.includes('if (!isLegacyQuotaRetry(record) || record.resumeAt !== resumeAt) return;'));
+});

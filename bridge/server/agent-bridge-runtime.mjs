@@ -1,3 +1,4 @@
+import { isLegacyQuotaRetry } from "../orchestration/agy-quota-recovery.mjs";
 import { MANAGED_PROVIDERS } from "../orchestration/managed-submission-runner.mjs";
 import { createHttpRouteComposer } from "./http-route-composition.mjs";
 import { coordinateRemoteExecution } from "../orchestration/remote-execution-coordinator.mjs";
@@ -486,7 +487,7 @@ function scheduleAgyResume(jobKey, resumeAt) {
     agyResumeTimers.delete(jobKey);
     void (async () => {
       const record = await jobStore.get(jobKey);
-      if (record.state !== "waiting_quota" || record.resumeAt !== resumeAt) return;
+      if (!isLegacyQuotaRetry(record) || record.resumeAt !== resumeAt) return;
       if (!record.conversationId || !record.taskFile || !record.repositoryRoot || !record.workspace || !record.agentSessionId) {
         await jobStore.transition(jobKey, "failed", { error: "Incomplete AGY resume metadata" });
         await postAgyRecoveryActivity(record, "Automatic quota retry failed: resume metadata is incomplete.", "error");
@@ -628,8 +629,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
 // Recover scheduled AGY quota retries after a bridge restart.
 void jobStore.findByState("waiting_quota").then(records => {
   for (const record of records) {
-    if (managedSubmission) continue; // explicit operator reconciliation required
-    if (record.resumeAt) scheduleAgyResume(record.key, record.resumeAt);
+    if (isLegacyQuotaRetry(record)) scheduleAgyResume(record.key, record.resumeAt);
   }
 }).catch(error => console.error("AGY retry recovery failed:", error));
 

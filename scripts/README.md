@@ -187,3 +187,5 @@ ABR-17 authorization race regression: deterministic held ledger reads exercise r
 `npm run submission:m4:test` exercises actual submit-work child IPC with mocked AGY, Trae and OpenCode launchers and M3 fixed-endpoint provider fixtures, shared real canonical ledger/outbox/inbox, explicit terminal outcomes, wrong-issue/stale submission, and ABR-99 source callback without duplicate reviewer queueing. This is not a native process isolation proof. The CLI returns nonzero for denied or pending handoff.
 
 M4 regressions also verify actual confined final-head capture, managed duplicate acceptance, checkout launch exclusion, and the AGY Python wrapper's private FD propagation and suppression of legacy Worker calls.
+
+Legacy AGY quota retry recovery remains per-record, independent of managed submission enablement. Managed waiting-quota records never resume via the legacy timer; both startup and timer execution use the same predicate.
