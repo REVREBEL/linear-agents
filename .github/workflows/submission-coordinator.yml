@@ -24,4 +24,11 @@ jobs:
       - run: npm run submission:test
       - run: npm run bridge:test
       - run: npm run test:reliability
+      - name: Prepare isolated local Worker configuration
+        run: |
+          echo 'DOMAIN=example.com' > .env
+          for agent in ANTIGRAVITY CHATGPT CHATGPT_CLI GEMINI GEMMA TRAE MOCK; do
+            echo "${agent}_KV_NAMESPACE_ID=00000000000000000000000000000000" >> .env
+          done
+      - run: npm run types
       - run: npm run typecheck
