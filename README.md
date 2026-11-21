@@ -587,3 +587,8 @@ The [ABR-99 integration contract](docs/audits/mcp/BRIDGE_INTEGRATION.md) binds B
 The unwired host authority pins job identity and review policy, checks confirmed native commit markers, and loads operator-controlled signing keys and read-only GitHub/Linear evidence. Live credential verification and production activation remain outstanding. See [M11 authority contract](docs/ABR59_HOST_MEMORY_AUTHORITY.md).
 
 The M11 Linear provider now manages its own read-only client-credentials access-token lifecycle in the operator-owned authority directory, with automatic demand-driven renewal, bounded unauthorized-response recovery and pinned identity checks. Provision the client ID and secret rather than a manual access token. See [M11 OAuth setup](docs/ABR59_HOST_MEMORY_AUTHORITY.md).
+
+
+## ABR-17 M1 — Durable submission coordinator
+
+The [submission coordinator milestone](docs/ABR17_SUBMISSION_COORDINATOR.md) provides a disabled-by-default, trusted-adapter state machine and durable effect journal. Runner ingress, credential brokerage, actual publication adapters and deployment are separate gates.

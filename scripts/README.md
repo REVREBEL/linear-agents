@@ -167,3 +167,9 @@ One-time Ubuntu `/opt` bootstrap, global permission changes, shared shell config
 `test-mcp-bridge-integration.mjs` exercises the actual disposable `jobs/persistence/job-store.mjs`, `memory/active-task-memory.mjs` and `bridge/orchestration/review-inbox.mjs` together. It proves strict trusted-job session/host/repository/tenant matching, tool-receipt validation, bounded/redacted checkpoint CAS, persistent dedupe after progress eviction, concurrent updates, stale denial, D5 full context verifier opt-in and durable PR-head review queue/ACK distinction. Mocked submission/PR-verification clients are **test-only injected fixtures**; no production ABR-17 coordinator, EventIntelligence wakeup or live Linear/GitHub/Worker write is present. Run `npm run mcp:bridge:test` and independently `python3 scripts/test_context_handoff.py` for the actual D5 pinned source verifier. See [ABR-99 acceptance](../docs/audits/mcp/BRIDGE_INTEGRATION.md).
 
 ABR-99 review regressions verify D5 caller mutation during verification and attempted mutation after return, plus six truncation-boundary receipt cases with byte-identical persisted summaries, intact redaction markers, stable duplicate results and unchanged CAS revisions.
+
+## ABR-17 M1
+
+`npm run submission:test` exercises the actual canonical job ledger and SQLite submission effect journal using test-only publication adapters. Cases include concurrent connections, lost responses/restart at all six external stages, wrong admission, Git/CI refusal, same-head retries and same-PR revisions. No live providers or credentials are used.
+
+ABR-17 authorization race regression: deterministic held ledger reads exercise revocation and expiry at all eight submission lookups, both recovery lookups and initial handle minting.
