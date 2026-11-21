@@ -1,9 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
 import { nativeScopedIdentity } from "./scoped-postgres-recall.mjs";
 import { verifyPromotionFromGitHub } from "./promotion-verification.mjs";
-import { promotionReceiptId } from "./promotion-journal.mjs";
+import { promotionReceiptId, promotionJournalRoot } from "./promotion-journal.mjs";
 
 const MAX_TEXT = 600;
 const UNSAFE = /(?:sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9_]{12,}|password\s*[:=]|api[_-]?key\s*[:=]|-----BEGIN .*PRIVATE KEY|ignore previous instructions|bypass approval|<\/?system>)/i;
@@ -24,7 +25,7 @@ export function buildVerifiedMemuPayload({ receipt, candidate }) {
     refuse("unsafe or oversized learning");
   if (candidate.sourceGitSha !== receipt.headSha ||
       !Number.isSafeInteger(candidate.revision) || candidate.revision < 1 ||
-      typeof candidate.sourcePath !== "string" ||
+      typeof candidate.sourcePath !== "string" || candidate.sourcePath.length > 256 ||
       !/^(?!\/)(?!.*(?:^|\/)\.\.?\/)[A-Za-z0-9_./-]+$/.test(candidate.sourcePath) ||
       candidate.sourcePath.split("/").some(s => s === "." || s === ".."))
     refuse("unverified learning source");
@@ -38,7 +39,7 @@ export function buildVerifiedMemuPayload({ receipt, candidate }) {
     recall_files: [{
       track: "memory",
       name: "bridge-" + receipt.id,
-      description: "Verified task learning " + receipt.scope.issueId + " " + receipt.headSha.slice(0, 12),
+      description: "Verified task learning " + receipt.scope.issueId + " " + receipt.headSha.slice(0, 12) + " " + candidate.sourcePath + " revision " + candidate.revision,
       content: text,
     }],
   });
@@ -65,20 +66,25 @@ async function durableClaim(root, id, digest) {
  */
 export async function executeVerifiedMemuCommit({
   journal, journalRoot, github, linear, scope, prNumber, headSha,
-  requiredChecks, candidate, commitImpl, verifyCandidate,
+  requiredChecks, allowedCheckApps = ["github-actions"], permittedReviewers = null, candidate, commitImpl, verifyCandidate,
 } = {}) {
   if (!journal || typeof journal.read !== "function" ||
       !path.isAbsolute(journalRoot || "") || typeof commitImpl !== "function" ||
       !linear || typeof linear.getIssue !== "function" ||
       typeof verifyCandidate !== "function")
     refuse("trusted executor dependencies missing");
+  if (promotionJournalRoot(journal) !== path.resolve(journalRoot))
+    refuse("journal root mismatch");
+  scope = structuredClone(scope);
+  candidate = structuredClone(candidate);
+  const policy = structuredClone({requiredChecks, allowedCheckApps, permittedReviewers});
   const receipt = await journal.read({ scope, prNumber, headSha });
   if (!receipt) refuse("no durable verified approval receipt");
+  if (!isDeepStrictEqual(receipt.policy, policy)) refuse("immutable review policy mismatch");
   const proof = await verifyPromotionFromGitHub({
-    github, scope, prNumber, expectedHeadSha: headSha, requiredChecks,
+    github, scope, prNumber, expectedHeadSha: headSha, ...policy,
   });
-  if (proof.headSha !== receipt.headSha ||
-      proof.mergeCommitSha !== receipt.proof.mergeCommitSha)
+  if (!isDeepStrictEqual(proof, receipt.proof))
     refuse("current approval differs from journal");
   const issue = await linear.getIssue(scope.issueId);
   if (issue?.id !== scope.issueId ||
