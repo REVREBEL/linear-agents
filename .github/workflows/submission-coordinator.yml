@@ -13,6 +13,20 @@ on:
       - 'scripts/test-submission-coordinator.mjs'
       - 'package.json'
       - '.github/workflows/submission-coordinator.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bridge/orchestration/submission-coordinator.mjs'
+      - 'bridge/orchestration/submission-ingress.mjs'
+      - 'bridge/orchestration/submission-git-preflight.mjs'
+      - 'bridge/handlers/submission-channel.mjs'
+      - 'integrations/submission-github-broker.mjs'
+      - 'scripts/submit-work.mjs'
+      - 'scripts/test-submission-m2.mjs'
+      - 'jobs/persistence/submission-outbox.mjs'
+      - 'scripts/test-submission-coordinator.mjs'
+      - 'package.json'
+      - '.github/workflows/submission-coordinator.yml'
   workflow_dispatch:
 permissions:
   contents: read

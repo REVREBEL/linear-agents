@@ -506,6 +506,10 @@ The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge
 
 [The remote MCP upstream/source audit](docs/audits/mcp/README.md) and [tool parity contract](docs/audits/mcp/tool-parity.json) document the planned self-hosted Desktop Commander port (30 connected tools, 42 BRC agent tools, three relay tools). This branch adds an **offline/local, read-only relay+host fixture** using pinned `ws@8.21.0` with no production listener, OAuth, command execution, third-party file transfer, or deployment. The existing `bridge/server/agent-bridge-runtime.mjs`, `/jobs` identity, review inbox and job ledger remain authoritative. See ABR-95–100 for staged completion and deployment decisions.
 
+### ABR-59 — Native memU multi-scope PostgreSQL canary (M10)
+
+The explicit disposable PostgreSQL 18 canary verifies native memU promotion, signed source approvals, five exact-scope persisted recalls, four independent scope-mismatch denials, tamper/duplicate rejection and fresh-process recovery after cluster restart, using local 768-dimensional embeddings. Run it as the bridge user; see [M10 host acceptance](docs/ABR59_MEMU_ISOLATION_CANARY.md). This is application-level scoped retrieval, not production database authorization.
+
 ### ABR-59 — Linear completion evidence (M9)
 
 The opt-in, unwired Linear completion adapter requires a host-owned credential provider, a pinned team, a completed issue and an exact attached PR URL, then independently checks that PR against GitHub and rechecks Linear state and attachments. See [M9 contract](docs/ABR59_LINEAR_COMPLETION.md).
@@ -577,6 +581,13 @@ The [ABR-96 executor implementation and safety gate](docs/audits/mcp/EXECUTOR.md
 ## ABR-99 — MCP milestones and authenticated review handoff (source-only)
 
 The [ABR-99 integration contract](docs/audits/mcp/BRIDGE_INTEGRATION.md) binds Bridge-verified MCP tool milestones to the existing job ledger and CAS checkpoint, with durable replay checks, bounded recovery and optional D5 source-linked handoff. It reuses the existing human ChatGPT review inbox, scoped by PR and full SHA, **only** behind an independently verified ABR-17 submission coordinator. ABR-17/ABR-18 production dependencies remain open; no MCP client is able to authorize a Linear job or trigger GitHub/Linear/Worker/memU writes by itself.
+
+### ABR-59 — Host memory authority (M11)
+
+The unwired host authority pins job identity and review policy, checks confirmed native commit markers, and loads operator-controlled signing keys and read-only GitHub/Linear evidence. Live credential verification and production activation remain outstanding. See [M11 authority contract](docs/ABR59_HOST_MEMORY_AUTHORITY.md).
+
+The M11 Linear provider now manages its own read-only client-credentials access-token lifecycle in the operator-owned authority directory, with automatic demand-driven renewal, bounded unauthorized-response recovery and pinned identity checks. Provision the client ID and secret rather than a manual access token. See [M11 OAuth setup](docs/ABR59_HOST_MEMORY_AUTHORITY.md).
+
 
 ## ABR-17 M1 — Durable submission coordinator
 

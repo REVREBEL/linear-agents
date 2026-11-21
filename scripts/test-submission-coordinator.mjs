@@ -271,3 +271,17 @@ test('ABR-17 admission expires during ledger lookup before handle minting',async
   await assert.rejects(binding,/UNVERIFIED_SUBMISSION_ADMISSION/);
   assert.deepEqual(x.calls,[]);
 });
+
+test('ABR-17 rejects incomplete or non-callable trusted outbox adapters at construction',()=>{
+  const fn=()=>{};
+  const outbox={claim:fn,get:fn,intent:fn,advance:fn};
+  const args={jobStore:{get:fn},outbox,verifyAdmission:fn,
+    adapters:Object.fromEntries(stages.map(name=>[name,fn]))};
+  assert.doesNotThrow(()=>createSubmissionCoordinator(args));
+  for(const name of Object.keys(outbox)){
+    for(const value of [undefined,true]){
+      assert.throws(()=>createSubmissionCoordinator({...args,outbox:{...outbox,[name]:value}}),
+        /TRUSTED_SUBMISSION_ADAPTERS_REQUIRED/);
+    }
+  }
+});

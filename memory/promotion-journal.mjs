@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
+const journalRoots = new WeakMap();
+export function promotionJournalRoot(journal) { return journalRoots.get(journal); }
 import { verifyPromotionFromGitHub } from "./promotion-verification.mjs";
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -108,16 +111,17 @@ export function createPromotionJournal({ root, syncDir = syncDirectory }) {
   if (typeof root !== "string" || !path.isAbsolute(root) ||
       typeof syncDir !== "function")
     deny("journal root must be absolute");
-  return Object.freeze({
+  const journal = Object.freeze({
     async stageVerified({
       github, scope, prNumber, expectedHeadSha, requiredChecks, allowedCheckApps,
       permittedReviewers, now = () => new Date().toISOString(),
     }) {
+      scope = structuredClone(scope);
+      const policy = structuredClone({ requiredChecks, allowedCheckApps: allowedCheckApps ?? ["github-actions"], permittedReviewers: permittedReviewers ?? null });
       await privateDirectory(root, syncDir);
       // Always reverify on every stage attempt, including duplicate receipts.
       const proof = await verifyPromotionFromGitHub({
-        github, scope, prNumber, expectedHeadSha, requiredChecks,
-        allowedCheckApps, permittedReviewers,
+        github, scope, prNumber, expectedHeadSha, ...policy,
       });
       const identity = scopeIdentity(proof.scope);
       const id = promotionReceiptId({
@@ -126,7 +130,7 @@ export function createPromotionJournal({ root, syncDir = syncDirectory }) {
       const receipt = Object.freeze({
         schemaVersion: 1, id, state: "verified-awaiting-executor",
         scope: identity, prNumber, headSha: expectedHeadSha,
-        proof, recordedAt: now(),
+        proof, policy, recordedAt: now(),
       });
       assertRecord(receipt, id);
       const json = JSON.stringify(receipt);
@@ -153,6 +157,7 @@ export function createPromotionJournal({ root, syncDir = syncDirectory }) {
         await syncDir(root);
         if (!created) {
           const existing = await readReceipt(root, id);
+          if (!isDeepStrictEqual(existing.policy, policy)) deny("immutable review policy mismatch");
           return { created: false, receipt: existing };
         }
         return { created: true, receipt };
@@ -174,6 +179,27 @@ export function createPromotionJournal({ root, syncDir = syncDirectory }) {
         throw error;
       }
     },
+    async readConfirmed({ scope, prNumber, headSha, digest }) {
+      if (!/^[0-9a-f]{64}$/.test(digest || "")) deny("invalid commit digest");
+      const receipt = await journal.read({ scope, prNumber, headSha });
+      if (!receipt) return null;
+      for (const suffix of [".commit-started", ".commit-confirmed"]) {
+        let handle;
+        try {
+          handle = await fs.open(path.join(root, receipt.id + suffix),
+            fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+          const st = await handle.stat();
+          if (!st.isFile() || st.uid !== process.getuid() || (st.mode & 0o077) || st.size !== 64)
+            deny("unsafe commit marker");
+          const bytes = Buffer.alloc(65);
+          const {bytesRead} = await handle.read(bytes, 0, 65, 0);
+          if (bytesRead !== 64 || bytes.subarray(0,64).toString() !== digest)
+            deny("commit marker digest mismatch");
+        } catch (error) { if (error.code === "ENOENT") return null; throw error; }
+        finally { await handle?.close(); }
+      }
+      return receipt;
+    },
     async listPending(scope) {
       await privateDirectory(root, syncDir);
       const identity = scopeIdentity(scope);
@@ -189,4 +215,6 @@ export function createPromotionJournal({ root, syncDir = syncDirectory }) {
       return results.sort((a, b) => a.id.localeCompare(b.id));
     },
   });
+  journalRoots.set(journal, path.resolve(root));
+  return journal;
 }
