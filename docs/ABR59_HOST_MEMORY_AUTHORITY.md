@@ -21,14 +21,25 @@ Keep this path out of all agent mounts, service environments and repository tree
 Provision these files mode 0600, root-owned, in the operator authority directory (no secrets in Git):
 - `evidence.json`: repositoryId, repositoryNumericId, githubAppId, installationId, linearWorkspaceId, linearActorId, linearTeamId (actual IDs pinned by operator).
 - `github-app.pem`: dedicated operator-custodied GitHub App private key.
-- `linear-oauth.token`: dedicated read-scope Linear OAuth access token. Rotate atomically in the operator directory when it expires; no fallback to a personal key.
+- `linear-client.id` and `linear-client.secret`: the dedicated Linear OAuth application credentials. Enable client credentials tokens in Linear; no webhook or authorization-code callback is used.
+- `linear-oauth.token` is an automatically generated root-private JSON cache, not an operator input. Do not place a manually minted raw token in this file.
 - `canary.json`: job with jobId, scope {tenantId, agentId, repositoryId, issueId}, prNumber and full headSha; policy with requiredChecks, allowedCheckApps and permittedReviewers. Use a real completed issue with a linked merged PR and a distinct authorized reviewer who explicitly APPROVED the final head. Set required check names from actual repository policy, not an arbitrary subset.
 
 The provider verifies the pinned GitHub App installation, mints a short-lived token restricted to the exact repository ID and read-only metadata/pull_requests/checks/contents permissions, and enumerates the resulting single-repository grant. It validates the Linear OAuth actor and workspace, then M9 verifies the actual team, completed issue and linked PR. It never uses inherited environment tokens, agent-owned credential files or arbitrary URLs. GitHub token minting does not mutate a repository. Errors are redacted.
 
-Run the read-only non-writing check as root from a trusted checkout:
+### Linear token lifecycle and initial identity discovery
+
+If the app actor UUID is not yet known, run the metadata-only bootstrap from a trusted checkout as root, supplying the independently known Linear workspace UUID:
+
+`node memory/scripts/discover-linear-oauth-identity.mjs WORKSPACE_UUID`
+
+It requests only `read` access using the client-credentials grant, verifies the workspace, and returns candidate workspace and app actor IDs/names without printing or caching tokens. Review the actor against the dedicated app, then pin its UUID as `linearActorId` in `evidence.json`. This bootstrap does not itself authorize memory operations.
+
+The host provider requests a new 30-day app-actor access token from Linear when an eligible cached token is absent or within the renewal window (up to 24 hours before expiry). The lifetime is measured from the provider's `expires_in` and is bounded. The cache is committed atomically with mode 0600, fsynced, and bound to the client credential fingerprint and pinned actor/workspace. Credentials and identity are checked before reuse. An HTTP 401 causes one replacement attempt and one retry of the original read-only query with a fresh six-second timeout independent of token renewal; no indefinite retries or fallback to an expired token, inherited API key or old secret. A client-secret change invalidates the cache automatically. Concurrent calls in one process are serialized; separate processes may issue independent same-scope tokens, which Linear supports, while atomic publication prevents partial cache reads. No refresh token is used. Rotation is demand-driven, not a timer or a new service. The operator must use a dedicated app with an unchanged read-only scope. See [Linear OAuth client credentials](https://linear.app/developers/oauth-2-0-authentication#client-credentials-tokens).
+
+Run the read-only provider check as root from a trusted checkout:
 `node memory/scripts/verify-host-evidence.mjs`.
-A denied stage is a failure, not an activation signal. Do not weaken policy to obtain a green canary.
+This check may create or replace the private OAuth token cache; it does not write to Linear, GitHub repositories, or memU. A denied stage is a failure, not an activation signal. Do not weaken policy to obtain a green canary.
 
 ## 2026-11-20 host verification
 

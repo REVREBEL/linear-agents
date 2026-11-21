@@ -74,3 +74,7 @@ Update this README and the nearest nested README when changes affect checkpoint 
 ## Host memory authority (ABR-59 M11)
 
 `host-memory-authority.mjs` binds a job and review policy to durable journal and confirmed commit evidence; `host-evidence-clients.mjs` supplies pinned, read-only provider evidence. Signing keys are operator-controlled, and live credential canaries and activation remain outstanding. See [M11 contract](../docs/ABR59_HOST_MEMORY_AUTHORITY.md).
+
+### Linear OAuth credential lifecycle
+
+The M11 host evidence adapter obtains a dedicated read-only Linear app-actor token using `linear-client.id` and `linear-client.secret` under the root-controlled authority directory. It atomically caches and renews access tokens before expiration on demand, replaces rejected tokens once on HTTP 401 and retries the read with a fresh six-second query timeout after renewal, and invalidates the cache when the client credentials change. No manually supplied token or refresh token is required. Actor/workspace pins and the existing team/issue/PR evidence gate remain mandatory. See [the operator contract](../docs/ABR59_HOST_MEMORY_AUTHORITY.md).

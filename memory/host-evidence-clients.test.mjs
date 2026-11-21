@@ -21,13 +21,18 @@ async function fixture(fn,overrides={}){
   try{
     await fs.writeFile(path.join(root,"evidence.json"),JSON.stringify(config),{mode:0o600});
     await fs.writeFile(path.join(root,"github-app.pem"),privateKey,{mode:0o600});
-    await fs.writeFile(path.join(root,"linear-oauth.token"),testToken,{mode:0o600});
+    await fs.writeFile(path.join(root,"linear-client.id"),"synthetic-client-id",{mode:0o600});
+    await fs.writeFile(path.join(root,"linear-client.secret"),"synthetic-client-secret",{mode:0o600});
     const calls=[];
     const fetchImpl=async(url,opts)=>{
-      const u=new URL(url),body=opts.body?JSON.parse(opts.body):null;
+      const u=new URL(url),body=opts.body?(u.pathname==="/oauth/token"?Object.fromEntries(new URLSearchParams(opts.body)):JSON.parse(opts.body)):null;
       calls.push({u,method:opts.method,body});
       assert.equal(opts.redirect,"error");
       if(u.origin==="https://api.linear.app"){
+        if(u.pathname==="/oauth/token"){
+          assert.deepEqual(body,{grant_type:"client_credentials",scope:"read",client_id:"synthetic-client-id",client_secret:"synthetic-client-secret"});
+          return response({access_token:testToken,token_type:"Bearer",scope:"read",expires_in:2591999});
+        }
         assert.equal(opts.headers.Authorization,"Bearer "+testToken);
         if(body.query.includes("BridgeAuthorityIdentity"))return response({data:{viewer:{id:id(2)},organization:{id:overrides.workspace??id(1)}}});
         return response({data:{issue:{id:id(4),identifier:"ABR-59",completedAt:"2026-11-20T00:00:00Z",archivedAt:null,state:{type:"completed"},team:{id:id(3)},attachments:{nodes:[{url:"https://github.com/"+repositoryId+"/pull/254"}],pageInfo:{hasNextPage:false,endCursor:null}}}}});
