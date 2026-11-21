@@ -16,8 +16,8 @@ const check = { id: 4, name: "bridge-tests", head_sha: SHA,
   status: "completed", conclusion: "success", app: { slug: "github-actions" } };
 const jsonResponse = (data, { link = "", status = 200, length } = {}) => {
   const raw = Buffer.from(JSON.stringify(data));
-  return { status, headers: new Headers({ "content-length": String(length ?? raw.length),
-    ...(link ? { link } : {}) }), arrayBuffer: async () => raw };
+  return new Response(raw, { status, headers: { "content-length": String(length ?? raw.length),
+    ...(link ? { link } : {}) } });
 };
 function fixture(responder) {
   const calls = [];
@@ -115,4 +115,25 @@ test("incomplete or contradictory CI totals fail without passing stale checks", 
     return route(url);
   });
   await assert.rejects(inconsistent.client.listCheckRuns(REPO,SHA), /unavailable/);
+});
+
+test("credential provider errors are redacted", async () => {
+  const client = createGitHubReviewClient({
+    tokenProvider: async () => { throw Error("credential " + token); },
+  });
+  await assert.rejects(client.getPullRequest(REPO, 42), error =>
+    error.code === "EGITHUB_REVIEW_CLIENT_DENIED" && !error.message.includes(token));
+});
+
+test("oversized response without content length is cancelled while streaming", async () => {
+  let cancelled = false;
+  const client = createGitHubReviewClient({
+    tokenProvider: async () => token,
+    fetchImpl: async () => new Response(new ReadableStream({
+      pull(controller) { controller.enqueue(new Uint8Array(70000)); },
+      cancel() { cancelled = true; },
+    })),
+  });
+  await assert.rejects(client.getPullRequest(REPO, 42), /unavailable/);
+  assert.equal(cancelled, true);
 });
