@@ -422,3 +422,61 @@ validate existing authenticated health and legacy quota recovery. Keep
 unresolved managed job records distinct from legacy retries. Revoke only
 new test grants and remove only approved dedicated test artifacts; never
 merge, mark Done or delete the existing task inbox as rollback.
+
+### November 20, 2026 PT — approved host-policy correction and live preflight
+
+The operator authorized the server-security modification followed by live
+staging checks. On the Ubuntu 26.04.1 host, the kernel audit log identified
+unprivileged user namespace creation denial; the installed general AppArmor
+loader was disabled and only the Docker policy was loaded. The existing Ubuntu
+packaged bwrap-userns-restrict policy was syntax-checked and loaded unchanged.
+Both bwrap and unpriv_bwrap are enforcing; its child profile strips namespace
+capabilities. The dedicated root-owned enabled systemd unit loads only that
+packaged profile before Bridge at boot. See scripts/linux/systemd/
+agent-bridge-bwrap-policy.service.example and scripts/linux/README.md.
+The global apparmor_restrict_unprivileged_userns setting remains 1.
+The existing service stayed active with its original PID.
+
+The strict sandbox probe passed as actual UID 994 (bridge). All 57 tests
+across the strict executor, AST/Git confinement, M2 and M5 suites passed
+under that actual account, with zero skips, including the real private CLI
+FD 3, host filesystem/network denial, exclusive lease and interrupted-effect
+fixtures. A first run hit the host's existing non-writable /tmp; rerun used
+a private service-owned /var/tmp fixture directory without changing system
+permissions. The host readiness probe now uses the actual installed Node
+binary rather than the Volta shim with an inherited HOME.
+
+Live staging authentication/preflight at the then-current PR #270 head
+84c3f92684228dca8d72e22a1a2d9b85c3803b97 (base feat/abr-17-m4):
+
+| Check | Observed evidence |
+|---|---|
+| Configured Linear identity | HTTP 200; real organization identity |
+| Antigravity Linear Worker token exchange | HTTP 200 GraphQL, expected separate Antigravity actor and matching organization |
+| Trae Linear Worker token exchange | HTTP 200 GraphQL, expected separate Trae actor and matching organization |
+| ChatGPT CLI Linear Worker token exchange | HTTP 404; health endpoint responds 200; separate CLI credential not established |
+| GitHub organization installation inventory | Antigravity, Trae and ChatGPT apps installed, unsuspended; required contents/checks/statuses/PR/metadata permissions present. App membership alone does not prove a scoped installation token. |
+| Antigravity actual M3 broker | Live app identity/repository installation (200), narrowed installation token (201), exact repository/branch/PR reads (200); both read-only and restricted PR-write token modes pass. No publication invoked. |
+| Trae GitHub broker | Existing configured/default key source missing. |
+| ChatGPT CLI GitHub broker | Distinct approved coding key mapping not established. |
+| Native execution | AGY and OpenCode discovery passes; configured Linux Trae executable absent. Native descendant/isolated model egress not yet verified. |
+| Protected managed host binding | Absent; existing production checkout not the reviewed stacked release. |
+| Live PR/Linear/session mutation | Not attempted: protected native launcher/binding and complete mapped credentials are required first; at tested head two CI jobs failed and independent review remained blocking. |
+
+The Antigravity key resolves within its existing shared agent home; it must be
+migrated to the trusted host credential boundary and inaccessible to managed
+children before activation. Existing legacy credentials were not removed.
+Token probes kept credentials in memory, used the actual provider endpoints,
+did not persist workspace token files and returned only verification status.
+Neither a reviewer credential nor another runner's credential substituted
+for the ChatGPT CLI coding identity. Source report remains releaseReady=false;
+sandbox gate is now passed, replacing the historical blocked observation
+above. Actual native launch, protected operator binding, CI/review,
+staging submission and session close, revision/recovery, and Mac/MCP
+acceptance remain open. No production managed flag or legacy callbacks changed.
+
+CI review corrections: the real M5 CLI fixture now copies the command into
+a private fixture directory and mounts the pinned read-only descriptor,
+rather than depending on runner checkout ancestor permissions. The existing
+REPL test uses a bounded 2-second readiness deadline within its 3-second
+session, still requiring the exact waiting_input state.

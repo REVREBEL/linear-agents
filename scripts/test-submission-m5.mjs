@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp,rm,stat,writeFile } from 'node:fs/promises';
+import { mkdtemp,rm,stat,writeFile,copyFile,open } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {spawn,execFileSync} from 'node:child_process';
@@ -112,10 +112,18 @@ test('M5 actual isolated Bubblewrap preserves private CLI FD and denies host fil
     'import os,socket,sys,json; s=socket.socket(); s.settimeout(0.2); code=s.connect_ex(("127.0.0.1",int(sys.argv[2]))); print(json.dumps({"hostFileVisible":os.path.exists(sys.argv[1]),"hostNetworkReachable":code==0}))',
     sentinel,String(server.address().port)],{timeout:5000,encoding:'utf8',env:{PATH:'/usr/bin:/bin'}});
   assert.deepEqual(JSON.parse(result),{hostFileVisible:false,hostNetworkReachable:false});
-  const cli=new URL('./submit-work.mjs',import.meta.url).pathname;
-  const child=spawn('/usr/bin/bwrap',[...args,'--ro-bind',process.execPath,'/node',
-    '--ro-bind',cli,'/submit-work.mjs','--','/node','/submit-work.mjs','ABR-17','Isolated FD fixture'],
-    {env:{PATH:'/usr/bin:/bin'},stdio:['ignore','pipe','pipe','pipe']});
+  // CI checkout ancestors may be inaccessible inside a new user namespace.
+  // Copy only the exact command bytes into our private fixture and pin the
+  // file descriptor. Never expose the checkout, home or credentials.
+  const cli=path.join(root,'submit-work.mjs');
+  await copyFile(new URL('./submit-work.mjs',import.meta.url),cli);
+  const pinned=await open(cli,'r');
+  let child;
+  try{
+    child=spawn('/usr/bin/bwrap',[...args,'--ro-bind',process.execPath,'/node',
+      '--ro-bind-fd','4','/submit-work.mjs','--','/node','/submit-work.mjs','ABR-17','Isolated FD fixture'],
+      {env:{PATH:'/usr/bin:/bin'},stdio:['ignore','pipe','pipe','pipe',pinned.fd]});
+  }finally{await pinned.close();}
   let submitted=0,stdout='',stderr='';
   const done=once(child,'close');t.after(()=>child.kill());
   child.stdout.on('data',v=>stdout+=v);child.stderr.on('data',v=>stderr+=v);

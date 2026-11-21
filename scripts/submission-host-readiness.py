@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Read-only local ABR-17 host evidence. Never enables a service or reads keys."""
+import argparse
 import json
 import os
 import pathlib
@@ -43,6 +44,10 @@ def trusted_binding_present():
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--node", type=pathlib.Path,
+                        help="Explicit installed Node binary, not a version-manager shim")
+    args = parser.parse_args()
     user = property_value("User")
     uid = None
     try:
@@ -58,15 +63,36 @@ def main():
               "trackedClean": status_rc == 0 and not dirty, "serviceState": state,
               "serviceUid": uid, "protectedBindingPresent": trusted_binding_present(),
               "rootlessSandbox": "unverified", "nativeDiscovery": {},
+              "bubblewrapPolicyState": run(["/usr/bin/systemctl", "is-active",
+                   "agent-bridge-bwrap-policy.service"])[1] or "unknown",
               "actualNativeSubmission": "unverified",
               "liveProviderIdentityAndPermissions": "unverified",
               "livePublication": "unverified", "macTransport": "unverified",
               "deploymentAuthorized": False, "releaseReady": False}
     if uid and (os.getuid() == uid or os.getuid() == 0):
         prefix = [] if os.getuid() == uid else ["/usr/sbin/runuser", "-u", user, "--"]
-        node = pathlib.Path("/home/bridge/.volta/bin/node")
+        pid = property_value("MainPID")
+        node = args.node
+        if node is None and pid and pid.isdecimal() and int(pid) > 0:
+            try:
+                node = pathlib.Path("/proc") / pid / "exe"
+                node = node.resolve(strict=True)
+            except OSError:
+                node = None
+        # Avoid the shim and inherited HOME: they may resolve the wrong
+        # user's Node or recurse. Require the actual installed executable.
+        if node is not None:
+            try:
+                node = node.resolve(strict=True)
+                if not node.is_file() or not os.access(node, os.X_OK):
+                    node = None
+            except OSError:
+                node = None
         # Run the existing exact probe under the service UID, not root.
-        rc, stdout = run(prefix + [str(node), str(ROOT / "scripts/mcp-executor-probe.mjs"), "--strict"])
+        rc, stdout = run(prefix + ["/usr/bin/env", "-i",
+                              "HOME=" + pwd.getpwnam(user).pw_dir,
+                              "PATH=/usr/bin:/bin", "LANG=C",
+                              str(node), str(ROOT / "scripts/mcp-executor-probe.mjs"), "--strict"]) if node else (1, "")
         try:
             probe = json.loads(stdout)
             if probe.get("uid") == uid:

@@ -19,3 +19,10 @@ The current Ubuntu `bridge` UID 994 cannot create the required user namespace be
 ## ABR-98 — REPL, Git, structural AST and offline PDF adapters
 
 `process-state.mjs` provides deterministic prompt detection now used by `terminal-sessions.mjs`. `git-readonly.mjs` invokes only scoped, fixed structured Git arguments inside the required Linux namespace. `ast-structured.mjs` uses reviewed `@babel/parser@8.1.2`, safely scoped reads and source SHA-256; rewrite is dry-run by default, and mutating writes are denied without a separately vetted atomic writer. `pdf-offline.mjs` uses pinned `pdf-lib@1.17.1` (MIT) for bounded PDF generation/editing without browser downloads; a distinct `write_pdf` grant and injected atomic output handler are required. No production Mac/Ubuntu executor tools are enabled by this source change. Dry-run AST unified diffs now retain exact final-newline semantics (including CRLF and `\ No newline at end of file`), validated by real `git apply --check` and exact-byte round-trip fixtures. Rewrites detect ambiguous matches regardless of `maxResults`. Git uses `--literal-pathspecs` and excludes special `@`/`+` selectors. Details: [ABR-98 profile audit](../../../docs/audits/mcp/PROFILES.md).
+
+ABR-17 M5 host evidence (2026-11-20 PT): the operator-approved Ubuntu
+packaged Bubblewrap policy now loads via a dedicated persistent systemd unit.
+The actual bridge UID passed the strict sandbox probe and the 57-test
+executor/structure/submission confinement regression. Global AppArmor
+namespace restriction remains enabled. This updates the host namespace
+gate, not production MCP activation or full native provider acceptance.
