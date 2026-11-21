@@ -3,6 +3,12 @@ on:
   pull_request:
     paths:
       - 'bridge/orchestration/submission-coordinator.mjs'
+      - 'bridge/orchestration/submission-ingress.mjs'
+      - 'bridge/orchestration/submission-git-preflight.mjs'
+      - 'bridge/handlers/submission-channel.mjs'
+      - 'integrations/submission-github-broker.mjs'
+      - 'scripts/submit-work.mjs'
+      - 'scripts/test-submission-m2.mjs'
       - 'jobs/persistence/submission-outbox.mjs'
       - 'scripts/test-submission-coordinator.mjs'
       - 'package.json'
@@ -22,6 +28,14 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run submission:test
+      - name: Install disposable Bubblewrap
+        run: |
+          if ! command -v bwrap >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y bubblewrap
+          fi
+      - name: Private command and real isolated Git preflight
+        run: sudo "$(command -v node)" --test scripts/test-submission-m2.mjs
       - run: npm run bridge:test
       - run: npm run test:reliability
       - name: Prepare isolated local Worker configuration

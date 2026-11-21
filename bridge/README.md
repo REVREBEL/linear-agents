@@ -45,3 +45,7 @@ The local `server/mcp-relay/` fixture optionally requires cryptographically vali
 ## ABR-17 — Submission lifecycle
 
 `orchestration/submission-coordinator.mjs` is an opt-in M1 source library. It binds externally verified coding admission to the canonical job store, records durable intent before each external adapter, and separates publication, Linear In Review, review queueing and session completion. No live caller is installed. See [M1 contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+## ABR-17 M2 — Submission capability and preflight
+
+The opt-in `orchestration/submission-ingress.mjs`, `handlers/submission-channel.mjs` and `orchestration/submission-git-preflight.mjs` reuse the canonical job ledger and Linux sandbox. Launcher-bound scopes and current capability liveness remain enforced across M1 effects. No additional server or production route is started. See [submission contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).

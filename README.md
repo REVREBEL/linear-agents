@@ -581,3 +581,7 @@ The [ABR-99 integration contract](docs/audits/mcp/BRIDGE_INTEGRATION.md) binds B
 ## ABR-17 M1 — Durable submission coordinator
 
 The [submission coordinator milestone](docs/ABR17_SUBMISSION_COORDINATOR.md) provides a disabled-by-default, trusted-adapter state machine and durable effect journal. Runner ingress, credential brokerage, actual publication adapters and deployment are separate gates.
+
+## ABR-17 M2 — Private submission transport and Git verification
+
+[Submission contract](docs/ABR17_SUBMISSION_COORDINATOR.md) now includes a private launcher-bound IPC command, exact job/runner and app-installation mappings, a host-only read-only GitHub App broker, and confined Git readiness preflight. It is source-only; deployed provider launchers and publication remain separately gated.
