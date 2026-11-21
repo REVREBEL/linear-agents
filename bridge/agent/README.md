@@ -11,3 +11,7 @@ See [MCP host fixture](mcp-host-agent/README.md) and [upstream/parity audit](../
 ## ABR-97 — Approved device choice and macOS discovery
 
 The separate `mcp-host-agent/device-enrollment.mjs`, `device-routing.mjs`, and `macos-host-probe.mjs` establish signed, expiring host pairing and a trusted route decision for actual SSH or paired WS targets. The real Mac's launchd Node and project root were read over strict SSH, without altering it; the existing read-only agent and Linux executor remain independent. [ABR-97 Mac/Ubuntu runbook](../../docs/audits/mcp/MACOS_HOST.md).
+
+## ABR-98 — New guarded source adapters
+
+`mcp-host-agent/process-state.mjs` classifies Python, Pdb, MySQL and shell prompts independently of timing; `git-readonly.mjs` uses ABR-96's Bubblewrap sandbox; `ast-structured.mjs` safely reads JavaScript/TypeScript AST and defaults edits to diff-only; `pdf-offline.mjs` renders Markdown subset and edits PDF pages without Chrome download, requiring an independent document-write scope and approved output writer. These remain source-only and cannot bypass live Mac/Ubuntu host policy. See [tool profiles and parity obligations](../../docs/audits/mcp/PROFILES.md).

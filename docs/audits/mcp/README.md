@@ -81,3 +81,7 @@ See [OAUTH_EDGE.md](OAUTH_EDGE.md) for the separate **OAuth resource-server** bo
 ## ABR-97 — Actual macOS identity and device selection evidence
 
 [MACOS_HOST.md](MACOS_HOST.md) records strict SSH access from all three Ubuntu user accounts to the same macOS UID 501, the verified existing launchd Node and repository path, lack of `OSX_PROJECTS_ROOT` in the noninteractive environment and the derived projects root. The source-only device registry and scoped routing prohibit client-created authority and host fallback; production Mac process confinement, signed device enrollment and Ubuntu service-user namespace policy remain separate gates.
+
+## ABR-98 — Profile discovery and new handler acceptance
+
+[PROFILES.md](PROFILES.md) documents the opt-in OAuth-only profile gateway, strict per-call authorization and actual implementation-versus-30-tool parity gaps; it includes measured representative `core`/`focused`/`full` schema sizes and scope boundaries. Source adapters cover deterministic interactive prompt recognition, sandboxed Git, bounded Babel AST source search/dry-run edits, and offline limited-fidelity PDF generation/editing. Full reference tool schemas/results, real Mac/Ubuntu execution and document fidelity remain acceptance gates.
