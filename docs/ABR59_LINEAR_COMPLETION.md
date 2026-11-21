@@ -1,0 +1,7 @@
+# ABR-59 M9 — Linear completion evidence
+
+The unwired host adapter `createLinearCompletionClient` accepts an operator-provided OAuth token callback, pinned team UUID, repository, PR number and reviewed head SHA, and a trusted GitHub reader. It queries the fixed Linear GraphQL endpoint using variables and no mutations. It requires exact issue identity, unarchived completed state and completion timestamp, and a matching PR attachment URL. It checks all attachment pages within a ten-page bound, independently verifies the merged GitHub PR's repository and head, then repeats the Linear checks including attachments. Partial errors, invalid pagination, missing evidence and credential failures fail closed. Responses are incrementally bounded to 256 KiB and errors are redacted.
+
+The attachment is a link, not cryptographic proof of provenance. The trusted orchestration must independently bind the task, tenant, agent and expected PR before construction. This adapter does not grant approval based on issue text or replace the independent GitHub review/CI verifier. No production credentials or service activation are included. Tests use mocked HTTPS responses; the live GraphQL contract and OAuth permissions require a host canary before activation.
+
+Run `node --test memory/linear-completion-client.test.mjs` and the bridge/reliability suites. Production key custody, database isolation, scoped canaries and explicit activation remain release gates.
