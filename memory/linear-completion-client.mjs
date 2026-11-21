@@ -4,6 +4,7 @@ const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA = /^[0-9a-f]{40}$/;
 const ENDPOINT = "https://api.linear.app/graphql";
 const MAX_BYTES = 256 * 1024;
+export const LINEAR_COMPLETION_TIMEOUT_MS = 6000;
 const QUERY = `query MemoryCompletion($id:String!,$after:String){issue(id:$id){
   id identifier completedAt archivedAt state{type} team{id}
   attachments(first:100,after:$after){nodes{url} pageInfo{hasNextPage endCursor}}
@@ -23,7 +24,7 @@ function validToken(value) {
  */
 export function createLinearCompletionClient({
   tokenProvider, teamId, github, repositoryId, prNumber, headSha,
-  fetchImpl = fetch, timeoutMs = 6000,
+  fetchImpl = fetch, timeoutMs = LINEAR_COMPLETION_TIMEOUT_MS,
 } = {}) {
   if (typeof tokenProvider !== "function" || typeof fetchImpl !== "function" ||
       typeof github?.getPullRequest !== "function" ||

@@ -7,6 +7,14 @@ on:
       - 'scripts/test-submission-coordinator.mjs'
       - 'package.json'
       - '.github/workflows/submission-coordinator.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bridge/orchestration/submission-coordinator.mjs'
+      - 'jobs/persistence/submission-outbox.mjs'
+      - 'scripts/test-submission-coordinator.mjs'
+      - 'package.json'
+      - '.github/workflows/submission-coordinator.yml'
   workflow_dispatch:
 permissions:
   contents: read
