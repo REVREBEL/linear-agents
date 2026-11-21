@@ -21,9 +21,28 @@ function sanitizedSummary(value, max = 240) {
   if (typeof value !== 'string' || !value.trim() ||
       Buffer.byteLength(value, 'utf8') > 4_096)
     throw Error('INVALID_MILESTONE_SUMMARY');
-  return sanitizeCheckpointText(value)
-    .replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ')
-    .trim().slice(0, max);
+  const normalized = sanitizeCheckpointText(sanitizeCheckpointText(value)
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim());
+  let end = Math.min(max, normalized.length);
+  // Never cut a redaction marker in half. In particular, a truncated
+  // token=[RED would be expanded by the canonical checkpoint sanitizer
+  // during persistence, making an identical receipt look like a collision.
+  for (const marker of normalized.matchAll(/\[REDACTED(?:_PRIVATE_KEY)?\]/g)) {
+    if (marker.index < end && marker.index + marker[0].length > end) {
+      end = marker.index;
+      break;
+    }
+  }
+  // Return an exact bounded representation that the canonical checkpoint
+  // sanitizer will not change, so persistence and retry comparisons agree.
+  // Truncation may expose a new token boundary; shorten rather than allowing
+  // a second sanitization pass to grow the persisted summary beyond max.
+  while (end > 0) {
+    const bounded = normalized.slice(0, end).trimEnd();
+    if (sanitizeCheckpointText(bounded) === bounded) return bounded;
+    end--;
+  }
+  return '';
 }
 function scopedJob(job, grant) {
   if (!job || !grant || !STATES.has(job.state) ||

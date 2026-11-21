@@ -178,6 +178,35 @@ test('ABR-99 Milestones are bounded, sanitized, CAS-locked, durable and replay s
   assert.equal((await memoryRestart.read(JOB.repositoryRoot,JOB.issueId))
     .recordedToolReceipts.length,9);
 });
+test('ABR-99 truncated redactions remain bounded and identical on receipt retry', async t => {
+  const x=await init(t);
+  const handle=await x.integration.bindAdmittedJob(x.issueAdmission());
+  const cases=[
+    'x'.repeat(230)+' token=secret',
+    'x'.repeat(229)+' Bearer abc-secret',
+    'x'.repeat(227)+' password=secret',
+    'x'.repeat(235)+' ghp_abcdefghijklmnopqrstuv',
+    'x'.repeat(220)+' -----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----',
+    'x'.repeat(239)+'\nplain tail',
+  ];
+  for (const [index,summary] of cases.entries()) {
+    const data={summary,toolCallId:'redaction-boundary-'+index};
+    const first=await x.integration.recordToolMilestone(handle,x.receipt(JOB,data));
+    assert.equal(first.recorded,true);
+    const prior=await x.memory.read(JOB.repositoryRoot,JOB.issueId);
+    const saved=prior.progress.at(-1).summary;
+    assert.equal(saved,first.milestone.summary);
+    assert.ok(saved.length<=240);
+    assert.ok(!saved.includes('abc-secret')&&!saved.includes('=secret'));
+    assert.ok(!/\[RED[^\]]*$/.test(saved));
+    const duplicate=await x.integration.recordToolMilestone(handle,x.receipt(JOB,data));
+    assert.deepEqual(duplicate,{recorded:false,duplicate:true});
+    assert.equal((await x.memory.read(JOB.repositoryRoot,JOB.issueId)).revision,prior.revision);
+  }
+  await assert.rejects(x.integration.recordToolMilestone(handle,x.receipt(JOB,{
+    toolCallId:'redaction-boundary-0',summary:'Different receipt payload',
+  })),/TOOL_RECEIPT_COLLISION/);
+});
 test('ABR-99 simultaneous milestones serialize in the canonical CAS store',async t=>{
   const x=await init(t);
   const handle=await x.integration.bindAdmittedJob(x.issueAdmission());
@@ -388,4 +417,6 @@ test('D5 handoff remains the verified snapshot during caller mutation', async t 
   assert.equal(result.envelope.message, 'Verified original message');
   assert.equal(result.envelope.contextBundle.documents[0].content, 'original');
   assert.equal(Object.isFrozen(result.envelope.contextBundle.documents[0]), true);
+  assert.throws(() => { result.envelope.contextBundle.documents[0].content = 'changed again'; }, TypeError);
+  assert.equal(result.envelope.contextBundle.documents[0].content, 'original');
 });

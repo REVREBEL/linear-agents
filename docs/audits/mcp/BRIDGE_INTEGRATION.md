@@ -50,3 +50,7 @@ Read-only CI also preserves existing `bridge:test`, `test:reliability`, `mcp:pro
 ## Rollback / promotion
 
 No production deployment is performed by this milestone. To revert the source milestone, remove its optional library, additive checkpoint attribution/receipt field and tests in a reviewed PR; do **not** delete the canonical checkpoint, job ledger, reviewer inbox or the existing D5 tooling. Once ABR-17 and ABR-18 are actually integrated and independently tested, require separate approved deployment/canary and observe queued vs launched/ACK vs reviewed/Done separately. Fail closed on unknown side-effect outcomes rather than automatically creating a second PR or session close.
+
+## PR #262 review resolution
+
+D5 handoffs are cloned as bounded JSON and recursively frozen before asynchronous ledger/source checks, ensuring the returned nested document content is exactly the snapshot that was verified. The receipt summary adapter uses canonical checkpoint sanitization before truncation, preserves whole redaction markers, and returns a stable representation that remains unchanged by persistence sanitization. Regression cases cover token, Bearer, password, GitHub credential, private-key redactions and whitespace at the 240-character boundary; identical retries return duplicate without changing the revision.
