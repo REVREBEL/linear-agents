@@ -70,3 +70,7 @@ Update this README and the nearest nested README when changes affect checkpoint 
 ## ABR-99 — Preserve verified MCP tool receipt CAS and scope
 
 `active-task-memory.mjs` now retains the additive `recordedToolReceipts`, `hostId`, `branch` and `repositoryId` fields during routine locked lifecycle writes. The **only** source that appends verified MCP tool milestone receipts is `bridge/orchestration/mcp-milestone-integration.mjs`, after a matching authoritative job ledger and verified tool result. SHA-256 receipt hashes are bounded to 256 per checkpoint and cannot silently roll off to permit old replays; visible progress remains at most six sanitized entries for this adapter. This is still an issue/repo-keyed operational file, **not independently tenant-isolated persistent storage**, and does not authorize execution, submission or memU promotion. [ABR-99 source contract](../docs/audits/mcp/BRIDGE_INTEGRATION.md).
+
+## Host memory authority (ABR-59 M11)
+
+`host-memory-authority.mjs` binds a job and review policy to durable journal and confirmed commit evidence; `host-evidence-clients.mjs` supplies pinned, read-only provider evidence. Signing keys are operator-controlled, and live credential canaries and activation remain outstanding. See [M11 contract](../docs/ABR59_HOST_MEMORY_AUTHORITY.md).
