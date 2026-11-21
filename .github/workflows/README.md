@@ -17,3 +17,5 @@ The MCP security/tool source audit and full deferred-gate list are at [ABR-94](.
 **ABR-99 — `mcp-bridge-integration.yml`:** Validates source-only authenticated Linear job scope, actual canonical checkpoint CAS, replay-safe tool milestones, review inbox PR/head dedupe, separate reviewer acknowledgment, disabled-until-ABR-17 `submitWork`, and D5 portable handoff fixtures; preserves existing MCP, Bridge and reliability suites with read-only checkout. No live Linear/GitHub/Worker/Mac/Cloudflare/PostgreSQL write or production deployment.
 
 **ABR-17 — `submission-coordinator.yml`:** Isolated opt-in coordinator, transactional outbox, per-stage failure/recovery and secret-redaction fixtures, plus Bridge and reliability tests and typechecking. No live publication or service changes.
+
+**ABR-17 M2 — `submission-coordinator.yml`** also executes the private-ingress, actual child IPC, signed fixture broker, and strict Linux sandbox Git preflight tests using the existing isolated test-only root override. Never deploys, loads production credentials or changes service policy.

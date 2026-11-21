@@ -104,10 +104,10 @@ function checkReceipt(step,value,s,row) {
   }
   throw Error('INVALID_SUBMISSION_STAGE');
 }
-export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,verifyRecovery=null,adapters,enabled=false,now=Date.now}) {
-  if(typeof jobStore?.get!=='function'||
-     ['claim','get','intent','advance'].some(name=>typeof outbox?.[name]!=='function')||
-     typeof verifyAdmission!=='function'||
+export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,isAdmissionLive=()=>true,verifyRecovery=null,adapters,enabled=false,now=Date.now}) {
+  if(typeof jobStore?.get!=="function"||
+     ["claim","get","intent","advance"].some(name=>typeof outbox?.[name]!=="function")||
+     typeof verifyAdmission!=="function"||typeof isAdmissionLive!=="function"||
      !adapters||Object.values(methods).some(name=>typeof adapters[name]!=='function'))
     throw TypeError('TRUSTED_SUBMISSION_ADAPTERS_REQUIRED');
   const handles=new WeakMap();
@@ -116,14 +116,15 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
     const s=freezeScope(await verifyAdmission(evidence),now);
     const prior=outbox.get(key(s));
     assertJob(await jobStore.get(s.jobKey),s,{closed:prior?.stage==='session_closed'});
-    if(s.expiresAt<=now()) throw Error('UNVERIFIED_SUBMISSION_ADMISSION');
+    if(s.expiresAt<=now()||isAdmissionLive(evidence)!==true) throw Error('UNVERIFIED_SUBMISSION_ADMISSION');
     const handle=Object.freeze({});
-    handles.set(handle,s);
+    handles.set(handle,{scope:s,evidence});
     return handle;
   }
   function requireHandle(handle) {
-    const s=handles.get(handle);
-    if(!enabled||!s||s.expiresAt<=now()) throw Error('SUBMISSION_CAPABILITY_REQUIRED');
+    const entry=handles.get(handle),s=entry?.scope;
+    if(!enabled||!s||s.expiresAt<=now()||isAdmissionLive(entry.evidence)!==true)
+      throw Error('SUBMISSION_CAPABILITY_REQUIRED');
     return s;
   }
   function key(s) {

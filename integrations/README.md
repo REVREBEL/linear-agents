@@ -36,3 +36,7 @@ Read the relevant module and its calling Bridge handlers, then run focused exist
 ## Update policy
 
 Update this README and the nearest provider README with any changes to event classification, credential handling, review notifications, provider runtime requirements, tool authorization, or dispatch callback contracts. Do not move Bridge admission/security rules into this directory.
+
+## ABR-17 M2 — Host-only GitHub App broker
+
+`submission-github-broker.mjs` requires explicit agent/repository/app/installation/numeric repository ID mapping and operator-owned private-key loader. It verifies signed app identity and repository installation, requests one-repository read-only token permissions, validates response scope and expiry, and returns only read-only GitHub operations, not credentials. It never falls back to the first installation. Real installation verification and M3 publication permissions are not enabled by the fixture. See [submission contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).

@@ -74,3 +74,61 @@ No runtime import, listener, credential use or service activation is introduced.
 Keep the feature disabled; retain pending effect records for forensic
 reconciliation. Never remove the existing job ledger, blindly repeat a
 publication, close a session twice or delete the task inbox.
+
+## M2 — Private runner ingress and verification boundary
+
+M2 builds on the reviewed M1 branch rather than replacing the canonical ledger
+or creating a second server. It is disabled by default and requires trusted
+launcher and runner verifiers. The launcher produces an explicit, immutable
+scope (including the independently confirmed final commit SHA) from admitted
+routing and worktree metadata. `submissionLedgerFields` converts that scope to
+canonical job metadata for the existing dispatcher; it does not mutate a
+ledger or trust issue text. The current runtime must be adapted in M4 to
+populate these fields and supply authenticated local/remote runner provenance.
+
+### Private command transport
+
+The launcher hands the command a private duplex FD 3; the command accepts only
+the issue identifier and summary, using bounded JSON framing. The trusted
+channel handler carries the scoped capability and peer evidence on its own side.
+A SHA-256 of an ephemeral per-job random capability is held in memory; expiry,
+launcher authorization, runner verification, and exact current ledger scope
+are required. The M1 coordinator receives the ingress admission verifier and
+liveness predicate together, so revoking the channel also stops new submission
+effects. A lost response does not replay a pending M1 intent. No generic public
+socket, arbitrary listener, caller-supplied peer identity, or shared-secret
+fallback is installed. The actual child process uses no API token in argv or env.
+Same-UID peer isolation and secure remote Mac runner transport require the
+reviewed production launcher in M4; the Unix socket server in tests is disposable.
+
+### Git and GitHub preflight
+
+The existing ABR-96 sandbox performs real Git inspection of an explicitly
+approved canonical root, requiring an exact branch and head, clean tracked and
+untracked status, no in-progress merge/rebase/etc., approved GitHub origin,
+matching remote head, distinct existing base, and every explicitly configured
+required CI check. Required checks are named and bound to an issuing GitHub
+App ID; unverified, ambiguous, incomplete or non-successful checks fail closed.
+No shell command from the caller, network-enabled Git, commit, push or file
+mutation is performed. The test covers an ordinary fixture checkout inside
+Linux Bubblewrap. External .git metadata (linked worktrees), macOS sandbox
+support, real bridge-UID namespace confinement and final pre-publication
+revalidation are still required before operational use.
+
+The host-only broker accepts explicit operator-provided mappings, never guesses
+the first installation. It validates app and repository installation with a
+short-lived RSA-signed JWT, uses a repository-ID-scoped read-only token with
+explicit contents, PRs, checks, statuses and metadata permissions, verifies
+the returned repository/permission/expiry scope, caches and refreshes
+privately, and exposes only narrow read methods. Current legacy Trae helper
+can return an installation token and pick the first installation; it is not
+used by this path. Existing source configuration does not establish complete
+operator-approved mappings. The actual installed app IDs, repository IDs,
+installation permissions/API response compatibility and approved key provider
+must be verified by the owner before any live activation. The fixture checks
+JWT signatures and token narrowing without loading a real key or reaching GitHub.
+
+M3 will add real scoped publication authority, actual PR/head/base and CI
+revalidation at the mutation boundary, Linear and Worker adapters, and
+independent recovery. M4 must integrate the existing dispatcher/runner
+transport and remove credential exposure in legacy provider contracts.

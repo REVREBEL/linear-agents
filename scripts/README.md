@@ -173,3 +173,7 @@ ABR-99 review regressions verify D5 caller mutation during verification and atte
 `npm run submission:test` exercises the actual canonical job ledger and SQLite submission effect journal using test-only publication adapters. Cases include concurrent connections, lost responses/restart at all six external stages, wrong admission, Git/CI refusal, same-head retries and same-PR revisions. No live providers or credentials are used.
 
 ABR-17 authorization race regression: deterministic held ledger reads exercise revocation and expiry at all eight submission lookups, both recovery lookups and initial handle minting.
+
+## ABR-17 M2 — Private submission CLI and fixtures
+
+`submit-work.mjs <issue-id> <summary>` requires trusted launcher-inherited duplex FD 3. No credentials, host URL or job ID are accepted in args/environment. `npm run submission:m2:test` checks the real child IPC path, scoped capabilities and revocation across M1, signed mocked GitHub broker exchanges, and actual Linux-confined Git reads against disposable fixtures. Provider deployment and linked worktree/Mac support remain gated.
