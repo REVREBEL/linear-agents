@@ -1,8 +1,7 @@
 // ABR-96 isolated terminal sessions. Handles are ephemeral for the current
 // process. On host restart, old handles become unavailable (never replayed).
 import { randomUUID } from 'node:crypto';
-
-const PROMPT = /(?:^|\n)(?:>>> |\.\.\. |\(Pdb\) |mysql> |\$ |# )$/;
+import { analyzeProcessState } from './process-state.mjs';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export function createTerminalSessions({ runner, authority, maxSessions = 8 }) {
@@ -21,7 +20,7 @@ export function createTerminalSessions({ runner, authority, maxSessions = 8 }) {
     if (session.finished) return session.outcome.status;
     const stderr = session.handle.sanitize(session.handle.output.stderr.toString('utf8'));
     const stdout = session.handle.sanitize(session.handle.output.stdout.toString('utf8'));
-    return PROMPT.test(stderr) || PROMPT.test(stdout) ? 'waiting_input' : 'running';
+    return analyzeProcessState({ stdout, stderr }).status;
   }
   function outputView(session, offset = 0, length = 100) {
     if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(length) ||

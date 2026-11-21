@@ -1,0 +1,67 @@
+name: ABR-98 MCP Profiles, Source Adapters and PDF Integrity
+
+on:
+  pull_request:
+    paths:
+      - 'bridge/server/mcp-relay/**'
+      - 'bridge/agent/mcp-host-agent/**'
+      - 'scripts/test-mcp-profiles.mjs'
+      - 'scripts/test-mcp-structure.mjs'
+      - 'scripts/test-mcp-documents.mjs'
+      - 'scripts/mcp-profile-benchmark.mjs'
+      - 'docs/audits/mcp/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/mcp-profiles.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bridge/server/mcp-relay/**'
+      - 'bridge/agent/mcp-host-agent/**'
+      - 'scripts/test-mcp-profiles.mjs'
+      - 'scripts/test-mcp-structure.mjs'
+      - 'scripts/test-mcp-documents.mjs'
+      - 'package-lock.json'
+      - '.github/workflows/mcp-profiles.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profiles-documents-and-confinement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+      - name: Install locked dependencies with no install-time scripts
+        run: npm ci --ignore-scripts
+      - name: Install disposable Ubuntu Bubblewrap for runtime fixture
+        run: |
+          if ! command -v bwrap >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y bubblewrap
+          fi
+      - name: Verified session and OAuth tool-profile security
+        run: node --test scripts/test-mcp-profiles.mjs
+      - name: Offline PDF generation/edit fidelity and scope integrity
+        run: node --test scripts/test-mcp-documents.mjs
+      - name: Real AST and Git semantics in required OS sandbox
+        run: sudo env ABR98_REQUIRE_SANDBOX=1 "$(command -v node)" --test scripts/test-mcp-structure.mjs
+      - name: Preserve interactive REPL and cancellation in actual Linux sandbox
+        run: sudo env ABR96_REQUIRE_SANDBOX=1 "$(command -v node)" --test scripts/test-mcp-executor.mjs
+      - name: Representative core/focused/full schema benchmark
+        run: npm run mcp:profiles:benchmark
+      - name: Preserve previous MCP foundation, OAuth, executor and device contracts
+        run: |
+          npm run mcp:foundation:test
+          npm run mcp:oauth:test
+          npm run mcp:devices:test
+      - name: Preserve canonical Bridge and reliability contracts
+        run: |
+          npm run bridge:test
+          npm run test:reliability
