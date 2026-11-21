@@ -130,12 +130,12 @@ test("real Git attestation authorizes M6 signing only for exact reviewed content
       scope, headSha: sha, prNumber: 258,
       state: "verified-awaiting-executor",
       proof: { status: "verified-after-merge",
-        headSha: sha, mergeCommitSha: "b".repeat(40) },
+        headSha: sha, mergeCommitSha: "b".repeat(40), repository:scope.repositoryId, prNumber:258 },
     };
     receipt.id = promotionReceiptId(receipt);
     const source = { scope, sourceGitSha: sha, sourcePath: SOURCE_PATH,
       content: CONTENT, revision: 1, expiresAt: "2027-01-01T00:00:00Z" };
-    const journal = { async read() { return structuredClone(receipt); } };
+    const journal = { async read() { return structuredClone(receipt); }, async readConfirmed() { return structuredClone(receipt); } };
     const store = createApprovedSourceStore({
       root: approvalRoot, key: randomBytes(32), journal,
       verifySource: verify,

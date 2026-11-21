@@ -61,7 +61,7 @@ Run focused tests from the repository root, for example:
 
 `node --test memory/local-agent-checkpoint.test.mjs memory/opencode-session-checkpoint.test.mjs memory/memu-memory.test.mjs memory/postgres-checkpoint-store.test.mjs`
 
-The SQL verification procedure is separately controlled under `memory/scripts/`; it uses a disposable PostgreSQL cluster and is **not** a normal documentation or CI validation step.
+The SQL verification procedure is separately controlled under `memory/scripts/`; it uses a disposable PostgreSQL cluster and is **not** a normal documentation or CI validation step. The M10 [native memU isolation canary](../docs/ABR59_MEMU_ISOLATION_CANARY.md) exercises actual local embeddings, five scoped records, signed source approvals, denial of four foreign scopes, tampering/duplicates and persistence across a disposable cluster restart.
 
 ## Update policy
 
@@ -70,3 +70,11 @@ Update this README and the nearest nested README when changes affect checkpoint 
 ## ABR-99 — Preserve verified MCP tool receipt CAS and scope
 
 `active-task-memory.mjs` now retains the additive `recordedToolReceipts`, `hostId`, `branch` and `repositoryId` fields during routine locked lifecycle writes. The **only** source that appends verified MCP tool milestone receipts is `bridge/orchestration/mcp-milestone-integration.mjs`, after a matching authoritative job ledger and verified tool result. SHA-256 receipt hashes are bounded to 256 per checkpoint and cannot silently roll off to permit old replays; visible progress remains at most six sanitized entries for this adapter. This is still an issue/repo-keyed operational file, **not independently tenant-isolated persistent storage**, and does not authorize execution, submission or memU promotion. [ABR-99 source contract](../docs/audits/mcp/BRIDGE_INTEGRATION.md).
+
+## Host memory authority (ABR-59 M11)
+
+`host-memory-authority.mjs` binds a job and review policy to durable journal and confirmed commit evidence; `host-evidence-clients.mjs` supplies pinned, read-only provider evidence. Signing keys are operator-controlled, and live credential canaries and activation remain outstanding. See [M11 contract](../docs/ABR59_HOST_MEMORY_AUTHORITY.md).
+
+### Linear OAuth credential lifecycle
+
+The M11 host evidence adapter obtains a dedicated read-only Linear app-actor token using `linear-client.id` and `linear-client.secret` under the root-controlled authority directory. It atomically caches and renews access tokens before expiration on demand, replaces rejected tokens once on HTTP 401 and retries the read with a fresh six-second query timeout after renewal, and invalidates the cache when the client credentials change. No manually supplied token or refresh token is required. Actor/workspace pins and the existing team/issue/PR evidence gate remain mandatory. See [the operator contract](../docs/ABR59_HOST_MEMORY_AUTHORITY.md).

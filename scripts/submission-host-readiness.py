@@ -102,7 +102,7 @@ def main():
                     result["sandboxFailure"] = "namespace_permission_denied" if "Permission denied" in str(probe.get("error")) else "probe_failed"
         except ValueError:
             pass
-        for name in ("agy", "trae", "opencode"):
+        for name in ("agy", "trae-cli", "opencode"):
             rc, _ = run(prefix + ["/bin/sh", "-c",
                 'PATH=/home/bridge/.volta/bin:/home/bridge/.local/bin:/usr/local/bin:/usr/bin:/bin; command -v "$1" >/dev/null', "probe", name])
             result["nativeDiscovery"][name] = "found" if rc == 0 else "not_on_service_path"

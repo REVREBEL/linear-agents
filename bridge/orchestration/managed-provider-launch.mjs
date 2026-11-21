@@ -14,6 +14,7 @@ export function createManagedProviderLauncher({providerConfigs,isolatedSpawn,agy
       Object.values(c.env).some(v=>typeof v!=='string'||v.includes('\0'))||
       !absolute(c.env.HOME)||!c.env.PATH?.split(':').every(absolute))throw deny();
     if(agent==='antigravity'&&!absolute(c.python))throw deny();
+    if(agent==='trae'&&!absolute(c.configPath))throw deny();
     if(agent==='chatgpt-cli'&&!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(c.model||''))throw deny();
     configured.set(agent,Object.freeze({...c,env:Object.freeze({...c.env})}));
   }
@@ -37,7 +38,7 @@ export function createManagedProviderLauncher({providerConfigs,isolatedSpawn,agy
       Object.assign(env,{ANTIGRAVITY_BIN:c.binary,ANTIGRAVITY_WORKSPACE:workspace,ANTIGRAVITY_MODE:'cli'});
       stdin=task;
     }else if(agent==='trae'){
-      args=['chat','--reuse-window','--maximize',task];
+      args=['run','--config-file',c.configPath,'--working-dir',workspace,'--console-type','simple','--',task];
     }else{
       args=['run','--format','json','--model',c.model,task];
     }
