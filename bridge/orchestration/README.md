@@ -11,3 +11,5 @@ PR #262 review fixes: the D5 adapter snapshots and recursively freezes the same 
 ## ABR-17 M1 — Submission coordinator
 
 `submission-coordinator.mjs` enforces trusted coding-job binding, confirmed issue and sanitized summary, exact pre-pushed Git/CI evidence, one issue owner and one PR across revisions, and durable before-effect intents through the job-state submission outbox. It requires explicitly injected trusted publication/Linear/review/Worker adapters and refuses ambiguous retries until verified reconciliation. Disabled by default and not imported by the runtime. See [contract](../../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+PR #264 review: capability lifetime is checked after asynchronous job-ledger reads and again before external invocation; expired or revoked handles cannot begin a new effect or reconcile a pending intent. Admission also rejects expiry during its initial ledger lookup.

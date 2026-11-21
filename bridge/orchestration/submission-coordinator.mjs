@@ -114,6 +114,7 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
     const s=freezeScope(await verifyAdmission(evidence),now);
     const prior=outbox.get(key(s));
     assertJob(await jobStore.get(s.jobKey),s,{closed:prior?.stage==='session_closed'});
+    if(s.expiresAt<=now()) throw Error('UNVERIFIED_SUBMISSION_ADMISSION');
     const handle=Object.freeze({});
     handles.set(handle,s);
     return handle;
@@ -136,6 +137,7 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
     // Completed retries are read-only; they cannot publish or close again.
     const existing=outbox.get(id);
     assertJob(await jobStore.get(s.jobKey),s,{closed:existing?.stage==='session_closed'});
+    requireHandle(handle);
     const scopeDigest=digest(scopeFields.map(k=>s[k]));
     const publicationScope=digest([s.repository,s.branch,s.base,s.installationId,s.appId]);
     let row=outbox.claim({id,issueScope:digest([s.tenantId,s.issueUuid]),head:s.headSha,
@@ -149,6 +151,9 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
       // durable intent prevents concurrent processes from repeating it.
       requireHandle(handle);
       assertJob(await jobStore.get(s.jobKey),s);
+      // Ledger I/O yields control: a revoked/expired handle may no longer
+      // authorize the next step even if the returned job still matches.
+      requireHandle(handle);
       const prior=row.stage,next=nextStep.get(prior);
       if(!outbox.intent(id,prior,next)) return result(outbox.get(id));
       try {
@@ -158,6 +163,7 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
             github:row.github?Object.freeze({...row.github}):null,
             previousPr:row.previousPr?Object.freeze({...row.previousPr}):null,
             operationId:digest([id,next])});
+          requireHandle(handle);
           const receipt=await adapters[methods[next]](context);
           patch=checkReceipt(next,receipt,s,row);
         }
@@ -177,6 +183,7 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
     const s=requireHandle(handle),id=key(s),row=outbox.get(id);
     if(!row?.pending||!verifyRecovery) throw Error('SUBMISSION_RECONCILIATION_NOT_AVAILABLE');
     assertJob(await jobStore.get(s.jobKey),s);
+    requireHandle(handle);
     const observation=await verifyRecovery(evidence,Object.freeze({
       scope:s,submissionId:id,stage:row.pending,operationId:digest([id,row.pending]),
       github:row.github?Object.freeze({...row.github}):null,
@@ -187,6 +194,7 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
       throw Error('UNVERIFIED_SUBMISSION_RECONCILIATION');
     requireHandle(handle);
     assertJob(await jobStore.get(s.jobKey),s);
+    requireHandle(handle);
     const patch=row.pending==='validated'?{}:checkReceipt(row.pending,observation.receipt,s,row);
     return result(outbox.advance(id,row.stage,row.pending,patch));
   }

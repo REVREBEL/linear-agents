@@ -171,3 +171,5 @@ ABR-99 review regressions verify D5 caller mutation during verification and atte
 ## ABR-17 M1
 
 `npm run submission:test` exercises the actual canonical job ledger and SQLite submission effect journal using test-only publication adapters. Cases include concurrent connections, lost responses/restart at all six external stages, wrong admission, Git/CI refusal, same-head retries and same-PR revisions. No live providers or credentials are used.
+
+ABR-17 authorization race regression: deterministic held ledger reads exercise revocation and expiry at all eight submission lookups, both recovery lookups and initial handle minting.

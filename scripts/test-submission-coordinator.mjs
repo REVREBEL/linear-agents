@@ -41,6 +41,26 @@ async function setup(t){
   const root=await mkdtemp(path.join(os.tmpdir(),'abr17-'));
   const jobStore=createJobStore(root),trustedAdmissions=new WeakMap(),observations=new WeakMap();
   const open=new Set(),calls=[],contexts=new Map(),effects=new Map();
+  const originalGet=jobStore.get.bind(jobStore);
+  let holdRead=null;
+  jobStore.get=async key=>{
+    const record=await originalGet(key);
+    const hold=holdRead;
+    if(hold && --hold.remaining===0){
+      holdRead=null;
+      hold.entered();
+      await hold.release;
+    }
+    return record;
+  };
+  function holdLedgerRead(n=1){
+    let entered,resume;
+    const waiting=new Promise(r=>{entered=r;});
+    const release=new Promise(r=>{resume=r;});
+    holdRead={remaining:n,entered,release};
+    return {waiting,resume};
+  }
+
   let clock=1_990_000, fail=null, transform=null, suspend=null;
   t.after(async()=>{for(const store of open)store.close();await rm(root,{recursive:true,force:true});});
   async function record(s=BASE){
@@ -81,7 +101,7 @@ async function setup(t){
   return {root,jobStore,calls,contexts,record,admission,connect,handle,...connection,
     failAt:stage=>{fail=stage;},mutate:fn=>{transform=fn;},
     pauseAt:stage=>{let resume;suspend={stage,pause:new Promise(r=>{resume=r;})};return resume;},
-    observation,expire:()=>{clock=2_000_001;}};
+    observation,holdLedgerRead,expire:()=>{clock=2_000_001;}};
 }
 test('ABR-17 disabled by default; no forged/interactive/wrong-issue/expired capability',async t=>{
   const x=await setup(t);
@@ -198,4 +218,56 @@ test('ABR-17 wrong publication receipt or changed job never advances to Linear',
   await assert.rejects(x.coordinator.reconcilePending(x.handle,x.observation('publishGitHub')),/UNVERIFIED_GITHUB_PUBLICATION/);
   await x.jobStore.transition(BASE.jobKey,'failed');
   await assert.rejects(x.coordinator.submit(x.handle,input),/JOB_SCOPE_MISMATCH/);
+});
+
+
+test('ABR-17 revocation or expiry during ledger I/O cannot authorize any next adapter',async t=>{
+  for(const mode of ['revoke','expire']){
+    for(const [label,n,priorCalls] of [
+      ['initial claim',1,0],['validation',2,0],
+      ['git inspection',3,0],['GitHub publication',4,1],
+      ['Linear comment',5,2],['Linear transition',6,3],
+      ['review queue',7,4],['Worker completion',8,5],
+    ]){
+      await t.test(mode+' during '+label,async child=>{
+        const x=await setup(child);
+        const held=x.holdLedgerRead(n);
+        const submission=x.coordinator.submit(x.handle,input);
+        await held.waiting;
+        if(mode==='revoke') x.coordinator.revoke(x.handle);
+        else x.expire();
+        held.resume();
+        await assert.rejects(submission,/SUBMISSION_CAPABILITY_REQUIRED/);
+        assert.deepEqual(x.calls,stages.slice(0,priorCalls));
+      });
+    }
+  }
+});
+test('ABR-17 recovery cannot advance a pending intent after revocation during either ledger read',async t=>{
+  for(const n of [1,2]){
+    await t.test('held recovery lookup '+n,async child=>{
+      const x=await setup(child);
+      x.failAt('publishGitHub');
+      const first=await x.coordinator.submit(x.handle,input);
+      assert.equal(first.pending,'github_published');
+      const held=x.holdLedgerRead(n);
+      const recovery=x.coordinator.reconcilePending(x.handle,x.observation('publishGitHub'));
+      await held.waiting;
+      x.coordinator.revoke(x.handle);
+      held.resume();
+      await assert.rejects(recovery,/SUBMISSION_CAPABILITY_REQUIRED/);
+      assert.equal(x.outbox.get(first.submissionId).pending,'github_published');
+      assert.deepEqual(x.calls,stages.slice(0,2));
+    });
+  }
+});
+test('ABR-17 admission expires during ledger lookup before handle minting',async t=>{
+  const x=await setup(t);
+  const held=x.holdLedgerRead();
+  const binding=x.coordinator.bind(x.admission());
+  await held.waiting;
+  x.expire();
+  held.resume();
+  await assert.rejects(binding,/UNVERIFIED_SUBMISSION_ADMISSION/);
+  assert.deepEqual(x.calls,[]);
 });
