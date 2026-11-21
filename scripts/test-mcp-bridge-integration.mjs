@@ -338,13 +338,14 @@ test('ABR-99 D5 portable handoff requires canonical source verification and full
     assert.equal(scope.jobKey,JOB.jobKey);
     assert.equal(scope.sessionId,JOB.sessionId);
     assert.equal(scope.hostId,JOB.hostId);
-    return value===envelope;
+    return value.message === 'Use pinned, complete README context before continuing';
   }});
   const handle=await x.integration.bindAdmittedJob(x.issueAdmission());
   const verified=await x.integration.sourceLinkedHandoff(handle,envelope);
   assert.equal(verified.kind,'source-linked-context');
   assert.equal(verified.handoffSha256,envelope.handoffSha256);
-  assert.equal(verified.envelope,envelope);
+  assert.deepEqual(verified.envelope,envelope);
+  assert.notEqual(verified.envelope,envelope);
   assert.equal(verified.authority,'portable-readme-context-not-execution');
   await assert.rejects(x.integration.sourceLinkedHandoff(handle,{
     ...envelope,repository:'OTHER/repo',
@@ -359,4 +360,32 @@ test('ABR-99 D5 portable handoff requires canonical source verification and full
   const handle2=await nonVerified.integration.bindAdmittedJob(nonVerified.issueAdmission());
   await assert.rejects(nonVerified.integration.sourceLinkedHandoff(handle2,envelope),
     /CANONICAL_D5_VERIFIER_NOT_CONFIGURED/);
+});
+
+test('D5 handoff remains the verified snapshot during caller mutation', async t => {
+  const envelope = {
+    handoffVersion:1, repository:JOB.repositoryId,
+    repoCommit:'c'.repeat(40), contextSha256:'b'.repeat(64),
+    handoffSha256:'d'.repeat(64), messageSha256:'e'.repeat(64),
+    message:'Verified original message',
+    contextBundle:{gitHeadSha:'c'.repeat(40),documents:[{content:'original'}]},
+  };
+  let release, entered;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { entered = resolve; });
+  const x = await init(t, {d5Verifier:async value => {
+    entered(); await gate;
+    return value.message === 'Verified original message' &&
+      value.contextBundle.documents[0].content === 'original';
+  }});
+  const handle = await x.integration.bindAdmittedJob(x.issueAdmission());
+  const pending = x.integration.sourceLinkedHandoff(handle, envelope);
+  await started;
+  envelope.message = 'changed';
+  envelope.contextBundle.documents[0].content = 'changed';
+  release();
+  const result = await pending;
+  assert.equal(result.envelope.message, 'Verified original message');
+  assert.equal(result.envelope.contextBundle.documents[0].content, 'original');
+  assert.equal(Object.isFrozen(result.envelope.contextBundle.documents[0]), true);
 });
