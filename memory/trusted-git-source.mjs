@@ -82,7 +82,7 @@ export function createTrustedGitSourceVerifier({
           ["--no-pager", ...args], {
             cwd: root, env: { PATH: "/usr/bin:/bin", HOME: "/nonexistent",
               GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null",
-              GIT_OPTIONAL_LOCKS: "0" },
+              GIT_OPTIONAL_LOCKS: "0", GIT_NO_REPLACE_OBJECTS: "1" },
             maxBuffer: MAX_STDOUT, timeout: TIMEOUT,
             encoding: "utf8", windowsHide: true,
           });
