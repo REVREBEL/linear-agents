@@ -189,3 +189,16 @@ ABR-17 authorization race regression: deterministic held ledger reads exercise r
 M4 regressions also verify actual confined final-head capture, managed duplicate acceptance, checkout launch exclusion, and the AGY Python wrapper's private FD propagation and suppression of legacy Worker calls.
 
 Legacy AGY quota retry recovery remains per-record, independent of managed submission enablement. Managed waiting-quota records never resume via the legacy timer; both startup and timer execution use the same predicate.
+
+## ABR-17 M5 — Host evidence and operator recovery
+
+`submission-host-readiness.py` is a read-only host report with exact service-UID sandbox probe and native discovery; it deliberately cannot authorize activation. `recover-managed-submission.mjs JOB_KEY APPROVAL_ID` requires the installed protected operator binding, inactive service, service UID, exclusive lease and verified quiescence. It only reconciles observed pending effects. `npm run submission:m5:test` requires a disposable Linux fixture host with supported Bubblewrap; tests include cross-process lock/crash, real sandboxed private FD CLI, secret-sentinel and network isolation, lost-response and terminal receipt recovery. No live provider writes or service changes.
+
+M5 approved host remediation: install only the reviewed packaged Bubblewrap
+policy unit (see scripts/linux/README.md); readiness now resolves the real
+running Node executable or accepts an explicit installed binary via --node,
+and runs with the actual service UID and clean HOME. The M5 command canary
+mounts a pinned read-only fixture copy, not the CI checkout path. The strict
+executor REPL assertion uses a bounded 2-second prompt deadline. All 57
+executor/structure/M2/M5 tests passed as bridge UID 994, using a private
+temporary fixture directory.

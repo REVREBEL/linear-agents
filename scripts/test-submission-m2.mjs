@@ -104,7 +104,7 @@ test('M2 private Unix IPC transports only issue and summary and rejects extra fi
 const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const PEM=privateKey.export({type:'pkcs8',format:'pem'});
 const PERMS={contents:'read',pull_requests:'read',checks:'read',statuses:'read',metadata:'read'};
-function brokerFixture(transform=(p,d)=>d){
+function brokerFixture(transform=(p,d)=>d,options={}){
   let now=Date.now(),minted=0;
   const calls=[];
   const fetchImpl=async(url,opts)=>{
@@ -132,7 +132,7 @@ function brokerFixture(transform=(p,d)=>d){
     }
     return new Response(JSON.stringify(transform(p,data)),{status:opts.method==='POST'?201:200});
   };
-  const broker=createSubmissionGithubBroker({mappings:[MAP],loadPrivateKey:async id=>{assert.equal(id,MAP.appId);return PEM;},fetchImpl,now:()=>now});
+  const broker=createSubmissionGithubBroker({mappings:[MAP],loadPrivateKey:async id=>{assert.equal(id,MAP.appId);return PEM;},fetchImpl,now:()=>now,...options});
   return {broker,calls,minted:()=>minted,expire:()=>{now+=3600000;}};
 }
 test('M2 broker verifies app and exact installation, narrows token and refreshes without exporting secrets',async()=>{
@@ -208,4 +208,14 @@ test('M2 actual submit-work CLI inherits private FD without credentials in argum
     INPUT.issueId,INPUT.summary],{env:{PATH:'/usr/bin:/bin'},stdio:['ignore','pipe','pipe']});
   const [failed]=await once(denied,'close');
   assert.notEqual(failed,0);
+});
+
+
+test('M5 recovery broker permits PR observation but never PR creation or write-scoped token',async()=>{
+  const x=brokerFixture(undefined,{allowObservation:true});
+  const facade=await x.broker.forScope(SCOPE);
+  assert.equal(x.minted(),1);
+  assert.equal(typeof facade.findOpenPull,'function');
+  assert.equal(typeof facade.getPull,'function');
+  assert.equal(facade.createPull,undefined);
 });

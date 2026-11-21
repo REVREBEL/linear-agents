@@ -12,6 +12,10 @@ on:
       - 'linear-agent-bridge/run_agent.py'
       - 'linear-agent-bridge/test_run_agent.py'
       - 'scripts/test-submission-m4.mjs'
+      - 'scripts/test-submission-m5.mjs'
+      - 'scripts/recover-managed-submission.mjs'
+      - 'scripts/submission-host-readiness.py'
+      - 'jobs/persistence/submission-exclusive-lease.mjs'
       - 'scripts/fixtures/submission-provider-fixture.mjs'
       - '.agents/skills/**/SKILL.md'
       - 'bridge/orchestration/submission-publication.mjs'
@@ -40,6 +44,10 @@ on:
       - 'linear-agent-bridge/run_agent.py'
       - 'linear-agent-bridge/test_run_agent.py'
       - 'scripts/test-submission-m4.mjs'
+      - 'scripts/test-submission-m5.mjs'
+      - 'scripts/recover-managed-submission.mjs'
+      - 'scripts/submission-host-readiness.py'
+      - 'jobs/persistence/submission-exclusive-lease.mjs'
       - 'scripts/fixtures/submission-provider-fixture.mjs'
       - '.agents/skills/**/SKILL.md'
       - 'bridge/orchestration/submission-publication.mjs'
@@ -85,7 +93,7 @@ jobs:
             sudo apt-get install -y bubblewrap
           fi
       - name: Private command and real isolated Git preflight
-        run: sudo "$(command -v node)" --test scripts/test-submission-m2.mjs
+        run: sudo "$(command -v node)" --test scripts/test-submission-m2.mjs scripts/test-submission-m5.mjs
       - run: npm run bridge:test
       - run: npm run test:reliability
       - name: Prepare isolated local Worker configuration

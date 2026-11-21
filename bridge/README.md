@@ -57,3 +57,7 @@ The opt-in `orchestration/submission-ingress.mjs`, `handlers/submission-channel.
 ## ABR-17 M4 — Managed dispatch integration
 
 The existing authenticated /jobs route may select the managed submission service for AGY, Trae or OpenCode. It bypasses legacy credential persistence and callbacks, shares the canonical submission outbox with the ABR-99 source adapter, and requires a separate approved native host launcher. Disabled by default.
+
+## ABR-17 M5 — Recovery boundary
+
+Managed runtime and offline operator recovery share an exclusive service-ledger lease. Startup requires explicit protected approval and real service-UID sandbox success. Offline recovery observes only the exact pending receipt, not a publication retry.

@@ -59,3 +59,15 @@ If a future explicitly approved canary fails, stop **only** the new MCP host ser
 - `run_parallel` checks **every** item’s scope, idempotency conflict, queue capacity, and remaining durable-history slots before any insertion. New records commit together in a single SQLite transaction, and no work launches until every insert succeeds. A rejected batch leaves no unreturned or partially executed writes.
 - Terminal cursors now count immutable **arrival-ordered output segments**, not lines rebuilt from stdout-before-stderr. `nextOffset` and `cursorUnit: 'segments'` prevent newly printed stdout from being skipped after a previously read Python `>>> ` stderr prompt. Stream data is capped and sanitized on output.
 - Only active terminal processes count toward `maxSessions`. Recent completed handles remain readable, while the oldest finished entries are evicted once retention reaches `4 * maxSessions`; short-lived sequential processes do not require restarting the service.
+
+## ABR-17 M5 host policy evidence (November 20, 2026 PT)
+
+The previously blocked Linux service-UID namespace probe now passes.
+The operator authorized loading the existing Ubuntu packaged
+bwrap-userns-restrict policy, and a dedicated systemd unit persists only
+that policy. Global user namespace restriction remains enabled. The
+actual bridge account passed 57 strict executor/structure/submission
+regressions with zero skips in private disposable fixtures. This resolves
+the namespace-policy blocker; it is not evidence that production MCP
+endpoints, native model runners, or macOS execution are enabled.
+See [deployment evidence](../../ABR17_SUBMISSION_COORDINATOR.md).

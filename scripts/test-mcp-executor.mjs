@@ -297,9 +297,10 @@ test('ABR-96 sandboxed execution and durable jobs (Linux namespace evidence)', a
       workspaceId: 'project-a', program: 'python3', args: ['-i','-q'],
     });
     let prompt;
-    for (let i = 0; i < 25; i++) {
+    const promptDeadline = Date.now() + 2_000;
+    while (Date.now() < promptDeadline) {
       prompt = service.readProcessOutput(scopeA, session.processId, 0, 10);
-      if (prompt.status === 'waiting_input') break;
+      if (prompt.status !== 'running') break;
       await delay(35);
     }
     assert.equal(prompt.status, 'waiting_input');

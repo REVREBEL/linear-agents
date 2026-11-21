@@ -44,3 +44,5 @@ Update this README and the nearest provider README with any changes to event cla
 ## ABR-17 M3 — Host-only provider clients
 
 `submission-github-broker.mjs` remains read-only by default; explicit M3 publication enables repository-scoped pull_requests:write only (no contents write), scoped PR list/create/read and validated exact head/base. `submission-linear-worker.mjs` uses fixed Linear GraphQL and mapped HTTPS Worker /complete, checks viewer/organization/team/issue and authorized state, verifies comments by operation marker and author, verifies session ownership before completion and reads paginated activities and latest terminal state afterwards. No raw credentials or responses leave these trusted adapters. See [M3 contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+M5 offline recovery uses `allowObservation:true` without `allowPublication` in the GitHub App broker. The read-only facade permits exact PR list/read observation and cannot create PRs. Worker secret loading is denied in offline recovery composition.

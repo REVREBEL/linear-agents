@@ -298,3 +298,192 @@ managed mode. Retain the journal pending reconciliation. Rollback disables
 the flag only after stopping/reconciling managed in-flight work; restore
 the previously approved legacy configuration. Never reinterpret an
 ambiguous external effect as permission to launch a legacy job.
+
+## M5 — Operational evidence, operator recovery and rollback
+
+**Release remains blocked.** Source and isolated-fixture success is not
+permission to activate the production service or launch additional agents.
+
+### Verified source and Linux fixture results
+
+The managed runtime now requires a clean exact release commit, a successful
+strict sandbox probe under the non-root service UID, and an explicit
+root-owned host binding verifyActivation({head,uid,hostId,repositoryRoot})
+decision before startup. CLI/root fixtures cannot grant that decision.
+The fixed binding also owns the actual native isolation implementation;
+the operator must separately prove native runner descendant FD propagation
+and credential/egress separation. An exclusive SQLite lease under the
+canonical job-state directory prevents a second managed authority or
+offline recovery process from co-owning this ledger. It releases on crash.
+
+The M5 sandbox fixture exercises the actual submit-work command through
+Bubblewrap with FD 3, and verifies a host-only sentinel and host loopback
+listener are inaccessible. This was executed as root only inside a disposable
+fixture namespace, not as the live bridge service UID or actual native CLI.
+M1–M4 retain the mapped fixture provider, real durable outbox/inbox,
+controlled lost-response, revision and duplicate tests.
+
+### Host observation (November 20, 2026 PT)
+
+Read-only probe against rebel-server:
+- Existing agent-bridge service active, user bridge UID 994.
+- Protected /etc/agent-bridge/managed-submission-host.mjs: absent.
+- Actual service-UID Bubblewrap probe: namespace creation permission denied.
+  kernel.apparmor_restrict_unprivileged_userns=1; kernel.unprivileged_userns_clone=1.
+  Do not globally disable AppArmor or elevate the service to root.
+- AGY and OpenCode discoverable on the checked service PATH; Trae not
+  discovered there. An explicitly configured absolute Trae launcher remains
+  to be verified per the host policy.
+- Offline operator command denied while the service was active.
+- Actual installed provider mapping, live OAuth/session reads, PR identity,
+  model egress, native descendant IPC, Mac transport and deployment
+  approval remain unestablished.
+
+Repeat the read-only probe from the reviewed checkout:
+
+```sh
+python3 scripts/submission-host-readiness.py
+```
+
+Exit 2 is deliberate: discovery and host inventory alone cannot grant
+release approval. The report contains no credential values, raw logs,
+environment dump, provider mutation or agent start. The sandbox check
+runs as the configured non-root service account where possible.
+
+### Operator-only interrupted-effect recovery
+
+The new offline recovery composition uses the same canonical job store,
+outbox and M3 readback checks, with a separate read-only GitHub token
+permission set. It cannot mint active runner handles or call a publication
+adapter. It derives the submission ID and full scope digest from the
+managed persisted job, not from CLI-supplied PR, SHA, credentials or
+provider receipt. Only an explicitly approved exact operation may be
+observed. If the observed receipt is valid, repair its pending intent
+and the local job ledger. If the journal was already terminal but the
+job ledger was not, independently re-observe the terminal receipt
+before repairing it. An ambiguous observation stays pending. Recovery
+does not perform the next external effect; a nonterminal recovered row
+requires separately authorized continuation. No attempt is made to
+invent a receipt or repeat a mutation. Known stale PID must be resolved
+by the trusted host's quiescence verifier, not assumed dead from a number.
+
+For a **separately approved** offline maintenance window:
+1. Stop new admissions and drain or stop the entire managed process tree.
+   Record the exact pending operation, job, release SHA and owner approval.
+   Keep the canonical ledger/outbox/inbox intact with a protected backup.
+2. Verify agent-bridge.service is inactive, MainPID=0, no separately launched
+   Bridge or runner is active, and the protected host binding asserts per-job
+   quiescence. Use the service UID and reviewed installed checkout, never
+   an agent environment or untrusted worktree.
+3. The operator runs `node scripts/recover-managed-submission.mjs JOB_KEY APPROVAL_ID`
+   from the installed release. Arguments are exact job key and approval
+   identifier only. Binding must provide jobsDir equal to the installed
+   runtime ledger, projectsRoot, routingConfigPath, verifyOperatorRecovery
+   (approve exact recovery request), verifyRecoveryRequest (approve exact
+   observation), and synchronous assertQuiescent(job). Existing credential
+   callbacks are read-only for this operation; Worker secret access and
+   PR creation are unavailable.
+4. Record the verified stage and receipt. Terminal repair is complete only
+   when independent provider evidence matches; if continuationRequired=true,
+   return the issue to the explicitly authorized continuation workflow.
+   Do not clear pending records, reset the journal, launch legacy agents,
+   or retry GitHub/Linear/Worker writes to guess whether they succeeded.
+
+### Deployment acceptance checklist (no approval inferred)
+
+| Gate | Required evidence | Status |
+|---|---|---|
+| Reviewed release | All stacked M1–M5 PRs independently reviewed, exact approved release SHA and actual CI | Pending |
+| Linux host | Narrow reviewed service-specific namespace profile; strict actual UID probe; native process/FD and egress tests | Blocked |
+| Private host binding | Approved root-owned configuration, installed pinned command, operator approvals, real credential provider, isolated supervisor | Missing |
+| Credential isolation | Explicit mapped app/repository/install IDs and verified permission/identity reads; no readable legacy tokens, keys, unsafe helpers or excess agent network access | Unverified |
+| Native canary | One approved disposable staging assignment per AGY/Trae/OpenCode, actual inherited finish operation, no secrets in child, correct failure path | Unverified |
+| Real handoff | Exact clean Git branch/head/required checks, mapped PR identity, one PR/comment/In Review, exact session terminal activity, replay and revision evidence | Unverified |
+| Recovery | Operator-approved staging interruption and receipt readback without repeated external effects | Fixture only |
+| MCP / Mac | Actual authenticated ABR-99 transport and separately approved remote host, linked-worktree and isolation policy | Unverified |
+| ABR-18 | Review delivery/acknowledgment and cross-event deduplication; queue is not ACK | Separate dependency |
+
+### Approved rollout and rollback sequence
+
+After independent review and owner approval, provision only the narrowly
+scoped host policy, isolated model transport, protected mappings, command
+and recovery approval binding; verify actual service-UID sandbox and native
+launcher before enabling the flag. Exercise a disposable staging job with
+approved provider identities and actual required checks; verify every receipt
+and confirm the task inbox is retained. Record sanitized outputs and exact
+release SHA. Do not enable Mac production rollout until separately approved.
+If any gate fails, remain disabled and reconcile the exact effect.
+
+Rollback: stop new managed admissions, quiesce the managed process tree,
+retain existing ledger/outbox/inbox and observe pending effects. Disable
+BRIDGE_MANAGED_SUBMISSION_ENABLED only after reconciliation/planned handling
+of in-flight jobs, restore the last approved service configuration and
+validate existing authenticated health and legacy quota recovery. Keep
+unresolved managed job records distinct from legacy retries. Revoke only
+new test grants and remove only approved dedicated test artifacts; never
+merge, mark Done or delete the existing task inbox as rollback.
+
+### November 20, 2026 PT — approved host-policy correction and live preflight
+
+The operator authorized the server-security modification followed by live
+staging checks. On the Ubuntu 26.04.1 host, the kernel audit log identified
+unprivileged user namespace creation denial; the installed general AppArmor
+loader was disabled and only the Docker policy was loaded. The existing Ubuntu
+packaged bwrap-userns-restrict policy was syntax-checked and loaded unchanged.
+Both bwrap and unpriv_bwrap are enforcing; its child profile strips namespace
+capabilities. The dedicated root-owned enabled systemd unit loads only that
+packaged profile before Bridge at boot. See scripts/linux/systemd/
+agent-bridge-bwrap-policy.service.example and scripts/linux/README.md.
+The global apparmor_restrict_unprivileged_userns setting remains 1.
+The existing service stayed active with its original PID.
+
+The strict sandbox probe passed as actual UID 994 (bridge). All 57 tests
+across the strict executor, AST/Git confinement, M2 and M5 suites passed
+under that actual account, with zero skips, including the real private CLI
+FD 3, host filesystem/network denial, exclusive lease and interrupted-effect
+fixtures. A first run hit the host's existing non-writable /tmp; rerun used
+a private service-owned /var/tmp fixture directory without changing system
+permissions. The host readiness probe now uses the actual installed Node
+binary rather than the Volta shim with an inherited HOME.
+
+Live staging authentication/preflight at the then-current PR #270 head
+84c3f92684228dca8d72e22a1a2d9b85c3803b97 (base feat/abr-17-m4):
+
+| Check | Observed evidence |
+|---|---|
+| Configured Linear identity | HTTP 200; real organization identity |
+| Antigravity Linear Worker token exchange | HTTP 200 GraphQL, expected separate Antigravity actor and matching organization |
+| Trae Linear Worker token exchange | HTTP 200 GraphQL, expected separate Trae actor and matching organization |
+| ChatGPT CLI Linear Worker token exchange | HTTP 404; health endpoint responds 200; separate CLI credential not established |
+| GitHub organization installation inventory | Antigravity, Trae and ChatGPT apps installed, unsuspended; required contents/checks/statuses/PR/metadata permissions present. App membership alone does not prove a scoped installation token. |
+| Antigravity actual M3 broker | Live app identity/repository installation (200), narrowed installation token (201), exact repository/branch/PR reads (200); both read-only and restricted PR-write token modes pass. No publication invoked. |
+| Trae GitHub broker | Existing configured/default key source missing. |
+| ChatGPT CLI GitHub broker | Distinct approved coding key mapping not established. |
+| Native execution | AGY and OpenCode discovery passes; configured Linux Trae executable absent. Native descendant/isolated model egress not yet verified. |
+| Protected managed host binding | Absent; existing production checkout not the reviewed stacked release. |
+| Live PR/Linear/session mutation | Not attempted: protected native launcher/binding and complete mapped credentials are required first; at tested head two CI jobs failed and independent review remained blocking. |
+
+The Antigravity key resolves within its existing shared agent home; it must be
+migrated to the trusted host credential boundary and inaccessible to managed
+children before activation. Existing legacy credentials were not removed.
+Token probes kept credentials in memory, used the actual provider endpoints,
+did not persist workspace token files and returned only verification status.
+Neither a reviewer credential nor another runner's credential substituted
+for the ChatGPT CLI coding identity. Source report remains releaseReady=false;
+sandbox gate is now passed, replacing the historical blocked observation
+above. Actual native launch, protected operator binding, CI/review,
+staging submission and session close, revision/recovery, and Mac/MCP
+acceptance remain open. No production managed flag or legacy callbacks changed.
+
+CI review corrections: the real M5 CLI fixture now copies the command into
+a private fixture directory and mounts the pinned read-only descriptor,
+rather than depending on runner checkout ancestor permissions. The existing
+REPL test uses a bounded 2-second readiness deadline within its 3-second
+session, still requiring the exact waiting_input state.
+
+Additional live readback check: Antigravity OAuth returned HTTP 200 without
+GraphQL errors for the exact M3 issue-read schema on ABR-17, and the M3
+AgentSession/activity schema on an existing scoped session from the current
+job ledger. Session ID, issue ID and app user matched; the first 100 activity
+records were accessible. This validates the query shape and authorization,
+not a new terminal activity or a complete staging publication transaction.

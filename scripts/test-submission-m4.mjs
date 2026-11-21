@@ -30,7 +30,7 @@ async function fixture(t,agent,{mode='success',wrongIssue=false,lost=null}={}){
     verifyAdmission:ingress.verifyAdmission,isAdmissionLive:ingress.isAdmissionLive,
     adapters:x.adapters,verifyRecovery:x.verifyRecovery});
   const config=Object.fromEntries(providers.map(p=>[p,{binary:'/opt/fixture/'+p,
-    commandPath:'/opt/agent-tools/bin/submit-work',python:'/usr/bin/python3',model:'openai/fixture',
+    commandPath:'/opt/agent-tools/bin/submit-work',python:'/usr/bin/python3',model:'openai/fixture',configPath:'/fixture/trae.yaml',
     env:{HOME:'/fixture/home',PATH:'/usr/bin:/bin'}}]));
   let child,launch;
   const launchProvider=createManagedProviderLauncher({providerConfigs:config,
@@ -76,7 +76,7 @@ test('M4 each managed native provider uses real private CLI and mapped M3 public
     assert.equal(row.githubInstallationId,x.s.installationId);
     const spec=x.getLaunch();
     if(agent==='antigravity')assert.deepEqual(spec.args,['/opt/fixture/run_agent.py','--managed']);
-    else if(agent==='trae')assert.deepEqual(spec.args.slice(0,3),['chat','--reuse-window','--maximize']);
+    else if(agent==='trae')assert.deepEqual(spec.args.slice(0,-1),['run','--config-file','/fixture/trae.yaml','--working-dir',x.s.repositoryRoot,'--console-type','simple','--']);
     else assert.deepEqual(spec.args.slice(0,5),['run','--format','json','--model','openai/fixture']);
     if(agent!=='antigravity')assert.ok(spec.args.at(-1).includes('/opt/agent-tools/bin/submit-work ABR-17'));
   });

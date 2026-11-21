@@ -1,0 +1,13 @@
+[Unit]
+Description=Load Ubuntu Bubblewrap user namespace policy for Agent Bridge
+ConditionSecurity=apparmor
+After=local-fs.target apparmor.service
+Before=agent-bridge.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/apparmor_parser -r -T /etc/apparmor.d/bwrap-userns-restrict
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

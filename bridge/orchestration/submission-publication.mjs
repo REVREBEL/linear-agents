@@ -31,7 +31,7 @@ export function createSubmissionPublicationAdapters({gitPreflight,githubBroker,l
   }
   async function githubContext(c){
     const p=policy(c.scope),client=await githubBroker.forScope(c.scope);
-    if(!client.findOpenPull||!client.getPull||!client.createPull)throw fail();
+    if(!client.findOpenPull||!client.getPull)throw fail();
     return {p,client};
   }
   function verifyPr(c,p,pr){
@@ -54,7 +54,7 @@ export function createSubmissionPublicationAdapters({gitPreflight,githubBroker,l
   }
   async function publishGitHub(c){
     const {p,client}=await githubContext(c);
-    if(!resolveGithubReviewDestination(reviewRoutingConfig,c.scope.repository).ok)throw fail();
+    if(!client.createPull||!resolveGithubReviewDestination(reviewRoutingConfig,c.scope.repository).ok)throw fail();
     await verifiedGit(c);
     let pr=await client.findOpenPull();
     if(!pr){

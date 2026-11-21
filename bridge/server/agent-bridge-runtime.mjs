@@ -266,10 +266,12 @@ await Promise.all(
 // binding must be installed/approved separately; absent binding stops startup.
 let managedSubmission = null;
 if (process.env.BRIDGE_MANAGED_SUBMISSION_ENABLED === "true") {
-  const {loadManagedSubmissionHost,createManagedSubmissionService} =
+  const {loadManagedSubmissionHost,verifyManagedSubmissionActivation,createManagedSubmissionService} =
     await import("../orchestration/managed-submission-service.mjs");
+  const hostBinding=await loadManagedSubmissionHost();
+  await verifyManagedSubmissionActivation(hostBinding,path.resolve(PROJECT_DIR,".."));
   managedSubmission = createManagedSubmissionService({
-    hostBinding:await loadManagedSubmissionHost(),jobStore,jobsDir:JOBS_DIR,
+    hostBinding,jobStore,jobsDir:JOBS_DIR,
     projectsRoot:PROJECTS_ROOT,reviewInbox,agyRunnerPath:RUN_AGENT_PATH,
     reviewRoutingConfig:JSON.parse(await fs.readFile(ROUTING_CONFIG_FILE,"utf8")),
   });
