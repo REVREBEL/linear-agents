@@ -41,3 +41,7 @@ The local `server/mcp-relay/` fixture optionally requires cryptographically vali
 ## ABR-99 — Canonical job-ledger MCP milestone bridge
 
 `orchestration/mcp-milestone-integration.mjs` is an **unconnected source adapter**, not a second runtime or `/jobs` handler. It requires a trusted Linear job verifier, exact current `jobs/persistence/job-store.mjs` scope, verified tool receipts, existing revisioned memory and the same human ChatGPT review inbox. An optional, real ABR-17 submission coordinator and independent review verifier are mandatory before `submitWork` can publish or enqueue any PR review; otherwise it fails closed. [ABR-99 authority and test gates](../docs/audits/mcp/BRIDGE_INTEGRATION.md).
+
+## ABR-17 — Submission lifecycle
+
+`orchestration/submission-coordinator.mjs` is an opt-in M1 source library. It binds externally verified coding admission to the canonical job store, records durable intent before each external adapter, and separates publication, Linear In Review, review queueing and session completion. No live caller is installed. See [M1 contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).

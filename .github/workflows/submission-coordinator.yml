@@ -1,0 +1,27 @@
+name: ABR-17 Submission Coordinator
+on:
+  pull_request:
+    paths:
+      - 'bridge/orchestration/submission-coordinator.mjs'
+      - 'jobs/persistence/submission-outbox.mjs'
+      - 'scripts/test-submission-coordinator.mjs'
+      - 'package.json'
+      - '.github/workflows/submission-coordinator.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run submission:test
+      - run: npm run bridge:test
+      - run: npm run test:reliability
+      - run: npm run typecheck

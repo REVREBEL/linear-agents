@@ -577,3 +577,7 @@ The [ABR-96 executor implementation and safety gate](docs/audits/mcp/EXECUTOR.md
 ## ABR-99 — MCP milestones and authenticated review handoff (source-only)
 
 The [ABR-99 integration contract](docs/audits/mcp/BRIDGE_INTEGRATION.md) binds Bridge-verified MCP tool milestones to the existing job ledger and CAS checkpoint, with durable replay checks, bounded recovery and optional D5 source-linked handoff. It reuses the existing human ChatGPT review inbox, scoped by PR and full SHA, **only** behind an independently verified ABR-17 submission coordinator. ABR-17/ABR-18 production dependencies remain open; no MCP client is able to authorize a Linear job or trigger GitHub/Linear/Worker/memU writes by itself.
+
+## ABR-17 M1 — Durable submission coordinator
+
+The [submission coordinator milestone](docs/ABR17_SUBMISSION_COORDINATOR.md) provides a disabled-by-default, trusted-adapter state machine and durable effect journal. Runner ingress, credential brokerage, actual publication adapters and deployment are separate gates.
