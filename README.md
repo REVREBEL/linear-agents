@@ -585,3 +585,7 @@ The [submission coordinator milestone](docs/ABR17_SUBMISSION_COORDINATOR.md) pro
 ## ABR-17 M2 — Private submission transport and Git verification
 
 [Submission contract](docs/ABR17_SUBMISSION_COORDINATOR.md) now includes a private launcher-bound IPC command, exact job/runner and app-installation mappings, a host-only read-only GitHub App broker, and confined Git readiness preflight. It is source-only; deployed provider launchers and publication remain separately gated.
+
+## ABR-17 M3 — Provider publication and recovery
+
+[Submission contract](docs/ABR17_SUBMISSION_COORDINATOR.md) adds scoped GitHub PR publication/reuse, mapped Linear OAuth writes, Worker completion verified by actual session activity reads, durable failed/blocked receipts and canonical review inbox recovery. Provider APIs are exercised against isolated fixture responses; runtime activation still requires M4/M5.
