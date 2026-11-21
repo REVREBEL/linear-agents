@@ -1,4 +1,6 @@
 import ast
+import asyncio
+import io
 import inspect
 import json
 import os
@@ -50,6 +52,36 @@ class RunAgentTests(unittest.TestCase):
             "activityType": "thought",
             "body": "Started",
         })
+
+    @mock.patch.dict(os.environ, {"BRIDGE_MANAGED_SUBMISSION": "true", "BRIDGE_SHARED_SECRET": "fixture-secret"}, clear=False)
+    @mock.patch("run_agent.requests.post")
+    def test_managed_mode_never_posts_legacy_activity(self, post):
+        for kind in ["thought", "response", "error"]:
+            self.assertFalse(run_agent.post_worker_activity("session", "https://worker.test/complete", kind, "fixture"))
+        post.assert_not_called()
+
+    @mock.patch.dict(os.environ, {"BRIDGE_MANAGED_SUBMISSION": "true"}, clear=False)
+    @mock.patch("run_agent.post_worker_activity")
+    @mock.patch("run_agent.run_antigravity", new_callable=mock.AsyncMock)
+    def test_managed_main_uses_private_stdin_without_completion_callback(self, run, post):
+        with mock.patch.object(run_agent.sys, "argv", ["run_agent.py", "--managed"]), \
+             mock.patch.object(run_agent.sys, "stdin", mock.Mock(buffer=io.BytesIO(b"trusted finish contract"))), \
+             mock.patch.object(run_agent.os, "fstat") as fstat:
+            self.assertEqual(asyncio.run(run_agent.main()), 0)
+            fstat.assert_called_once_with(3)
+        run.assert_awaited_once_with("trusted finish contract")
+        post.assert_not_called()
+
+    @mock.patch.dict(os.environ, {"BRIDGE_MANAGED_SUBMISSION": "true"}, clear=False)
+    @mock.patch("run_agent.asyncio.create_subprocess_exec", new_callable=mock.AsyncMock)
+    def test_managed_agy_child_keeps_fd_three(self, spawn):
+        spawn.side_effect = OSError("fixture stops before native launch")
+        with mock.patch.object(run_agent.os.path, "isfile", return_value=True), \
+             mock.patch.object(run_agent.os.path, "isdir", return_value=True), \
+             mock.patch.object(run_agent.os, "access", return_value=True):
+            with self.assertRaisesRegex(OSError, "fixture stops"):
+                asyncio.run(run_agent.run_antigravity("fixture"))
+        self.assertEqual(spawn.await_args.kwargs["pass_fds"], (3,))
 
     def test_default_settings_and_sandbox_inherit_native_permissions(self):
         self.assertEqual(run_agent.ANTIGRAVITY_SETTINGS, "")

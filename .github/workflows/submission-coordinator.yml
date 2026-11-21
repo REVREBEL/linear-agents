@@ -10,6 +10,7 @@ on:
       - 'bridge/server/agent-bridge-runtime.mjs'
       - 'jobs/admission/**'
       - 'linear-agent-bridge/run_agent.py'
+      - 'linear-agent-bridge/test_run_agent.py'
       - 'scripts/test-submission-m4.mjs'
       - 'scripts/fixtures/submission-provider-fixture.mjs'
       - '.agents/skills/**/SKILL.md'
@@ -43,6 +44,12 @@ jobs:
       - run: npm run submission:test
       - run: npm run submission:m3:test
       - run: npm run submission:m4:test
+      - name: AGY managed wrapper unit tests
+        run: |
+          python3 -m venv /tmp/abr17-python
+          /tmp/abr17-python/bin/pip install -r linear-agent-bridge/requirements.txt
+          cd linear-agent-bridge
+          PYTHONDONTWRITEBYTECODE=1 /tmp/abr17-python/bin/python -m unittest test_run_agent.py
       - name: Install disposable Bubblewrap
         run: |
           if ! command -v bwrap >/dev/null 2>&1; then

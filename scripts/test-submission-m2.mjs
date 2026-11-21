@@ -175,6 +175,7 @@ test('M2 real confined Git preflight checks clean branch, exact remote head, CI 
     checks:async(sha,required)=>{assert.equal(sha,head);assert.deepEqual(required,[{name:'ci',appId:'42'}]);return checks;}})};
   const service=createSubmissionGitPreflight({projectsRoot:root,workspaces:[{root:repo,repository:MAP.repository,
     requiredChecks:[{name:'ci',appId:'42'}]}],githubBroker,expectedUid:process.getuid(),allowRootForIsolatedTests:true});
+  assert.equal(await service.captureHead(scope),head);
   const result=await service.inspectGit({scope});
   assert.equal(result.headSha,head);assert.equal(result.checksPassed,true);
   checks=false;await assert.rejects(service.inspectGit({scope}),/PREFLIGHT_DENIED/);checks=true;

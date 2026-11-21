@@ -7,6 +7,7 @@ import {createManagedProviderLauncher} from '../bridge/orchestration/managed-pro
 import {createSubmissionCoordinator} from '../bridge/orchestration/submission-coordinator.mjs';
 import {createMcpBridgeIntegration} from '../bridge/orchestration/mcp-milestone-integration.mjs';
 import {createActiveTaskMemory} from '../memory/active-task-memory.mjs';
+import {linearJobDuplicateResponse} from '../jobs/admission/job-admission.mjs';
 import {preflightLinearJob} from '../jobs/admission/job-preflight.mjs';
 import {coordinateLocalExecution} from '../bridge/orchestration/local-execution-coordinator.mjs';
 import {setup,defaultScope,A,REPO,uuid} from './fixtures/submission-provider-fixture.mjs';
@@ -143,4 +144,18 @@ test('M4 local execution selects managed dispatcher instead of any legacy provid
     await x.completion;
     assert.deepEqual(x.effects,['github','comment','state','worker']);
   });
+});
+
+test('M4 unaccepted managed duplicate is retryable, accepted launch is acknowledged',()=>{
+  const base={submissionMode:'managed',agent:'trae',state:'running'};
+  assert.equal(linearJobDuplicateResponse({created:false,record:base},'job','fixture').status,503);
+  assert.equal(linearJobDuplicateResponse({created:false,record:{...base,managedLaunchAcceptedAt:'2026-11-20T00:00:00Z'}},'job','fixture').status,202);
+});
+test('M4 concurrent managed launches for one checkout are denied before native spawn',async t=>{
+  const x=await fixture(t,'trae',{mode:'wait'});
+  const {completion}=await x.runner.dispatch(x.params);
+  t.after(()=>x.getChild()?.kill());
+  await assert.rejects(x.runner.dispatch({...x.params,jobKey:'other:delivery'}),/MANAGED_SUBMISSION_DENIED/);
+  x.getChild().kill();await completion;
+  assert.deepEqual(x.effects,[]);
 });
