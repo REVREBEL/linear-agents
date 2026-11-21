@@ -63,3 +63,7 @@ The SQL verification procedure is separately controlled under `memory/scripts/`;
 ## Update policy
 
 Update this README and the nearest nested README when changes affect checkpoint schema, lifecycle semantics, backend scope, secret handling, recovery, external integrations or migrations. Maintain separate source-control review and host/database activation gates.
+
+## ABR-99 — Preserve verified MCP tool receipt CAS and scope
+
+`active-task-memory.mjs` now retains the additive `recordedToolReceipts`, `hostId`, `branch` and `repositoryId` fields during routine locked lifecycle writes. The **only** source that appends verified MCP tool milestone receipts is `bridge/orchestration/mcp-milestone-integration.mjs`, after a matching authoritative job ledger and verified tool result. SHA-256 receipt hashes are bounded to 256 per checkpoint and cannot silently roll off to permit old replays; visible progress remains at most six sanitized entries for this adapter. This is still an issue/repo-keyed operational file, **not independently tenant-isolated persistent storage**, and does not authorize execution, submission or memU promotion. [ABR-99 source contract](../docs/audits/mcp/BRIDGE_INTEGRATION.md).

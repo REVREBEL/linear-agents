@@ -39,6 +39,7 @@
     "mcp:executor:test": "node --test scripts/test-mcp-executor.mjs",
     "mcp:devices:test": "node --test scripts/test-mcp-device-routing.mjs",
     "mcp:profiles:test": "node --test scripts/test-mcp-profiles.mjs scripts/test-mcp-structure.mjs scripts/test-mcp-documents.mjs",
+    "mcp:bridge:test": "node --test scripts/test-mcp-bridge-integration.mjs",
     "mcp:profiles:benchmark": "node scripts/mcp-profile-benchmark.mjs",
     "bridge:test": "node --test scripts/platform-scripts.test.mjs linear-agent-bridge/*.test.mjs scripts/agent-registry.test.mjs scripts/registry-worker-compat.test.mjs scripts/p4-module-boundaries.test.mjs scripts/prompt-arguments.test.mjs scripts/agy-project-conversations.test.mjs scripts/unrouted-delivery.test.mjs scripts/job-admission-coordinator.test.mjs scripts/local-execution-coordinator.test.mjs scripts/remote-execution-coordinator.test.mjs scripts/http-route-composition.test.mjs scripts/p5-bridge-smoke.test.mjs scripts/bridge-directory-consolidation.test.mjs scripts/p5-structure-consolidation.test.mjs scripts/p5-deployment-readiness.test.mjs scripts/process-lifecycle.test.mjs memory/verified-recovery.test.mjs memory/promotion-verification.test.mjs memory/promotion-journal.test.mjs memory/approved-source-store.test.mjs memory/evaluation/recall-benchmark.test.mjs",
     "bridge:macos-setup": "bash scripts/macos/install-launchagent.sh",

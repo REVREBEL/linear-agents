@@ -37,3 +37,7 @@ The local `server/mcp-relay/` fixture optionally requires cryptographically vali
 ## ABR-98 — Profile-scoped local MCP adapters
 
 `server/mcp-relay/tool-profiles.mjs` is an opt-in verified-session tool registry with strict per-call scope and exact-name authorization; `agent/mcp-host-agent/` carries read-only Git, Babel structural source, deterministic terminal prompt and offline PDF adapters. Existing production admission and the original relay two-tool baseline remain unchanged. See [ABR-98 parity and remaining golden acceptance](../docs/audits/mcp/PROFILES.md).
+
+## ABR-99 — Canonical job-ledger MCP milestone bridge
+
+`orchestration/mcp-milestone-integration.mjs` is an **unconnected source adapter**, not a second runtime or `/jobs` handler. It requires a trusted Linear job verifier, exact current `jobs/persistence/job-store.mjs` scope, verified tool receipts, existing revisioned memory and the same human ChatGPT review inbox. An optional, real ABR-17 submission coordinator and independent review verifier are mandatory before `submitWork` can publish or enqueue any PR review; otherwise it fails closed. [ABR-99 authority and test gates](../docs/audits/mcp/BRIDGE_INTEGRATION.md).

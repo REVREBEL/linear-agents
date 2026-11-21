@@ -1,0 +1,60 @@
+name: ABR-99 MCP Bridge Checkpoints and Review Handoff
+
+on:
+  pull_request:
+    paths:
+      - 'bridge/orchestration/mcp-milestone-integration.mjs'
+      - 'memory/active-task-memory.mjs'
+      - 'scripts/test-mcp-bridge-integration.mjs'
+      - 'docs/audits/mcp/BRIDGE_INTEGRATION.md'
+      - 'package.json'
+      - '.github/workflows/mcp-bridge-integration.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bridge/orchestration/mcp-milestone-integration.mjs'
+      - 'memory/active-task-memory.mjs'
+      - 'scripts/test-mcp-bridge-integration.mjs'
+      - '.github/workflows/mcp-bridge-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verified-source-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+      - name: Install locked dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts
+      - name: Canonical Bridge ledger checkpoint and reviewer inbox
+        run: npm run mcp:bridge:test
+      - name: Preserve checkpoint lifecycle and ABA/recovery invariants
+        run: |
+          node --test memory/verified-recovery.test.mjs
+          node --test memory/local-agent-checkpoint.test.mjs
+          node --test linear-agent-bridge/active-task-memory.test.mjs
+          node --test linear-agent-bridge/review-inbox.test.mjs
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install canonical D5 handoff verifier dependencies
+        run: python -m pip install --disable-pip-version-check 'PyYAML==6.0.2' 'jsonschema==4.23.0'
+      - name: Source-linked handoff creator and verifier (existing D5 implementation)
+        run: python scripts/test_context_handoff.py
+      - name: Preserve MCP tool profile, device, OAuth and foundation contracts
+        run: |
+          npm run mcp:profiles:test
+          npm run mcp:devices:test
+          npm run mcp:oauth:test
+          npm run mcp:foundation:test
+      - name: Preserve canonical Bridge and reliability contracts
+        run: |
+          npm run bridge:test
+          npm run test:reliability

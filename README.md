@@ -561,3 +561,7 @@ The [ABR-96 executor implementation and safety gate](docs/audits/mcp/EXECUTOR.md
 ## ABR-98 — MCP tool profiles, source adapters and guarded document export
 
 [ABR-98 profile/handler audit](docs/audits/mcp/PROFILES.md) adds opt-in `core`/`focused`/`full` MCP discovery, verified per-tool grants independent of profile visibility, deterministic REPL status, sandboxed read-only Git, bounded TypeScript/JavaScript AST search and dry-run patch, and an offline PDF renderer with separate document-write authority. Source-level 30/42/3 parity remains tracked; unimplemented tool behavior is not advertised, and the running Bridge, Mac and Ubuntu services are unchanged.
+
+## ABR-99 — MCP milestones and authenticated review handoff (source-only)
+
+The [ABR-99 integration contract](docs/audits/mcp/BRIDGE_INTEGRATION.md) binds Bridge-verified MCP tool milestones to the existing job ledger and CAS checkpoint, with durable replay checks, bounded recovery and optional D5 source-linked handoff. It reuses the existing human ChatGPT review inbox, scoped by PR and full SHA, **only** behind an independently verified ABR-17 submission coordinator. ABR-17/ABR-18 production dependencies remain open; no MCP client is able to authorize a Linear job or trigger GitHub/Linear/Worker/memU writes by itself.

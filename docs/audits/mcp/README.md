@@ -85,3 +85,7 @@ See [OAUTH_EDGE.md](OAUTH_EDGE.md) for the separate **OAuth resource-server** bo
 ## ABR-98 — Profile discovery and new handler acceptance
 
 [PROFILES.md](PROFILES.md) documents the opt-in OAuth-only profile gateway, strict per-call authorization and actual implementation-versus-30-tool parity gaps; it includes measured representative `core`/`focused`/`full` schema sizes and scope boundaries. Source adapters cover deterministic interactive prompt recognition, sandboxed Git, bounded Babel AST source search/dry-run edits, and offline limited-fidelity PDF generation/editing. Full reference tool schemas/results, real Mac/Ubuntu execution and document fidelity remain acceptance gates.
+
+## ABR-99 — Bridge milestones, submit_work gate and reviewer inbox
+
+[BRIDGE_INTEGRATION.md](BRIDGE_INTEGRATION.md) reconciles the ABR-90 canonical checkpoint/CAS, ABR-17 pending authenticated submission, existing review inbox and ABR-18 pending EventIntelligence. The optional source adapter accepts only trusted admitted job and tool-result handles and never lets human/interactive tools, environment variables or unverified model text trigger task writes, PRs or reviewer launch. `submitWork` remains unavailable until a real ABR-17 coordinator and independent PR/head/CI verifier are injected. D5 handoff uses the existing pinned full-envelope verifier, not a cloned resolver.
