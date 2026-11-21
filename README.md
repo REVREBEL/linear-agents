@@ -592,3 +592,5 @@ The M11 Linear provider now manages its own read-only client-credentials access-
 ## ABR-17 M1 — Durable submission coordinator
 
 The [submission coordinator milestone](docs/ABR17_SUBMISSION_COORDINATOR.md) provides a disabled-by-default, trusted-adapter state machine and durable effect journal. Runner ingress, credential brokerage, actual publication adapters and deployment are separate gates.
+
+The ABR-59 M12 restricted PostgreSQL persistence path and its scope identity tests are included in the Bridge and reliability suites; the native disposable database and operator rollout procedures are documented in [memory/README.md](memory/README.md) and [the M12 database authority runbook](docs/ABR59_DATABASE_AUTHORITY.md). These changes do not activate the production memory service.

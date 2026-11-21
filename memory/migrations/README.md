@@ -26,3 +26,11 @@ An SQL schema version or a migration file's presence is not proof of live DB con
 See [`../POSTGRES_CHECKPOINT_ADAPTER.md`](../POSTGRES_CHECKPOINT_ADAPTER.md) and [`../scripts/README.md`](../scripts/README.md) before running the isolated test fixture. Update tests, adapter expectations and reviewed migration procedures together when changing columns, permissions, revision semantics or isolation boundaries.
 
 Context ID: `repo.memory.migrations`, dependent on `repo.memory`.
+
+## ABR-59 M12 — native memU authority
+
+- `002_memu_scope_authority.sql` is an explicitly approved, transactional maintenance migration for the audited native memU schema. It requires a quiesced dedicated database and privileged operator, rejects unexpected grants/objects/schema revision, transfers native table/schema ownership from the legacy role to the database operator, creates locked group roles and a private scope mapping, and applies forced RLS and parent-scope constraints. It preserves legacy rows but does not expose them to the restricted application roles.
+- `003_memu_scope_login.sql` provisions separate deterministic reader and writer roles initially **NOLOGIN**, with immutable scope mapping and no inherited administrative rights or SET ROLE membership. The operator installs the corresponding root-only peer mappings before enabling each login.
+- `004_memu_scope_disable.sql` is a fail-closed operational rollback: disable scope logins, terminate sessions and revoke restricted grants; never restore the agent's old owner rights or delete memory.
+
+Do not apply these scripts automatically or against unrelated databases. Follow [the production rollout and rollback plan](../../docs/ABR59_DATABASE_AUTHORITY.md) and [the disposable verification harness](../scripts/README.md).
