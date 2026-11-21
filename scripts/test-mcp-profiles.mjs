@@ -213,8 +213,16 @@ test('ABR-98 local OAuth relay: core discovery, authorized hidden PDF, and denie
     } : null,
     now: () => at() * 1_000,
   });
+  let signatureVerifications = 0;
+  const countedAuthorizer = {
+    ...authorizer,
+    validateBearer(...args) {
+      signatureVerifications++;
+      return authorizer.validateBearer(...args);
+    },
+  };
   const relay = createLocalMcpRelay({
-    oauthResource: authorizer, agentToken: 'a'.repeat(50), deviceId,
+    oauthResource: countedAuthorizer, agentToken: 'a'.repeat(50), deviceId,
     toolProfileBinding: {
       gateway,
       resolveVerifiedHandle(principal) {
@@ -248,12 +256,18 @@ test('ABR-98 local OAuth relay: core discovery, authorized hidden PDF, and denie
     });
     return {status:res.status, body: await res.json()};
   }
+  const beforeList = signatureVerifications;
   const listed = await request('tools/list');
+  assert.equal(signatureVerifications, beforeList + 1,
+    'One signature verification per request regardless of advertised tool count');
   assert.equal(listed.status,200);
   assert.deepEqual(listed.body.result.tools.map(x=>x.name),['list_devices','read_file']);
+  const beforeCall = signatureVerifications;
   const approved = await request('tools/call', {name:'write_pdf',arguments:{
     path:'fixture.pdf',content:'# Fixture',
   }});
+  assert.equal(signatureVerifications, beforeCall + 1,
+    'One signature verification even when invoking exact-name hidden tool');
   assert.equal(approved.status,200);
   assert.deepEqual(JSON.parse(approved.body.result.content[0].text),
     {path:'fixture.pdf',bytes:233,mocked:true});
@@ -272,4 +286,37 @@ test('ABR-98 local OAuth relay: core discovery, authorized hidden PDF, and denie
   assert.equal(wrongHost.status,200);
   assert.equal(wrongHost.body.result.isError,true);
   assert.match(wrongHost.body.result.content[0].text,/TOOL_NOT_AUTHORIZED/);
+  // Only a proof object created by this verifier's successful JWT signature
+  // check may authorize a tool. Changing public Set properties cannot
+  // escalate its private, captured subject/device/tool/scope grants.
+  assert.equal(authorizer.authorizeVerifiedPrincipal({
+    ok:true, scopes:new Set(['mcp:admin']), tools:new Set(['shutdown']),
+    devices:new Set([deviceId]),
+  }, {tool:'shutdown',deviceId}).code, 'UNVERIFIED_PRINCIPAL');
+  const validProof = authorizer.validateBearer('Bearer '+fullToken);
+  assert.equal(validProof.ok,true);
+  validProof.tools.add('delete_file');
+  validProof.scopes.add('mcp:admin');
+  validProof.devices.add('unapproved-device');
+  assert.equal(authorizer.authorizeVerifiedPrincipal(validProof,{
+    tool:'delete_file',deviceId,
+  }).code,'INSUFFICIENT_SCOPE');
+  assert.equal(authorizer.authorizeVerifiedPrincipal(validProof,{
+    tool:'read_file',deviceId:'unapproved-device',
+  }).code,'DEVICE_NOT_AUTHORIZED');
+  const restrictedToken = provider.signClaimsForTest({
+    iss: issuer, aud: audience, sub: base.subject, client_id: clientId,
+    scope: 'mcp:discover mcp:read', devices:['another-device'],
+    jti:randomBytes(20).toString('base64url'),
+    iat:at(), nbf:at(), exp:at()+300,
+  });
+  const restrictedProof = authorizer.validateBearer('Bearer '+restrictedToken);
+  assert.equal(restrictedProof.ok,true);
+  assert.equal(authorizer.authorizeVerifiedPrincipal(restrictedProof,{
+    tool:'read_file',deviceId,
+  }).code,'DEVICE_NOT_AUTHORIZED');
+  provider.revoke(fullToken);
+  assert.equal(authorizer.authorizeVerifiedPrincipal(validProof,{
+    tool:'read_file',deviceId,
+  }).code,'INVALID_TOKEN');
 });

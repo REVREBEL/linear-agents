@@ -24,29 +24,46 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 
 function diff(before, after, file) {
   if (before === after) return '';
-  const a = before.split('\n'), b = after.split('\n');
+  // Split logical lines without inventing a phantom empty line at EOF.
+  // Each record retains its own final-newline state for 'git apply'.
+  function logicalLines(value) {
+    if (!value.length) return [];
+    const terminated = value.endsWith('\n');
+    const pieces = value.split('\n');
+    if (terminated) pieces.pop();
+    return pieces.map((text, index) => ({
+      text, terminated: index < pieces.length - 1 || terminated,
+    }));
+  }
+  const a = logicalLines(before), b = logicalLines(after);
+  const equal = (one, two) => one.text === two.text &&
+    one.terminated === two.terminated;
   let prefix = 0;
-  while (prefix < Math.min(a.length, b.length) && a[prefix] === b[prefix]) prefix++;
+  while (prefix < Math.min(a.length, b.length) && equal(a[prefix], b[prefix]))
+    prefix++;
   let suffix = 0;
-  while (suffix < Math.min(a.length-prefix, b.length-prefix) &&
-      a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix++;
-  const start = Math.max(0, prefix - 3);
-  const oldEnd = Math.min(a.length, a.length - suffix + 3);
-  const newEnd = Math.min(b.length, b.length - suffix + 3);
-  const oldLines = a.slice(start, oldEnd);
-  const newLines = b.slice(start, newEnd);
-  const oldChanged = Math.max(0, a.length - suffix - prefix);
-  const newChanged = Math.max(0, b.length - suffix - prefix);
-  const hunk = [
-    ...a.slice(start, prefix).map(line => ' ' + line),
-    ...a.slice(prefix, prefix + oldChanged).map(line => '-' + line),
-    ...b.slice(prefix, prefix + newChanged).map(line => '+' + line),
-    ...a.slice(a.length - suffix, oldEnd).map(line => ' ' + line),
-  ];
+  while (suffix < Math.min(a.length - prefix, b.length - prefix) &&
+      equal(a[a.length - suffix - 1], b[b.length - suffix - 1])) suffix++;
+  const contextBefore = Math.min(3, prefix);
+  const contextAfter = Math.min(3, suffix);
+  const start = prefix - contextBefore;
+  const oldChangedEnd = a.length - suffix;
+  const newChangedEnd = b.length - suffix;
+  const oldEnd = oldChangedEnd + contextAfter;
+  const newEnd = newChangedEnd + contextAfter;
+  const hunk = [];
+  function emit(marker, line) {
+    hunk.push(marker + line.text);
+    if (!line.terminated) hunk.push('\\ No newline at end of file');
+  }
+  for (const line of a.slice(start, prefix)) emit(' ', line);
+  for (const line of a.slice(prefix, oldChangedEnd)) emit('-', line);
+  for (const line of b.slice(prefix, newChangedEnd)) emit('+', line);
+  for (const line of a.slice(oldChangedEnd, oldEnd)) emit(' ', line);
   const patch = [
     '--- a/' + file, '+++ b/' + file,
-    '@@ -' + (start + 1) + ',' + oldLines.length +
-      ' +' + (start + 1) + ',' + newLines.length + ' @@',
+    '@@ -' + (start + 1) + ',' + (oldEnd - start) +
+      ' +' + (start + 1) + ',' + (newEnd - start) + ' @@',
     ...hunk,
   ].join('\n') + '\n';
   if (Buffer.byteLength(patch) > 65_536) throw Error('DIFF_TOO_LARGE');

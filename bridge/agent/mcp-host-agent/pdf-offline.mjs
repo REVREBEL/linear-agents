@@ -24,6 +24,10 @@ function tokenize(markdown) {
   if (typeof markdown !== 'string' ||
       Buffer.byteLength(markdown,'utf8') > MAX_MARKDOWN ||
       markdown.includes('\0')) throw Error('INVALID_MARKDOWN');
+  // Supported: headings 1–4, plain paragraphs and simple -/* bullets.
+  // Unsupported: code fences, tables, links, images, emphasis, blockquotes,
+  // horizontal rules, nested lists, raw HTML and arbitrary Unicode/fonts.
+  // This intentionally remains a lossy plain-markdown-subset renderer.
   return markdown.replaceAll('\r\n','\n').split('\n').map(line => {
     const heading = line.match(/^(#{1,4})\s+(.+)$/);
     if (heading) return { level: heading[1].length, text: heading[2] };

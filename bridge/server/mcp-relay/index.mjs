@@ -76,7 +76,8 @@ export function createLocalMcpRelay({
   if (toolProfileBinding && (!oauthResource ||
       typeof toolProfileBinding.gateway?.listTools !== 'function' ||
       typeof toolProfileBinding.gateway?.invoke !== 'function' ||
-      typeof toolProfileBinding.resolveVerifiedHandle !== 'function'))
+      typeof toolProfileBinding.resolveVerifiedHandle !== 'function' ||
+      typeof oauthResource.authorizeVerifiedPrincipal !== 'function'))
     throw TypeError('EXPANDED_TOOLS_REQUIRE_TRUSTED_OAUTH_BINDING');
   const agents = new Map(); const pending = new Map();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1_048_576, perMessageDeflate: false });
@@ -156,8 +157,11 @@ export function createLocalMcpRelay({
     else if (body.method === 'tools/list' && toolProfileBinding) {
       try {
         const handle = toolProfileBinding.resolveVerifiedHandle(principal);
+        // The request's bearer was cryptographically verified above.
+        // Recheck each tool's device/scope grants from the unforgeable proof
+        // without repeating expensive JWT signature verification.
         result = { tools: toolProfileBinding.gateway.listTools(handle)
-          .filter(tool => oauthResource.validateBearer(req.headers.authorization, {
+          .filter(tool => oauthResource.authorizeVerifiedPrincipal(principal, {
             tool: tool.name, deviceId,
           }).ok) };
       } catch {
@@ -173,7 +177,7 @@ export function createLocalMcpRelay({
       if (typeof name !== 'string' || name.length > 128) {
         error = { code: -32602, message: 'INVALID_TOOL_NAME' };
       } else {
-        const checked = oauthResource.validateBearer(req.headers.authorization, {
+        const checked = oauthResource.authorizeVerifiedPrincipal(principal, {
           tool: name, deviceId,
         });
         if (!checked.ok) {
@@ -181,7 +185,7 @@ export function createLocalMcpRelay({
           return json(res, 403, { error: checked.code });
         }
         try {
-          const handle = toolProfileBinding.resolveVerifiedHandle(checked);
+          const handle = toolProfileBinding.resolveVerifiedHandle(principal);
           const value = await toolProfileBinding.gateway.invoke(
             handle, name, body.params?.arguments ?? {});
           result = { isError: false, content: [

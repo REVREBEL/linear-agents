@@ -141,6 +141,11 @@ test('ABR-98 Git status, bounded diff/log use isolated read-only sandbox',async 
   await assert.rejects(git.gitDiff(scoped,{
     workspaceId:'repo',pathspec:'../secret',
   }),/INVALID_GIT_ARGUMENTS/);
+  for (const unsafe of ['@file', '+file', ':(exclude)module.ts']) {
+    await assert.rejects(git.gitDiff(scoped,{
+      workspaceId:'repo',pathspec:unsafe,
+    }),/INVALID_GIT_ARGUMENTS/);
+  }
   assert.equal((await readFile(path.join(repo,'module.ts'),'utf8')).includes('Hello'),true);
 });
 
@@ -160,4 +165,42 @@ test('AST rewrite refuses ambiguous matches even with a one-result limit', async
   }
   assert.equal(writes, 0);
   assert.equal(await readFile(file, 'utf8'), original);
+});
+
+test('ABR-98 dry-run patches round-trip through git apply with exact EOF bytes', async t => {
+  const {repo, authority, scoped} = await setup(t);
+  const tool = createStructuralTools({workspaceRoots:{repo}, authority});
+  const file = path.join(repo, 'module.ts');
+  const oldBody = 'export function greet() { return 1; }';
+  const replacement = 'export function greet() { return 2; }';
+  const cases = [
+    ['single line with newline', oldBody + '\n', replacement + '\n'],
+    ['single line without newline', oldBody, replacement],
+    ['CRLF terminated', 'const top = 1;\r\n' + oldBody + '\r\n',
+      'const top = 1;\r\n' + replacement + '\r\n'],
+    ['unchanged no-newline EOF context', oldBody + '\nexport const tail = 1;',
+      replacement + '\nexport const tail = 1;'],
+    ['unchanged trailing context', 'export const top = 1;\n' + oldBody +
+      '\nexport const tail = 1;\n', 'export const top = 1;\n' + replacement +
+      '\nexport const tail = 1;\n'],
+  ];
+  for (const [name, original, expected] of cases) {
+    await t.test(name, async () => {
+      await writeFile(file, original);
+      const dry = await tool.astRewrite(scoped, {
+        workspaceId:'repo', path:'module.ts',
+        kind:'functionDeclaration', symbol:'greet',
+        replacement, expectedSha256:hash(original),
+      });
+      assert.equal(dry.dryRun,true);
+      assert.equal(dry.proposedSha256,hash(expected));
+      assert.ok(dry.unifiedDiff.startsWith('--- a/module.ts\n+++ b/module.ts\n'));
+      assert.doesNotThrow(() => execFileSync('git', ['apply','--check','-'], {
+        cwd:repo, input:dry.unifiedDiff,
+      }), name + ' patch should apply');
+      execFileSync('git',['apply','-'],{cwd:repo,input:dry.unifiedDiff});
+      assert.equal((await readFile(file)).toString('utf8'),expected);
+      assert.equal(hash(await readFile(file)),dry.proposedSha256);
+    });
+  }
 });

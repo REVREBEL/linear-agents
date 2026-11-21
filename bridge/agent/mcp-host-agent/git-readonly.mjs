@@ -3,10 +3,10 @@
 // Git config. Tool grants are verified independently per invocation.
 import { createHash } from 'node:crypto';
 
-const PATHSPEC = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9_./@+-]{1,512}$/;
+const PATHSPEC = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9_./-]{1,512}$/;
 const LIMIT = 128 * 1024;
 const GLOBAL = [
-  '--no-optional-locks', '-c', 'core.fsmonitor=false',
+  '--no-optional-locks', '--literal-pathspecs', '-c', 'core.fsmonitor=false',
   '-c', 'core.hooksPath=/dev/null', '-c', 'core.pager=cat',
   '-c', 'diff.external=', '-c', 'diff.trustExitCode=false',
 ];

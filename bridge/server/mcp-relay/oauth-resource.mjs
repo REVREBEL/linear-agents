@@ -94,6 +94,23 @@ export function createResourceAuthorizer({
   }
   const authorized = normalizeGrants(grants);
   const deny = (code) => ({ ok: false, code });
+  // A successful JWT check yields a proof object scoped to this authorizer.
+  // WeakMap ownership makes forged/mutated user input ineligible for the
+  // fast per-tool check; a request's JWT signature is verified only once.
+  const verifiedPrincipals = new WeakMap();
+  function authorizeVerifiedPrincipal(verifiedPrincipal, { tool = null, deviceId = null } = {}) {
+    const scoped = verifiedPrincipals.get(verifiedPrincipal);
+    if (!scoped) return deny('UNVERIFIED_PRINCIPAL');
+    if (scoped.expiresAt <= now() || revoked.has(scoped.tokenId))
+      return deny('INVALID_TOKEN');
+    if (!scoped.scopes.has(requiredScopeForTool(tool)) ||
+        !scoped.tools.has(tool ?? 'tools/list'))
+      return deny('INSUFFICIENT_SCOPE');
+    if (deviceId !== null && (!scoped.devices.has(deviceId) ||
+        scoped.tokenDevices && !scoped.tokenDevices.has(deviceId)))
+      return deny('DEVICE_NOT_AUTHORIZED');
+    return { ok: true };
+  }
 
   function validateBearer(header, { tool = null, deviceId = null } = {}) {
     if (typeof header !== 'string' || !header.startsWith('Bearer ')
@@ -137,16 +154,21 @@ export function createResourceAuthorizer({
     if (!principal || !principal.clients.has(payload.client_id)) {
       return deny('PRINCIPAL_NOT_AUTHORIZED');
     }
-    const requiredScope = requiredScopeForTool(tool);
-    if (!scopes.has(requiredScope) || !principal.tools.has(tool ?? 'tools/list')) {
-      return deny('INSUFFICIENT_SCOPE');
-    }
-    if (deviceId !== null && (!principal.devices.has(deviceId)
-        || (Array.isArray(payload.devices) && !payload.devices.includes(deviceId)))) {
-      return deny('DEVICE_NOT_AUTHORIZED');
-    }
-    return { ok: true, subject: payload.sub, clientId: payload.client_id,
-      scopes, devices: principal.devices, tools: principal.tools, tokenId: payload.jti };
+    const proof = Object.freeze({
+      ok: true, subject: payload.sub, clientId: payload.client_id,
+      scopes: new Set(scopes), devices: new Set(principal.devices),
+      tools: new Set(principal.tools), tokenId: payload.jti,
+    });
+    // Snapshot the trusted grants separately from exposed compatibility Sets:
+    // caller mutation of proof.scopes/tools/devices cannot expand its authority.
+    verifiedPrincipals.set(proof, {
+      scopes: new Set(scopes), devices: new Set(principal.devices),
+      tools: new Set(principal.tools),
+      tokenDevices: Array.isArray(payload.devices) ? new Set(payload.devices) : null,
+      expiresAt: payload.exp, tokenId: payload.jti,
+    });
+    const check = authorizeVerifiedPrincipal(proof, { tool, deviceId });
+    return check.ok ? proof : check;
   }
 
   function protectedMetadata() {
@@ -158,5 +180,5 @@ export function createResourceAuthorizer({
     };
   }
 
-  return Object.freeze({ validateBearer, protectedMetadata, issuer, audience });
+  return Object.freeze({ validateBearer, authorizeVerifiedPrincipal, protectedMetadata, issuer, audience });
 }
