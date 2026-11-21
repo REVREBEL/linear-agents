@@ -61,7 +61,7 @@ Run focused tests from the repository root, for example:
 
 `node --test memory/local-agent-checkpoint.test.mjs memory/opencode-session-checkpoint.test.mjs memory/memu-memory.test.mjs memory/postgres-checkpoint-store.test.mjs`
 
-The SQL verification procedure is separately controlled under `memory/scripts/`; it uses a disposable PostgreSQL cluster and is **not** a normal documentation or CI validation step.
+The SQL verification procedure is separately controlled under `memory/scripts/`; it uses a disposable PostgreSQL cluster and is **not** a normal documentation or CI validation step. The M10 [native memU isolation canary](../docs/ABR59_MEMU_ISOLATION_CANARY.md) exercises actual local embeddings, five scoped records, signed source approvals, denial of four foreign scopes, tampering/duplicates and persistence across a disposable cluster restart.
 
 ## Update policy
 
