@@ -480,3 +480,10 @@ a private fixture directory and mounts the pinned read-only descriptor,
 rather than depending on runner checkout ancestor permissions. The existing
 REPL test uses a bounded 2-second readiness deadline within its 3-second
 session, still requiring the exact waiting_input state.
+
+Additional live readback check: Antigravity OAuth returned HTTP 200 without
+GraphQL errors for the exact M3 issue-read schema on ABR-17, and the M3
+AgentSession/activity schema on an existing scoped session from the current
+job ledger. Session ID, issue ID and app user matched; the first 100 activity
+records were accessible. This validates the query shape and authorization,
+not a new terminal activity or a complete staging publication transaction.
