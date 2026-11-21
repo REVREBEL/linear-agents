@@ -191,7 +191,7 @@ test('M2 actual submit-work CLI inherits private FD without credentials in argum
   const x=await local(t);
   const coordinator={
     async bind(proof){assert.equal(x.ingress.verifyAdmission(proof).jobKey,SCOPE.jobKey);return {};},
-    async submit(_,input){assert.deepEqual(input,INPUT);return {stage:'received'};},revoke(){},
+    async submit(_,input){assert.deepEqual(input,INPUT);return {stage:'session_closed'};},revoke(){},
   };
   const child=spawn(process.execPath,[new URL('./submit-work.mjs',import.meta.url).pathname,
     INPUT.issueId,INPUT.summary],{env:{PATH:'/usr/bin:/bin'},stdio:['ignore','pipe','pipe','pipe']});
@@ -201,7 +201,7 @@ test('M2 actual submit-work CLI inherits private FD without credentials in argum
   child.stdout.on('data',c=>{stdout+=c;});child.stderr.on('data',c=>{stderr+=c;});
   const [status]=await closed;
   assert.equal(status,0,stderr);
-  assert.deepEqual(JSON.parse(stdout),{stage:'received'});
+  assert.deepEqual(JSON.parse(stdout),{stage:'session_closed'});
   assert.ok(!stdout.includes(x.cap.token));
   const denied=spawn(process.execPath,[new URL('./submit-work.mjs',import.meta.url).pathname,
     INPUT.issueId,INPUT.summary],{env:{PATH:'/usr/bin:/bin'},stdio:['ignore','pipe','pipe']});

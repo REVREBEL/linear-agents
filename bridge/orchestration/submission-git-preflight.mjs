@@ -78,5 +78,16 @@ export function createSubmissionGitPreflight({projectsRoot,workspaces,githubBrok
       clean:true,detached:false,conflicts:false,checksPassed:true,
       installationId:scope.installationId,appId:scope.appId});
   }
-  return Object.freeze({inspectGit:async({scope})=>{try{return await inspect(scope);}catch{throw deny();}}});
+  // Resolve the final committed head independently at finish time. This
+  // does not attest cleanliness or CI; inspectGit must still do so.
+  async function captureHead(scope){
+    const cfg=roots.get(scope.repositoryRoot);
+    if(!cfg||cfg.repository!==scope.repository||!validRef(scope.branch))throw deny();
+    if(await git(cfg.id,['rev-parse','--show-toplevel'])!=='/workspace'||
+       await git(cfg.id,['symbolic-ref','--short','HEAD'])!==scope.branch)throw deny();
+    const head=await git(cfg.id,['rev-parse','--verify','HEAD']);
+    if(!SHA.test(head))throw deny();
+    return head;
+  }
+  return Object.freeze({captureHead,inspectGit:async({scope})=>{try{return await inspect(scope);}catch{throw deny();}}});
 }

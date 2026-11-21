@@ -181,3 +181,7 @@ ABR-17 authorization race regression: deterministic held ledger reads exercise r
 ## ABR-17 M3 — Provider adapter regressions
 
 `npm run submission:m3:test` covers actual HTTP/GraphQL client request construction with signed fixture keys and simulated provider responses, durable PR reuse, draft/manual-ready recovery, lost responses at all external API stages, exact Linear actor/session/activity attribution, stale-head rejection, closed prior PR refusal, route denial and explicit failed/blocked Worker completion. The real disk-backed outbox and inbox are used. No live provider requests.
+
+## ABR-17 M4 — Managed finish tests
+
+`npm run submission:m4:test` exercises actual submit-work child IPC with mocked AGY, Trae and OpenCode launchers and M3 fixed-endpoint provider fixtures, shared real canonical ledger/outbox/inbox, explicit terminal outcomes, wrong-issue/stale submission, and ABR-99 source callback without duplicate reviewer queueing. This is not a native process isolation proof. The CLI returns nonzero for denied or pending handoff.

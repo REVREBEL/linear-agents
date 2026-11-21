@@ -53,3 +53,7 @@ The opt-in `orchestration/submission-ingress.mjs`, `handlers/submission-channel.
 ## ABR-17 M3 — Provider handoff
 
 `orchestration/submission-publication.mjs` composes the existing coordinator, host-only GitHub/Linear/Worker adapters and review inbox. Before any new publication or downstream mutation it revalidates exact head/readiness and job capability. Draft PRs remain pending; review queueing is not reviewer ACK. See [submission contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+## ABR-17 M4 — Managed dispatch integration
+
+The existing authenticated /jobs route may select the managed submission service for AGY, Trae or OpenCode. It bypasses legacy credential persistence and callbacks, shares the canonical submission outbox with the ABR-99 source adapter, and requires a separate approved native host launcher. Disabled by default.

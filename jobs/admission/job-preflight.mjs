@@ -5,12 +5,17 @@
  */
 export async function preflightLinearJob({
   job, agent, sharedSecret, resolveJobRoute, syncLinearCredential,
-  checkOpenCodeReady,
+  checkOpenCodeReady, managedSubmission = false,
 }) {
   // The sequence matters: a failed route, token synchronization, or runtime
   // readiness check must not create a partially accepted delivery claim.
   const route = await resolveJobRoute(job);
-  const credential = route.ok ? await syncLinearCredential({
+  if (managedSubmission && (!route.ok || route.executionHost !== "bridge-server")) {
+    return { route, credential: null, rejection: { status: 503, body: {
+      ok: false, accepted: false, error: "Managed submission requires an approved local route",
+    } } };
+  }
+  const credential = route.ok && !managedSubmission ? await syncLinearCredential({
     agent,
     repositoryRoot: route.repositoryRoot,
     organizationId: job.organizationId,

@@ -3,7 +3,7 @@
 // runner identity. Request data can never choose the token or peer evidence.
 export function serveSubmissionChannel(socket,{ingress,coordinator,token,runnerEvidence,timeoutMs=10000}){
   if(!socket?.on||!socket?.end||!ingress?.submitLocal||!coordinator||
-     !Number.isInteger(timeoutMs)||timeoutMs<100||timeoutMs>60000)throw Error('INVALID_SUBMISSION_CHANNEL');
+     !Number.isInteger(timeoutMs)||timeoutMs<100||timeoutMs>3600000)throw Error('INVALID_SUBMISSION_CHANNEL');
   let chunks=[],size=0,done=false,timer;
   const finish=payload=>{
     if(done)return;

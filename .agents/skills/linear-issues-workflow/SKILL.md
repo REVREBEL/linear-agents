@@ -5,6 +5,9 @@ description: Entry-point router for Antigravity tasks received through Linear. U
 
 # Linear Agent Workflow
 
+**Managed coding jobs:** the launcher-provided [submit-work](../submit-work/SKILL.md) contract takes precedence over manual PR publication, Linear status changes and legacy turn-completion instructions. Confirm the issue and summary through that command; the Bridge owns the handoff.
+
+
 This is the **entry-point skill** for Antigravity (AGY) work dispatched from Linear. It provides routing, tool discovery, and shared guardrails. **Do not replace or repeat the detailed procedures in its specialized skills.** Load and follow the applicable skill before taking action; chain skills when a task moves to the next stage.
 
 ## Universal safety and handoff policy

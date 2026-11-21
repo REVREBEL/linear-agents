@@ -5,3 +5,5 @@ Canonical modules: `diagnostic-routes.mjs`, `review-routes.mjs`, `github-webhook
 ## ABR-17 M2 — Private submission channel
 
 `submission-channel.mjs` handles one bounded newline-delimited issue/summary request on a duplex channel already bound by the trusted launcher, for example inherited FD 3. It does not listen publicly, accept caller-supplied identity/token, or add a route to the existing HTTP server. See [submission contract](../../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+M4 permits a bounded private submission channel lifetime of up to one hour to match the authorized native launch. This is still one framed request, not public ingress. The supervisor must keep the descriptor private and terminate the process tree at expiry.

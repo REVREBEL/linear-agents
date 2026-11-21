@@ -589,3 +589,7 @@ The [submission coordinator milestone](docs/ABR17_SUBMISSION_COORDINATOR.md) pro
 ## ABR-17 M3 — Provider publication and recovery
 
 [Submission contract](docs/ABR17_SUBMISSION_COORDINATOR.md) adds scoped GitHub PR publication/reuse, mapped Linear OAuth writes, Worker completion verified by actual session activity reads, durable failed/blocked receipts and canonical review inbox recovery. Provider APIs are exercised against isolated fixture responses; runtime activation still requires M4/M5.
+
+## ABR-17 M4 — Managed provider finish paths
+
+The [submission coordinator contract](docs/ABR17_SUBMISSION_COORDINATOR.md) describes the opt-in authenticated Linux managed dispatch for AGY, Trae and OpenCode, one shared IPC/MCP finish operation, and the required protected host binding. Native provider isolation and descriptor propagation remain M5 operational gates.

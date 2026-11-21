@@ -7,3 +7,7 @@ The stable systemd/LaunchAgent path `linear-agent-bridge/agent-bridge.mjs` is a 
 ## Local-only MCP relay design exercise (ABR-94)
 
 `mcp-relay/index.mjs` is a test-only, independently authored, authenticated **localhost listener**, paired with a read-only host WebSocket fixture. It is not imported by `agent-bridge-runtime.mjs`, registered under `/jobs`, exposed through Cloudflare, or installed by systemd. The [relay README](mcp-relay/README.md) and [source audit](../../docs/audits/mcp/README.md) establish strict tool restrictions and future ABR-95 OAuth/transport ownership. `jobs/persistence/job-store.mjs` stays the sole Linear task ledger.
+
+## ABR-17 M4 — Managed submission selection
+
+`BRIDGE_MANAGED_SUBMISSION_ENABLED=true` requires the protected Linux host binding at /etc/agent-bridge/managed-submission-host.mjs before starting the existing HTTP runtime. For AGY, Trae and chatgpt-cli, authenticated /jobs enters managed admission, not legacy dispatch; unapproved Mac routes are denied. No public submission endpoint. Default off preserves the legacy runtime. The host binding and operational enablement are M5 gates.
