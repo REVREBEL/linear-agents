@@ -34,3 +34,46 @@ Context ID: `repo.memory.scripts`; dependencies: `repo.memory` and `repo.memory.
 `manage-host-authority-key.py` is a root-only operator command for key initialization, rotation, and revocation. `verify-host-evidence.mjs` performs the separately configured read-only evidence canary; credentials and live canary acceptance remain operator gates. See [M11 contract](../../docs/ABR59_HOST_MEMORY_AUTHORITY.md).
 
 The root-only `discover-linear-oauth-identity.mjs WORKSPACE_UUID` bootstrap reports the candidate app actor and workspace UUIDs for operator pinning, without printing or persisting access tokens. The evidence canary uses the dedicated client credential files and may create or renew its private token cache; neither command enables the running Bridge service or writes to Linear or memU.
+
+## M11 operator canary runbook (ABR-101)
+
+Run the evidence scripts from a reviewed, root-owned checkout whose ancestors
+and source files cannot be changed by agent accounts. On the Ubuntu host the
+dedicated checkout is `/var/lib/bridge-memory-authority-code`; credential and
+state files remain separately under `/var/lib/bridge-memory-authority`.
+Do not execute the Bridge service's agent-writable checkout as root with
+authority credentials.
+
+1. Verify the operator checkout contains the reviewed merge of the OAuth
+   lifecycle change; update the private checkout only to reviewed commits.
+2. As root, run `node memory/scripts/discover-linear-oauth-identity.mjs WORKSPACE_UUID`
+   from that checkout. Use the independently known workspace UUID. Confirm
+   the returned actor belongs to the dedicated app before pinning the actor ID.
+   The discovery output contains identity metadata, not the token.
+3. Create mode-0600, root-owned `evidence.json` in the credential directory
+   with the actual numeric GitHub app ID, installation ID and repository ID,
+   the repository full name, and the Linear workspace, actor and team UUIDs.
+   See the [operator contract](../../docs/ABR59_HOST_MEMORY_AUTHORITY.md)
+   for the exact field names. Use the dedicated app's installation, not
+   another connector's installation.
+4. Select a genuinely completed issue with a linked merged PR. Pin the full
+   reviewed head SHA, the exact job scope and a distinct reviewer with current
+   write, maintain or admin repository permission in `canary.json`. An
+   automated review with no collaborator permission is insufficient.
+   Pin the operator-approved relevant CI checks and trusted app slugs before
+   running acceptance. If branch rules provide no required status checks,
+   explicitly approve the policy for the canary rather than inferring it from
+   successful runs or reducing it after a failure.
+5. From the private code checkout run
+   `node memory/scripts/verify-host-evidence.mjs`. A passing result verifies
+   read-only evidence, not production database or service activation.
+
+A `MODULE_NOT_FOUND` for the relative script means the current directory
+is incorrect or the reviewed source is not installed. A denial at
+`operator-canary-config` indicates missing, unreadable or malformed canary
+configuration; it occurs before external evidence requests. A denial at
+`pinned-evidence-provider` indicates the pinned evidence configuration was
+not accepted. Later GitHub and Linear stages require successful provider
+authentication and the actual independently verified review, check, issue and
+attachment evidence. Keep secrets out of console output, issue comments and
+Git; do not weaken verification to obtain a passing result.
