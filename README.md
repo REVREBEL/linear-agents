@@ -581,3 +581,7 @@ The [ABR-96 executor implementation and safety gate](docs/audits/mcp/EXECUTOR.md
 ## ABR-99 — MCP milestones and authenticated review handoff (source-only)
 
 The [ABR-99 integration contract](docs/audits/mcp/BRIDGE_INTEGRATION.md) binds Bridge-verified MCP tool milestones to the existing job ledger and CAS checkpoint, with durable replay checks, bounded recovery and optional D5 source-linked handoff. It reuses the existing human ChatGPT review inbox, scoped by PR and full SHA, **only** behind an independently verified ABR-17 submission coordinator. ABR-17/ABR-18 production dependencies remain open; no MCP client is able to authorize a Linear job or trigger GitHub/Linear/Worker/memU writes by itself.
+
+### ABR-59 — Host memory authority (M11)
+
+The unwired host authority pins job identity and review policy, checks confirmed native commit markers, and loads operator-controlled signing keys and read-only GitHub/Linear evidence. Live credential verification and production activation remain outstanding. See [M11 authority contract](docs/ABR59_HOST_MEMORY_AUTHORITY.md).
