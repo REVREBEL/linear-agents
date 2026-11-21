@@ -109,3 +109,34 @@ test("bootstrap returns only independently workspace-matched candidate identity"
   await assert.rejects(discoverLinearOAuthIdentity({root:f.root,expectedWorkspaceId:actorId,fetchImpl:f.args.fetchImpl}),/rejected/);
   await assert.rejects(fs.stat(f.cache),{code:"ENOENT"});
 }));
+
+test("401 recovery gives the original read-only query a fresh bounded signal after renewal",async()=>fixture(async f=>{
+  const controller=new AbortController();
+  let queryCalls=0,renewalStarted=false;
+  const body=JSON.stringify({query:"query ReadIssue($id:String!) { issue(id:$id) { id } }",variables:{id:"ABR-59"}});
+  const fetchImpl=async(url,opts)=>{
+    if(url==="https://api.linear.app/oauth/token"&&f.issued()===1){
+      renewalStarted=true;
+      controller.abort(new DOMException("Original request timed out during renewal","TimeoutError"));
+    }
+    if(url==="https://api.linear.app/graphql"&&opts.body===body){
+      queryCalls++;
+      if(queryCalls===1){
+        assert.equal(opts.signal,controller.signal);
+        assert.equal(opts.signal.aborted,false);
+        return response({},401);
+      }
+      assert.equal(renewalStarted,true);
+      assert.equal(controller.signal.aborted,true);
+      assert.notEqual(opts.signal,controller.signal);
+      assert.equal(opts.signal.aborted,false);
+      assert.equal(opts.headers.Authorization,"Bearer synthetic-access-2");
+      assert.equal(opts.redirect,"error");
+      opts.signal.throwIfAborted();
+    }
+    return f.args.fetchImpl(url,opts);
+  };
+  const a=createLinearOAuthLifecycle({...f.args,fetchImpl}),token=await a.getToken();
+  const result=await a.fetchGraphQL("https://api.linear.app/graphql",{method:"POST",redirect:"error",headers:{Authorization:"Bearer "+token},body,signal:controller.signal});
+  assert.equal(result.status,200);assert.equal(queryCalls,2);assert.equal(f.issued(),2);
+}));

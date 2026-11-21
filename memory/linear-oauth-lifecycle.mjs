@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {createHash, randomUUID} from "node:crypto";
 import {readOperatorFile} from "./host-memory-authority.mjs";
+import {LINEAR_COMPLETION_TIMEOUT_MS} from "./linear-completion-client.mjs";
 
 const TOKEN_URL="https://api.linear.app/oauth/token";
 const GRAPHQL_URL="https://api.linear.app/graphql";
@@ -139,8 +140,9 @@ export function createLinearOAuthLifecycle({root,workspaceId,actorId,fetchImpl=f
     if(response.status!==401)return response;
     await response.body?.cancel();
     const fresh=await getToken(header.slice(expected.length));
-    // At most one retry; preserve the original query/variables and timeout.
-    return fetchImpl(url,{...options,headers:{...options.headers,Authorization:expected+fresh}});
+    // Give the single retry its own bounded query budget after renewal.
+    return fetchImpl(url,{...options,headers:{...options.headers,Authorization:expected+fresh},
+      signal:AbortSignal.timeout(LINEAR_COMPLETION_TIMEOUT_MS)});
   }
   return Object.freeze({getToken,fetchGraphQL});
 }
