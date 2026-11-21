@@ -37,7 +37,9 @@ export function createGitHubReviewClient({
       !Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 15000)
     throw denied();
   async function request(apiPath) {
-    const token = await tokenProvider();
+    let token;
+    try { token = await tokenProvider(); }
+    catch { throw denied(); }
     if (!isToken(token)) throw denied();
     const url = new URL(apiPath, BASE);
     if (url.origin !== BASE || !url.pathname.startsWith("/repos/") ||
@@ -53,12 +55,23 @@ export function createGitHubReviewClient({
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (response?.status !== 200 || !response.headers ||
-          typeof response.arrayBuffer !== "function") throw denied();
+          typeof response.body?.getReader !== "function") throw denied();
       const len = response.headers.get("content-length");
       if (len !== null && (!/^\d+$/.test(len) || Number(len) > MAX_BYTES))
         throw denied();
-      const bytes = Buffer.from(await response.arrayBuffer());
-      if (bytes.byteLength > MAX_BYTES) throw denied();
+      const reader = response.body.getReader();
+      const chunks = [];
+      let size = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > MAX_BYTES) { await reader.cancel(); throw denied(); }
+          chunks.push(Buffer.from(value));
+        }
+      } finally { reader.releaseLock(); }
+      const bytes = Buffer.concat(chunks, size);
       const data = JSON.parse(bytes.toString("utf8"));
       return { data, link: response.headers.get("link") || "" };
     } catch { throw denied(); }
