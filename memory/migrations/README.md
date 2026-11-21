@@ -34,3 +34,5 @@ Context ID: `repo.memory.migrations`, dependent on `repo.memory`.
 - `004_memu_scope_disable.sql` is a fail-closed operational rollback: disable scope logins, terminate sessions and revoke restricted grants; never restore the agent's old owner rights or delete memory.
 
 Do not apply these scripts automatically or against unrelated databases. Follow [the production rollout and rollback plan](../../docs/ABR59_DATABASE_AUTHORITY.md) and [the disposable verification harness](../scripts/README.md).
+
+The M12 migration intentionally holds ACCESS EXCLUSIVE locks until transaction end, blocking all reads and writes on the four native memU tables. Both non-concurrent unique index builds scan existing file rows; the NOT VALID composite foreign key takes locks but skips validation of existing segments. Schedule an approved maintenance outage and rehearse against a representative isolated restored database; keep atomic rollback and bounded lock/statement timeouts.

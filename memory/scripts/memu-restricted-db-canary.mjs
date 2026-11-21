@@ -135,6 +135,15 @@ for(let i=0;i<items.length;i++){
   if(i!==0)await assert.rejects(adapters[i].recall(await store.load({scope:items[0].job.scope,receiptIds:[items[0].id]})));
 }
 const auth=await store.load({scope:items[0].job.scope,receiptIds:[items[0].id]});
+// A valid reader must pass named preflight, while an extra otherwise harmless
+// group membership is refused. Restore fixture grants before subsequent checks.
+sql("CREATE ROLE fixture_extra NOLOGIN; GRANT fixture_extra TO "+roles[0].reader+" WITH INHERIT TRUE, SET FALSE");
+try{
+  await assert.rejects(adapters[0].recall(auth),/Restricted memU persistence denied/);
+}finally{
+  sql("REVOKE fixture_extra FROM "+roles[0].reader+"; DROP ROLE fixture_extra");
+}
+assert.equal((await adapters[0].recall(auth)).entries.length,1);
 const f="bridge-"+items[0].id;
 sql("UPDATE memu.recall_file_segments SET text='tampered' WHERE recall_file_id=(SELECT id FROM memu.recall_files WHERE name='"+f+"')");
 assert.equal((await adapters[0].recall(auth)).entries.length,0);
@@ -152,4 +161,4 @@ assert.equal((await partialAdapter.recall({approvedSources:new Map([[partialId,i
 
 console.log(JSON.stringify({phase:mode?"restart":"initial",scopes:5,restrictedLogins:10,
   positiveRecalls:5,foreignScopeDenials:40,unapprovedIdFiltered:true,readerWriteDenied:true,
-  writerForeignWriteDenied:true,segmentTamperDenied:true,duplicateDenied:true,uncertainCommitDenied:true,nativeMemu:true,fixtureReviewEvidence:true}));
+  writerForeignWriteDenied:true,segmentTamperDenied:true,duplicateDenied:true,uncertainCommitDenied:true,unexpectedMembershipDenied:true,nativeMemu:true,fixtureReviewEvidence:true}));

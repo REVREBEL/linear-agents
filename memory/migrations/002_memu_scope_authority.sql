@@ -44,6 +44,12 @@ BEGIN
      JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='memu' AND a.attacl IS NOT NULL)
  THEN RAISE EXCEPTION 'unexpected grants or row security; review first'; END IF;
 END $$;
+-- Planned outage: these explicit ACCESS EXCLUSIVE locks block even SELECT
+-- until transaction end. Both non-concurrent unique index builds scan the
+-- existing file table under these locks. CONCURRENTLY is incompatible with
+-- the atomic owner/grant/policy migration. The NOT VALID FK skips scanning
+-- old segment rows, but its installation still takes table locks and checks
+-- new/changed rows. Rehearse on a representative backup before rollout.
 LOCK TABLE memu.recall_files,memu.recall_file_segments,memu.resources,memu.alembic_version IN ACCESS EXCLUSIVE MODE;
 -- Transfer ownership away from the agent OS/login role. Existing legacy rows
 -- are preserved; they will not match a scoped bridge receipt.

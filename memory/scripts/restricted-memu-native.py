@@ -8,6 +8,7 @@ import re
 import sys
 
 import psycopg
+from psycopg.rows import dict_row
 from sqlalchemy import URL
 
 HEX = re.compile(r"[0-9a-f]{64}")
@@ -23,37 +24,48 @@ def require(condition):
 
 
 def preflight(conn, role, db, identity, op):
-    with conn.cursor() as cur:
+    writer = op == "commit"
+    require(op in ("commit", "recall"))
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute("""
-        SELECT current_database(), session_user, current_user,
-          inet_server_addr() IS NULL,
-          bridge_memory_auth.matches_scope(%s,%s),
-          NOT (r.rolsuper OR r.rolbypassrls OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication),
+        SELECT current_database() AS database_name, session_user AS login_name,
+          current_user AS effective_role, inet_server_addr() IS NULL AS local_socket,
+          bridge_memory_auth.matches_scope(%s,%s) AS scope_matches,
+          NOT (r.rolsuper OR r.rolbypassrls OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication) AS unprivileged,
           (SELECT count(*)=2 AND bool_and(c.relrowsecurity AND c.relforcerowsecurity
              AND c.relowner<>r.oid AND NOT pg_has_role(r.oid,c.relowner,'MEMBER'))
            FROM pg_class c WHERE c.oid IN
-             ('memu.recall_files'::regclass,'memu.recall_file_segments'::regclass)),
-          NOT has_schema_privilege(session_user,'memu','CREATE'),
-          NOT has_table_privilege(session_user,'memu.resources','SELECT,INSERT,UPDATE,DELETE,TRUNCATE'),
-          has_table_privilege(session_user,'memu.recall_files','INSERT'),
-          has_table_privilege(session_user,'memu.recall_file_segments','INSERT'),
-          NOT has_table_privilege(session_user,'memu.recall_files','DELETE,TRUNCATE'),
-          NOT has_table_privilege(session_user,'memu.recall_file_segments','DELETE,TRUNCATE'),
-          NOT has_column_privilege(session_user,'memu.recall_files','user_id','UPDATE'),
-          NOT has_column_privilege(session_user,'memu.recall_files','agent_id','UPDATE'),
-          NOT has_column_privilege(session_user,'memu.recall_files','name','UPDATE'),
-          has_column_privilege(session_user,'memu.recall_files','content','UPDATE'),
-          pg_has_role(session_user,'bridge_memory_reader','MEMBER'),
-          pg_has_role(session_user,'bridge_memory_writer','MEMBER'),
+             ('memu.recall_files'::regclass,'memu.recall_file_segments'::regclass)) AS forced_rls,
+          NOT has_schema_privilege(session_user,'memu','CREATE') AS no_schema_create,
+          NOT has_table_privilege(session_user,'memu.resources','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') AS no_resources,
+          has_table_privilege(session_user,'memu.recall_files','INSERT') AS file_insert,
+          has_table_privilege(session_user,'memu.recall_file_segments','INSERT') AS segment_insert,
+          NOT has_table_privilege(session_user,'memu.recall_files','DELETE,TRUNCATE') AS no_file_delete,
+          NOT has_table_privilege(session_user,'memu.recall_file_segments','DELETE,TRUNCATE') AS no_segment_delete,
+          NOT has_column_privilege(session_user,'memu.recall_files','user_id','UPDATE') AS no_user_relabel,
+          NOT has_column_privilege(session_user,'memu.recall_files','agent_id','UPDATE') AS no_agent_relabel,
+          NOT has_column_privilege(session_user,'memu.recall_files','name','UPDATE') AS no_receipt_relabel,
+          has_column_privilege(session_user,'memu.recall_files','content','UPDATE') AS file_content_update,
+          pg_has_role(session_user,'bridge_memory_reader','MEMBER') AS reader_member,
+          pg_has_role(session_user,'bridge_memory_writer','MEMBER') AS writer_member,
           NOT EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid
             AND (m.roleid<>CASE WHEN %s THEN 'bridge_memory_writer'::regrole::oid ELSE 'bridge_memory_reader'::regrole::oid END
-            OR m.admin_option OR m.set_option OR NOT m.inherit_option))
+            OR m.admin_option OR m.set_option OR NOT m.inherit_option)) AS exclusive_safe_membership
         FROM pg_roles r WHERE r.rolname=session_user
-        """, (identity["user_id"], identity["agent_id"], op=="commit"))
-        row = cur.fetchone()
-    writer = op == "commit"
-    require(row == (db,role,role,True,True,True,True,True,True,
-                    writer,writer,True,True,True,True,True,writer,not writer,writer,True))
+        """, (identity["user_id"], identity["agent_id"], writer))
+        actual = cur.fetchone()
+    # Reader/writer membership are mutually exclusive; the final membership
+    # safety predicate must be true for BOTH operations.
+    require(actual == {
+        "database_name": db, "login_name": role, "effective_role": role,
+        "local_socket": True, "scope_matches": True, "unprivileged": True,
+        "forced_rls": True, "no_schema_create": True, "no_resources": True,
+        "file_insert": writer, "segment_insert": writer,
+        "no_file_delete": True, "no_segment_delete": True,
+        "no_user_relabel": True, "no_agent_relabel": True, "no_receipt_relabel": True,
+        "file_content_update": writer, "reader_member": not writer,
+        "writer_member": writer, "exclusive_safe_membership": True,
+    })
 
 
 def read_rows(conn, identity, names):

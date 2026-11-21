@@ -21,17 +21,42 @@ export function restrictedDbIdentity(scope){
   const suffix=digest([userId,agentId]).slice(0,56);
   return Object.freeze({userId,agentId,reader:"bmr_"+suffix,writer:"bmw_"+suffix});
 }
-async function trustedPath(filename,kind){
-  // Production never executes a shared agent-writable venv or source tree.
-  const resolved=await fs.realpath(filename);
-  for(const candidate of new Set([filename,resolved])){
-    let f=candidate,first=true;
-    while(true){
-      const s=await fs.lstat(f);
-      if(s.uid!==0||(s.mode&0o022)||(!first&&!s.isDirectory())||
-         (first&&!(kind==="file"?(s.isFile()||s.isSymbolicLink()):s.isDirectory())))throw deny();
-      const p=path.dirname(f);if(p===f)break;f=p;first=false;
+// Dependency injection is for the isolated path-policy unit test only. The
+// production factory below always uses the actual filesystem.
+export async function trustedPath(filename,kind,{lstat=fs.lstat,readlink=fs.readlink}={}){
+  if(!path.isAbsolute(filename)||path.resolve(filename)!==filename||
+     !["file","directory"].includes(kind))throw deny();
+  let candidate=filename;
+  const seen=new Set();
+  while(true){
+    if(seen.has(candidate)||seen.size>=40)throw deny();
+    seen.add(candidate);
+    // Reject directory symlinks: each ancestor must be an actual trusted
+    // directory. Inspect parents before following any terminal link.
+    const ancestors=[];
+    for(let p=path.dirname(candidate);;p=path.dirname(p)){
+      ancestors.unshift(p);
+      if(path.dirname(p)===p)break;
     }
+    for(const p of ancestors){
+      const st=await lstat(p);
+      if(st.uid!==0||!st.isDirectory()||(st.mode&0o022))throw deny();
+    }
+    const st=await lstat(candidate);
+    if(st.uid!==0)throw deny();
+    if(st.isSymbolicLink()){
+      // POSIX symlink mode bits are not access permissions. Check ownership
+      // and every hop's parents and target instead; preserve venv invocation
+      // through the original link rather than replacing it with realpath.
+      if(kind!=="file")throw deny();
+      const target=await readlink(candidate);
+      // Avoid normalizing away an uninspected directory or symlink hop.
+      if(target.split("/").some(part=>part===".."||part==="."))throw deny();
+      candidate=path.resolve(path.dirname(candidate),target);
+      continue;
+    }
+    if((st.mode&0o022)||!(kind==="file"?st.isFile():st.isDirectory()))throw deny();
+    return;
   }
 }
 function boundedNative({python,home,host,port,database,role,request,spawnImpl=spawn,timeoutMs=60000}){
