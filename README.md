@@ -506,6 +506,10 @@ The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge
 
 [The remote MCP upstream/source audit](docs/audits/mcp/README.md) and [tool parity contract](docs/audits/mcp/tool-parity.json) document the planned self-hosted Desktop Commander port (30 connected tools, 42 BRC agent tools, three relay tools). This branch adds an **offline/local, read-only relay+host fixture** using pinned `ws@8.21.0` with no production listener, OAuth, command execution, third-party file transfer, or deployment. The existing `bridge/server/agent-bridge-runtime.mjs`, `/jobs` identity, review inbox and job ledger remain authoritative. See ABR-95–100 for staged completion and deployment decisions.
 
+### ABR-59 — GitHub App review-evidence client (M8)
+
+An **unwired** host-side GitHub REST client now supplies the independent merged-PR, same-SHA review/CI and reviewer-permission evidence required by the existing promotion verifier. It takes a trusted installation-token provider, enforces fixed GitHub API routes and bounded complete pagination, and rejects incomplete or failed responses before they can become approval evidence. See [M8 contract](docs/ABR59_GITHUB_REVIEW_CLIENT.md).
+
 ### ABR-59 — Reviewed Git-object source verification (M7)
 
 An **unwired** trusted-source verifier now checks a short learning against the **exact, regular Git blob** at its reviewed commit, under an operator-pinned repository checkout and origin. A real local-Git integration test confirms that only matching tracked source can enter the M6 HMAC approval store; mutable working-tree edits and model-invented paraphrases cannot authorize the same record. See [M7 contract](docs/ABR59_TRUSTED_GIT_SOURCE.md).
