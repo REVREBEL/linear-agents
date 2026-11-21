@@ -163,3 +163,39 @@ test("Git replacement refs cannot substitute content at a reviewed commit", asyn
     assert.equal(await verify({ ...candidate, content: replacement }), false);
   });
 });
+
+test("rejects malformed UTF-8 Git blob even if decoded text looks identical", async () => {
+  await fixture(async ({ root, candidate, verify }) => {
+    await writeFile(path.join(root, SOURCE_PATH), Buffer.from([0x61, 0xff, 0x62]));
+    git(root, "add", SOURCE_PATH);
+    git(root, "commit", "-qm", "Invalid UTF-8 bytes");
+    const sha = git(root, "rev-parse", "HEAD");
+    const lossy = "a\uFFFDb";
+    assert.equal(Buffer.from(lossy, "utf8").equals(Buffer.from([0x61, 0xff, 0x62])), false);
+    assert.equal(await verify({
+      ...candidate, headSha: sha, sourceGitSha: sha, content: lossy,
+    }), false);
+    assert.equal(await verify(candidate), true);
+  });
+});
+test("Git blob subprocess requests raw buffer output while metadata remains text", async () => {
+  await fixture(async ({ root, candidate }) => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const call = promisify(execFile);
+    let blobCalls = 0;
+    const verifier = createTrustedGitSourceVerifier({
+      repositories: { [REPO]: root },
+      execImpl: async (binary, args, opts) => {
+        if (args[1] === "show") {
+          blobCalls++;
+          assert.equal(opts.encoding, "buffer");
+        } else assert.equal(opts.encoding, "utf8");
+        assert.equal(opts.env.GIT_NO_REPLACE_OBJECTS, "1");
+        return call(binary, args, opts);
+      },
+    });
+    assert.equal(await verifier(candidate), true);
+    assert.equal(blobCalls, 1);
+  });
+});

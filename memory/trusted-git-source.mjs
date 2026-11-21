@@ -76,7 +76,7 @@ export function createTrustedGitSourceVerifier({
     catch { return false; }
     const root = roots.get(request.repositoryId);
     if (!root) return false;
-    const cmd = async (...args) => {
+    const gitCall = async (args, binary) => {
       try {
         const { stdout } = await execImpl("/usr/bin/git",
           ["--no-pager", ...args], {
@@ -84,11 +84,14 @@ export function createTrustedGitSourceVerifier({
               GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null",
               GIT_OPTIONAL_LOCKS: "0", GIT_NO_REPLACE_OBJECTS: "1" },
             maxBuffer: MAX_STDOUT, timeout: TIMEOUT,
-            encoding: "utf8", windowsHide: true,
+            encoding: binary ? "buffer" : "utf8", windowsHide: true,
           });
+        if (binary && !Buffer.isBuffer(stdout)) throw denied();
         return stdout;
       } catch { throw denied(); }
     };
+    const cmd = (...args) => gitCall(args, false);
+    const blobBytes = (...args) => gitCall(args, true);
     try {
       // Ensure this checkout still matches the operator-bound repository.
       const actual = await fs.realpath(root);
@@ -102,10 +105,10 @@ export function createTrustedGitSourceVerifier({
       const mode = await cmd("ls-tree", request.headSha, "--", request.sourcePath);
       if (!/^100644 blob [0-9a-f]{40}\t/.test(mode) ||
           mode.trim().split("\n").length !== 1) return false;
-      const blob = await cmd("show", request.headSha + ":" + request.sourcePath);
-      // Full byte-for-byte correspondence is deliberately required. A Git
-      // change at the same path cannot be substituted at a different SHA.
-      return blob === request.content;
+      const blob = await blobBytes("show", request.headSha + ":" + request.sourcePath);
+      // Decode only the Git metadata commands. Compare the *raw blob bytes*
+      // so invalid UTF-8 cannot be lossy-decoded into an approved string.
+      return blob.equals(Buffer.from(request.content, "utf8"));
     } catch { return false; }
   };
 }
