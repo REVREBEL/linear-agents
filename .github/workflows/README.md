@@ -21,3 +21,7 @@ The MCP security/tool source audit and full deferred-gate list are at [ABR-94](.
 **ABR-17 M2 — `submission-coordinator.yml`** also executes the private-ingress, actual child IPC, signed fixture broker, and strict Linux sandbox Git preflight tests using the existing isolated test-only root override. Never deploys, loads production credentials or changes service policy.
 
 **ABR-17 M3:** Submission coordinator CI now runs `submission:m3:test` covering fixed provider contracts, publication boundaries and read-only reconciliation using signed test fixtures. The inherited M1/M2, Bridge, reliability and generated Worker type checks remain required.
+
+**ABR-17 M4:** Submission coordinator CI adds managed native launch/IPC and shared MCP finish regression tests using the previous provider-shaped HTTP fixtures. No real agent launch, private deployment binding or production activation.
+
+The M4 workflow runs the AGY Python unit suite in a disposable venv as well as Node managed-dispatch fixtures.

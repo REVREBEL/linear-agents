@@ -151,3 +151,7 @@ Set `autoSend: true` for a project that should automatically open its **existing
 ### AGY quota retry routing
 
 The runner emits the verified AGY conversation ID as soon as it appears in the stream, and the bridge persists it against the exact Linear Agent Session and delivery. Follow-up prompts resume only that session's latest verified conversation in the same workspace. AGY exhaustion then persists a two-hour retry (`AGY_RETRY_DELAY_MS`, default `7200000`) and resumes with `--conversation <id>` in that workspace. Do **not** use `agy -c` or a shared `.agents/last_session`, which may point to a different Linear issue. Without a verified ID, follow-up and retry resumption fail safely. The implementation requires live CLI verification.
+
+## Managed coding route (ABR-17 M4)
+
+The optional managed submission runtime selects AGY, Trae and chatgpt-cli only for approved bridge-server routes using a protected host binding. It binds the known issue, job, tenant, mapped repository/root, project, session, app, branch and base, and resolves the final head independently at finish. It refuses the Mac route rather than falling back to the old transport. The AGY Python managed entrypoint uses inherited FD 3 and disables direct Worker callbacks. No provider secret is copied into the native child launch environment. See [ABR-17 contract](../docs/ABR17_SUBMISSION_COORDINATOR.md) for M5 verification and rollback.

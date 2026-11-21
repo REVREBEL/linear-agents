@@ -76,3 +76,7 @@ A newly started agent session can retrieve the job lifecycle's **entire six-docu
 ## Update discipline
 
 Update this README and its manifest together when document IDs, aliases, source paths, dependencies, or bootstrap semantics change. Update nearest owning READMEs in the same PR as behavioral, configuration, security, routing, or deployment changes. Context metadata does **not** authorize filesystem access, credential use, code execution, or deployments.
+
+## ABR-17 M4 — Submission skill routing
+
+[submit-work](skills/submit-work/SKILL.md) is the minimal shared managed coding skill. [linear-session-completion](skills/linear-session-completion/SKILL.md) selects the invocation contract; explicitly legacy instructions remain separately documented. [antigravity-linear-workflow](skills/antigravity-linear-workflow/SKILL.md) owns AGY implementation/revision specifics. The trusted launcher supplies the command regardless of skill discovery.

@@ -25,7 +25,7 @@ export async function coordinateLocalExecution({
   traeBin, traeArgsTemplate, buildGenericArgs, maskArg, attachProcessLogs,
   startGemma, geminiBin, geminiLaunchMode, geminiArgsTemplate,
   startGeminiInWarp, buildGeminiLaunch, spawnProcess,
-  logger = console,
+  logger = console, managedSubmission = null,
   prepareTask = prepareLocalAgentTask,
   dispatchers = {
     mock: dispatchMockAgent,
@@ -48,6 +48,14 @@ export async function coordinateLocalExecution({
   logger.log(`Saved to: ${filename}`);
   logger.log(`Resolved workspace: ${workspace}`);
   logger.log(`Project scope: ${route.projectScope}`);
+
+  if (managedSubmission) {
+    // Managed dispatch is mutually exclusive with legacy callbacks and
+    // credential-bearing provider launchers. Await durable launch acceptance.
+    await managedSubmission.dispatch({agent, job:routedJob, route, jobKey, workspace, filename,
+      prompt:extractPromptContext(routedJob)});
+    return {status:202,body:{ok:true,accepted:true,jobId:safeJobId,host}};
+  }
 
   if (agent !== "trae") await jobStore.transition(jobKey, "launching", { attempts: 1 });
   if (agent === "mock") {

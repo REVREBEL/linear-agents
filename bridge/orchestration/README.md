@@ -21,3 +21,9 @@ PR #264 review: capability lifetime is checked after asynchronous job-ledger rea
 ## ABR-17 M3 — Publication and terminal outcomes
 
 `submission-publication.mjs` binds explicit repo/agent bot policy, rechecks Git and PR before every downstream mutation, reuses the original PR or rejects closed/ambiguous history, and requires a valid reviewer route. The coordinator supplies a fresh authorization callback at the side-effect boundary. The explicit trusted `submitFailure` path journals failed/blocked completion before invoking Worker error activity; it does not publish or move an issue to In Review. Recovery reads the provider and current inbox by exact operation identity without replay. See [M3 contract](../../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+## ABR-17 M4 — Shared managed provider lifecycle
+
+`managed-submission-service.mjs` composes M1–M3, `managed-provider-launch.mjs` supplies minimal native specifications to an independently approved isolated supervisor, and `managed-submission-runner.mjs` attaches a single one-shot finish operation to the live canonical job. The exact final Git head is captured independently at finish; existing outbox/adapters own all publication. Managed admission bypasses legacy credential synchronization. ABR-99 can bind its existing verified grant to this same operation through createMcpIntegration; no second queue or publishing authority. Native host security, descriptor propagation, actual MCP transport and remote execution need separate acceptance.
+
+Legacy AGY quota retry recovery remains per-record, independent of managed submission enablement. Managed waiting-quota records never resume via the legacy timer; both startup and timer execution use the same predicate.

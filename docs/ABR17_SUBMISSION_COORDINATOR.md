@@ -210,3 +210,91 @@ including explicit failure handling, canonical ledger fields, trusted
 credential source, ABR-99 coordinator binding, and the minimized common
 skill. M5 must independently verify actual permissions, Linux/Mac policy,
 approved staging issue and real provider lifecycle before enabling.
+
+## M4 — Managed native finish integration
+
+The existing authenticated /jobs route now selects the shared managed
+submission service for Antigravity, Trae and chatgpt-cli when explicitly
+enabled. Default off preserves the legacy dispatch path. Managed admission
+does not exchange or persist legacy workspace Linear credentials, and does
+not fall back to the legacy callbacks or Mac SSH dispatch on failure.
+The existing process ledger must durably record accepted managed launch
+before duplicate delivery is acknowledged. The runner prevents overlapping
+managed work in one repository within the authoritative process. A native
+process exit or final response is not submission evidence. Explicit success,
+failed or blocked requests enter M1–M3; pending effects or missing
+requests remain awaiting_external. The final committed SHA is independently
+captured from the pinned branch via the existing read-only Git sandbox.
+An explicit failure still requires a bindable approved branch/head.
+
+The managed provider specifications use the actual native CLI invocation
+shape: AGY Python --managed reads the trusted startup prompt from stdin
+and passes FD 3 to agy without Worker activity calls; Trae receives the
+chat command; chatgpt-cli receives OpenCode run --format json with the
+approved model. The specs use a strict environment allowlist and include
+the trusted command/issue-confirmation finish instruction independently
+of any skill loader. The host supervisor must preserve the private duplex
+FD through the native tool subprocess, protect host credentials/files
+from the entire child tree, police egress and terminate the tree at expiry.
+It cannot be replaced by direct spawn in production. Provider/CLI
+credential stores, any legacy .env.linear-bridge files, git credential
+helpers, SSH keys and the Bridge filesystem must not be readable by the
+managed agent except for separately approved model access. No claim that
+the current same-UID native executables meet these requirements is made.
+The shared submission skills distinguish managed and legacy turns.
+
+### Protected host binding and activation (operator-only; M5)
+
+Setting BRIDGE_MANAGED_SUBMISSION_ENABLED=true requires Linux and a
+root-owned regular /etc/agent-bridge/managed-submission-host.mjs with
+root-owned non-writable ancestors, exporting createHostBinding().
+The flag is not set by this PR. The private implementation is **not
+installed or supplied by repository source**, and startup fails if absent.
+The trusted host binding owns:
+
+- githubMappings, linearMappings, workspaces, publicationPolicies per
+  M2/M3, and providerConfigs for all three native providers. Each
+  provider config includes absolute binary, commandPath, minimal env
+  (HOME/PATH and permitted locale/XDG/temp values); AGY requires python,
+  OpenCode requires model. The command path is installed and pinned by
+  the operator, not resolved from issue text.
+- resolvePlan(request): independently authorize coding role and exact
+  agent, jobKey, sessionId, tenantId, issueUuid, repository/root, workspace,
+  projectId, mapped appId/installationId, explicit branch/base, commandPath
+  and expiry (at most one hour). Refuse clarifications and noncoding turns
+  unless separately supported; do not infer a branch or role from prose.
+- isolatedSpawn(spec, context): synchronous supervised ChildProcess-shaped
+  result with actual spawn/close/error events and inherited private FD 3.
+  Supply approved isolation, peer identity, process-tree cleanup and
+  descriptor propagation. Never inject host environment or auth material.
+- loadPrivateKey, loadLinearToken, loadWorkerSecret and verifyRecoveryRequest:
+  trusted host-owned credential retrieval and operator authorization. No
+  secrets may be passed to model processes, prompts, logs or job artifacts.
+
+The source service constructs one M1 coordinator, ingress, canonical
+outbox and provider adapter set. Its createMcpIntegration factory binds
+ABR-99's authenticated Linear coding grant to the same one-shot live finish
+operation, checking scope and grant liveness. It does not run the previous
+independent PR-verifier/inbox-enqueue path when managed mode is selected.
+Actual authenticated MCP transport registration is separately gated; the
+existing MCP route is not exposed by this PR. No second PR or reviewer
+queue is created by the managed MCP adapter.
+
+### M4 evidence and M5 release gate
+
+M4 fixture tests run actual submit-work child processes / private IPC,
+the provider-specific startup specs (with mocked native executables),
+canonical ledger, real SQLite outbox, M3 signed fixture APIs and review
+inbox. The M2 suite exercises actual confined Git. Native AGY/Trae/OpenCode
+tool descriptor inheritance, isolated supervisor, per-process identity,
+legacy credential cleanup, linked worktrees, Linux service UID sandbox,
+Mac transport, actual GitHub/Linear app permissions and live API/session
+verification remain unestablished. M5 must resolve these before any
+production activation; it also needs a protected operator recovery entrypoint
+and explicit recovery of interrupted/uncertain managed jobs, approved
+staging, production credential verification, review of live CI policies
+and rollout/rollback. No automatic restart/replay or quota retry in
+managed mode. Retain the journal pending reconciliation. Rollback disables
+the flag only after stopping/reconciling managed in-flight work; restore
+the previously approved legacy configuration. Never reinterpret an
+ambiguous external effect as permission to launch a legacy job.

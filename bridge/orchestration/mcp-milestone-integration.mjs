@@ -86,7 +86,7 @@ function validateTrustedAdmission(grant, now) {
 
 export function createMcpBridgeIntegration({
   jobStore, memory, reviewInbox, verifyAdmittedJob, verifyToolReceipt,
-  verifySubmittedPr = null, submissionCoordinator = null,
+  verifySubmittedPr = null, submissionCoordinator = null, submitAdmittedWork = null,
   verifyD5Handoff = null, reviewRoutingConfig = null,
   now = () => Date.now(),
 }) {
@@ -98,6 +98,9 @@ export function createMcpBridgeIntegration({
       typeof verifyToolReceipt !== 'function' ||
       typeof now !== 'function')
     throw TypeError('CANONICAL_BRIDGE_ADAPTERS_REQUIRED');
+  if (submitAdmittedWork !== null && typeof submitAdmittedWork !== "function")
+    throw TypeError("MANAGED_SUBMISSION_CALLBACK_REQUIRED");
+  if (submitAdmittedWork && submissionCoordinator) throw TypeError("AMBIGUOUS_SUBMISSION_AUTHORITY");
   if (submissionCoordinator &&
       (typeof submissionCoordinator.submit !== 'function' ||
        typeof verifySubmittedPr !== 'function' ||
@@ -281,6 +284,14 @@ export function createMcpBridgeIntegration({
     if (grant.role !== 'coding') throw Error('CODING_JOB_REQUIRED');
     if (issueId !== grant.issueId) throw Error('SUBMISSION_ISSUE_MISMATCH');
     const safeSummary = sanitizedSummary(summary, 1_500);
+    // M4 uses the same live runner finish operation and durable outbox.
+    // Do not independently enqueue review or infer a completed submission.
+    if (submitAdmittedWork) {
+      const result = await submitAdmittedWork(grant, Object.freeze({issueId,summary:safeSummary}),
+        ()=>grants.get(handle)===grant&&grant.expiresAt>now());
+      if (!result || typeof result.stage !== "string") throw Error("UNVERIFIED_SUBMISSION_OUTCOME");
+      return result;
+    }
     if (!submissionCoordinator)
       throw Error('SUBMISSION_COORDINATOR_NOT_CONFIGURED');
     // The ABR-17 coordinator, never this MCP adapter, owns GitHub, Linear,

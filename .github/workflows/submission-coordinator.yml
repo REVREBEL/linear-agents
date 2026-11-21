@@ -3,6 +3,17 @@ on:
   pull_request:
     paths:
       - 'bridge/orchestration/submission-coordinator.mjs'
+      - 'bridge/orchestration/managed-*.mjs'
+      - 'bridge/orchestration/local-execution-coordinator.mjs'
+      - 'bridge/orchestration/job-admission-coordinator.mjs'
+      - 'bridge/orchestration/mcp-milestone-integration.mjs'
+      - 'bridge/server/agent-bridge-runtime.mjs'
+      - 'jobs/admission/**'
+      - 'linear-agent-bridge/run_agent.py'
+      - 'linear-agent-bridge/test_run_agent.py'
+      - 'scripts/test-submission-m4.mjs'
+      - 'scripts/fixtures/submission-provider-fixture.mjs'
+      - '.agents/skills/**/SKILL.md'
       - 'bridge/orchestration/submission-publication.mjs'
       - 'integrations/submission-linear-worker.mjs'
       - 'scripts/test-submission-m3.mjs'
@@ -20,6 +31,20 @@ on:
     branches: [main]
     paths:
       - 'bridge/orchestration/submission-coordinator.mjs'
+      - 'bridge/orchestration/managed-*.mjs'
+      - 'bridge/orchestration/local-execution-coordinator.mjs'
+      - 'bridge/orchestration/job-admission-coordinator.mjs'
+      - 'bridge/orchestration/mcp-milestone-integration.mjs'
+      - 'bridge/server/agent-bridge-runtime.mjs'
+      - 'jobs/admission/**'
+      - 'linear-agent-bridge/run_agent.py'
+      - 'linear-agent-bridge/test_run_agent.py'
+      - 'scripts/test-submission-m4.mjs'
+      - 'scripts/fixtures/submission-provider-fixture.mjs'
+      - '.agents/skills/**/SKILL.md'
+      - 'bridge/orchestration/submission-publication.mjs'
+      - 'integrations/submission-linear-worker.mjs'
+      - 'scripts/test-submission-m3.mjs'
       - 'bridge/orchestration/submission-ingress.mjs'
       - 'bridge/orchestration/submission-git-preflight.mjs'
       - 'bridge/handlers/submission-channel.mjs'
@@ -46,6 +71,13 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run submission:test
       - run: npm run submission:m3:test
+      - run: npm run submission:m4:test
+      - name: AGY managed wrapper unit tests
+        run: |
+          python3 -m venv /tmp/abr17-python
+          /tmp/abr17-python/bin/pip install -r linear-agent-bridge/requirements.txt
+          cd linear-agent-bridge
+          PYTHONDONTWRITEBYTECODE=1 /tmp/abr17-python/bin/python -m unittest test_run_agent.py
       - name: Install disposable Bubblewrap
         run: |
           if ! command -v bwrap >/dev/null 2>&1; then

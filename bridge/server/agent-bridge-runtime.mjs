@@ -1,3 +1,5 @@
+import { isLegacyQuotaRetry } from "../orchestration/agy-quota-recovery.mjs";
+import { MANAGED_PROVIDERS } from "../orchestration/managed-submission-runner.mjs";
 import { createHttpRouteComposer } from "./http-route-composition.mjs";
 import { coordinateRemoteExecution } from "../orchestration/remote-execution-coordinator.mjs";
 import { coordinateLocalExecution } from "../orchestration/local-execution-coordinator.mjs";
@@ -260,6 +262,19 @@ await Promise.all(
   ),
 );
 
+// No automatic activation or secret-bearing fallback. The fixed host
+// binding must be installed/approved separately; absent binding stops startup.
+let managedSubmission = null;
+if (process.env.BRIDGE_MANAGED_SUBMISSION_ENABLED === "true") {
+  const {loadManagedSubmissionHost,createManagedSubmissionService} =
+    await import("../orchestration/managed-submission-service.mjs");
+  managedSubmission = createManagedSubmissionService({
+    hostBinding:await loadManagedSubmissionHost(),jobStore,jobsDir:JOBS_DIR,
+    projectsRoot:PROJECTS_ROOT,reviewInbox,agyRunnerPath:RUN_AGENT_PATH,
+    reviewRoutingConfig:JSON.parse(await fs.readFile(ROUTING_CONFIG_FILE,"utf8")),
+  });
+}
+
 const recovered = await jobStore.reconcile();
 if (recovered) console.warn(`Marked ${recovered} unfinished jobs interrupted; manual reconciliation required.`);
 
@@ -364,17 +379,19 @@ const server = http.createServer(async (request, response) => {
     const job = JSON.parse(rawBody);
 
     const agent = agentForHost(host);
+    const managed = managedSubmission && MANAGED_PROVIDERS.includes(agent);
     const admission = await coordinateJobAdmission({
       headers: request.headers, rawBody, job, host, agent,
       sharedSecret: SHARED_SECRET, resolveJobRoute,
       syncLinearCredential, checkOpenCodeReady,
-      jobStore, agentJobDirs: AGENT_JOB_DIRS,
+      jobStore, agentJobDirs: AGENT_JOB_DIRS, managedSubmission:!!managed,
     });
     if (admission.response) {
       return sendJson(response, admission.response.status, admission.response.body);
     }
     const { safeJobId, jobKey, route, credential } = admission.delivery;
 
+    if (managed && route.executionHost !== "bridge-server") return sendJson(response,503,{ok:false,accepted:false,error:"Managed remote launcher not approved"});
     if (route.executionHost === "macos") {
       const remote = await coordinateRemoteExecution({
         agent, job, jobKey, safeJobId, credential, host, route,
@@ -386,6 +403,7 @@ const server = http.createServer(async (request, response) => {
 
     const execution = await coordinateLocalExecution({
       job, route, agent, jobKey, safeJobId, credential, host,
+      managedSubmission:managed ? managedSubmission : null,
       jobStore, activeTaskMemory, drainProgressWrites, retrieveMemuMemory,
       extractDirectTask, extractPromptContext, extractAgentSessionId,
       agySessionQueue, readAgyProjectConversation, saveAgyProjectConversation,
@@ -469,7 +487,7 @@ function scheduleAgyResume(jobKey, resumeAt) {
     agyResumeTimers.delete(jobKey);
     void (async () => {
       const record = await jobStore.get(jobKey);
-      if (record.state !== "waiting_quota" || record.resumeAt !== resumeAt) return;
+      if (!isLegacyQuotaRetry(record) || record.resumeAt !== resumeAt) return;
       if (!record.conversationId || !record.taskFile || !record.repositoryRoot || !record.workspace || !record.agentSessionId) {
         await jobStore.transition(jobKey, "failed", { error: "Incomplete AGY resume metadata" });
         await postAgyRecoveryActivity(record, "Automatic quota retry failed: resume metadata is incomplete.", "error");
@@ -611,7 +629,7 @@ function startAntigravity(job, filename, workspace, jobKey, conversationId = nul
 // Recover scheduled AGY quota retries after a bridge restart.
 void jobStore.findByState("waiting_quota").then(records => {
   for (const record of records) {
-    if (record.resumeAt) scheduleAgyResume(record.key, record.resumeAt);
+    if (isLegacyQuotaRetry(record)) scheduleAgyResume(record.key, record.resumeAt);
   }
 }).catch(error => console.error("AGY retry recovery failed:", error));
 

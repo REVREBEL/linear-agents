@@ -50,7 +50,7 @@ export function createSubmissionIngress({jobStore,verifyLauncher,verifyRunner,ma
   }
   const tokens=new Map(), proofs=new WeakMap();
   const lookup=scope=>configured.get(scope.agentId+'\0'+scope.repository);
-  const live=entry=>{if(!enabled||!entry||entry.revoked||entry.expiresAt<=now())throw denied();};
+  const live=entry=>{if(!enabled||!entry||entry.revoked||entry.expiresAt<=now()||(entry.isLive&&entry.isLive()!==true))throw denied();};
   async function issue(launcherEvidence){
     if(!enabled)throw denied('SUBMISSION_DISABLED');
     // A trusted launcher verifier derives these values from authenticated
@@ -67,7 +67,7 @@ export function createSubmissionIngress({jobStore,verifyLauncher,verifyRunner,ma
     if(tokens.size>=maxSessions)throw denied('SUBMISSION_INGRESS_CAPACITY');
     if([...tokens.values()].some(e=>e.scope.jobKey===scope.jobKey))throw denied('RUNNER_CAPABILITY_ALREADY_ISSUED');
     const token=randomBytes(32).toString('base64url'),hash=digest(token).toString('hex');
-    const entry={scope,runnerIdentity:grant.runnerIdentity,expiresAt:Math.min(grant.expiresAt,now()+ttlMs),revoked:false};
+    const entry={scope,runnerIdentity:grant.runnerIdentity,isLive:grant.isLive,expiresAt:Math.min(grant.expiresAt,now()+ttlMs),revoked:false};
     tokens.set(hash,entry);
     // Token is a single-job local transport capability, never the GitHub
     // token/Linear OAuth/Bridge secret. Deliver via private launcher channel.
@@ -90,15 +90,17 @@ export function createSubmissionIngress({jobStore,verifyLauncher,verifyRunner,ma
   }
   async function submitLocal({token,runnerEvidence,input},coordinator){
     // Private transport evidence must be derived outside model request body.
-    if(!input||Object.keys(input).some(k=>!['issueId','summary'].includes(k))||
-       typeof input.issueId!=='string'||typeof input.summary!=='string')throw denied('INVALID_SUBMISSION_INPUT');
-    const request=Object.freeze({issueId:input.issueId,summary:input.summary});
+    if(!input||Object.keys(input).some(k=>!['issueId','summary','outcome'].includes(k))||
+       typeof input.issueId!=='string'||typeof input.summary!=='string'||
+       (input.outcome!==undefined&&!['failed','blocked'].includes(input.outcome)))throw denied('INVALID_SUBMISSION_INPUT');
+    const request=Object.freeze({issueId:input.issueId,summary:input.summary,
+      ...(input.outcome?{outcome:input.outcome}:{})});
     if(Buffer.byteLength(request.issueId)>128||Buffer.byteLength(request.summary)>8192)
       throw denied('INVALID_SUBMISSION_INPUT');
     const proof=await authenticate(token,runnerEvidence);
     const entry=proofs.get(proof);
     const handle=await coordinator.bind(proof);
-    try {live(entry);return await coordinator.submit(handle,request);}
+    try {live(entry);return await (request.outcome?coordinator.submitFailure(handle,request):coordinator.submit(handle,request));}
     finally{coordinator.revoke(handle);}
   }
   function isAdmissionLive(proof){

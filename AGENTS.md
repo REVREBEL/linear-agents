@@ -81,3 +81,7 @@ Use `npm run deploy -- <agent>` for a Worker and the `scripts/with-env.sh` wrapp
 3. Prefer minimal targeted changes; preserve security checks, agent/session identity, job idempotency and issue-vs-session distinction.
 4. For any new retry/resume mechanism, document persistence, maximum retries, restart recovery, concurrency and failure conditions; add tests where possible.
 5. Never commit real OAuth credentials, app secrets, local `.env`, private project routing values or task payloads.
+
+## Managed coding submission (ABR-17)
+
+When an authenticated managed launcher supplies the private submit-work command, confirm the issue ID and summary through that command. Bridge owns GitHub PR publication, review handoff and Linear session completion. Never obtain the Bridge shared secret or use a legacy Worker callback for a managed job. The default runtime remains legacy until M5 approval; read [the submission contract](docs/ABR17_SUBMISSION_COORDINATOR.md).
