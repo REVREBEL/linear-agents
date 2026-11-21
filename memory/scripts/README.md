@@ -28,3 +28,7 @@ See [`../POSTGRES_CHECKPOINT_ADAPTER.md`](../POSTGRES_CHECKPOINT_ADAPTER.md) for
 Review updates to the script alongside the SQL migration, checkpoint adapter and focused tests. Do not embed credentials or copy real database snapshots into this folder.
 
 Context ID: `repo.memory.scripts`; dependencies: `repo.memory` and `repo.memory.migrations`.
+
+## Host authority controls (ABR-59 M11)
+
+`manage-host-authority-key.py` is a root-only operator command for key initialization, rotation, and revocation. `verify-host-evidence.mjs` performs the separately configured read-only evidence canary; credentials and live canary acceptance remain operator gates. See [M11 contract](../../docs/ABR59_HOST_MEMORY_AUTHORITY.md).
