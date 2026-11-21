@@ -506,6 +506,10 @@ The bridge detects an AGY quota-exhaustion event emitted by `linear-agent-bridge
 
 [The remote MCP upstream/source audit](docs/audits/mcp/README.md) and [tool parity contract](docs/audits/mcp/tool-parity.json) document the planned self-hosted Desktop Commander port (30 connected tools, 42 BRC agent tools, three relay tools). This branch adds an **offline/local, read-only relay+host fixture** using pinned `ws@8.21.0` with no production listener, OAuth, command execution, third-party file transfer, or deployment. The existing `bridge/server/agent-bridge-runtime.mjs`, `/jobs` identity, review inbox and job ledger remain authoritative. See ABR-95–100 for staged completion and deployment decisions.
 
+### ABR-59 — Native memU multi-scope PostgreSQL canary (M10)
+
+The explicit disposable PostgreSQL 18 canary verifies native memU promotion, signed source approvals, five exact-scope persisted recalls, four independent scope-mismatch denials, tamper/duplicate rejection and fresh-process recovery after cluster restart, using local 768-dimensional embeddings. Run it as the bridge user; see [M10 host acceptance](docs/ABR59_MEMU_ISOLATION_CANARY.md). This is application-level scoped retrieval, not production database authorization.
+
 ### ABR-59 — Linear completion evidence (M9)
 
 The opt-in, unwired Linear completion adapter requires a host-owned credential provider, a pinned team, a completed issue and an exact attached PR URL, then independently checks that PR against GitHub and rechecks Linear state and attachments. See [M9 contract](docs/ABR59_LINEAR_COMPLETION.md).
