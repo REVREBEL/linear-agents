@@ -10,7 +10,7 @@ import { createPromotionJournal, promotionReceiptId } from "../promotion-journal
 import { executeVerifiedMemuCommit } from "../memu-commit-executor.mjs";
 import { createApprovedSourceStore } from "../approved-source-store.mjs";
 import { createTrustedGitSourceVerifier } from "../trusted-git-source.mjs";
-import { readScopedMemuFiles, nativeScopedIdentity } from "../scoped-postgres-recall.mjs";
+import { readScopedMemuFiles, nativeScopedIdentity, makeScopedRecallSql } from "../scoped-postgres-recall.mjs";
 import { loadMemuRuntime } from "../memu-runtime.mjs";
 
 const [root, mode] = process.argv.slice(2);
@@ -178,6 +178,13 @@ for(const item of items){
     "' AND user_id='"+identity.userId+"' AND agent_id='"+identity.agentId+"'"),"1");
   assert.equal(sql("SELECT count(*) FROM memu.recall_file_segments s JOIN memu.recall_files f ON f.id=s.recall_file_id WHERE f.name='bridge-"+item.id+
     "' AND (s.user_id IS DISTINCT FROM f.user_id OR s.agent_id IS DISTINCT FROM f.agent_id OR s.track IS DISTINCT FROM f.track)"),"0");
+  // Inspect database output before independent approvals can discard rows.
+  const raw=execFileSync(pg,["-X","-q","-A","-t","-v","ON_ERROR_STOP=1",
+    "-v","scoped_user_id="+identity.userId,
+    "-v","scoped_agent_id="+identity.agentId,"-f","-"],
+    {env,input:makeScopedRecallSql(),encoding:"utf8",timeout:10000,maxBuffer:65536});
+  const dbRows=JSON.parse(raw.trim());
+  assert.deepEqual(dbRows.map(row=>row.name),["bridge-"+item.id]);
   const envelope=await recall(item,authority);
   assert.equal(envelope.entries.length,1);
   assert.equal(envelope.entries[0].content,item.source.content);
