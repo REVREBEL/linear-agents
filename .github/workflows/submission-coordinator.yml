@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'bridge/orchestration/submission-coordinator.mjs'
+      - 'bridge/orchestration/submission-publication.mjs'
+      - 'integrations/submission-linear-worker.mjs'
+      - 'scripts/test-submission-m3.mjs'
       - 'bridge/orchestration/submission-ingress.mjs'
       - 'bridge/orchestration/submission-git-preflight.mjs'
       - 'bridge/handlers/submission-channel.mjs'
@@ -42,6 +45,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run submission:test
+      - run: npm run submission:m3:test
       - name: Install disposable Bubblewrap
         run: |
           if ! command -v bwrap >/dev/null 2>&1; then

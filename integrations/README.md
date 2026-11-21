@@ -40,3 +40,7 @@ Update this README and the nearest provider README with any changes to event cla
 ## ABR-17 M2 — Host-only GitHub App broker
 
 `submission-github-broker.mjs` requires explicit agent/repository/app/installation/numeric repository ID mapping and operator-owned private-key loader. It verifies signed app identity and repository installation, requests one-repository read-only token permissions, validates response scope and expiry, and returns only read-only GitHub operations, not credentials. It never falls back to the first installation. Real installation verification and M3 publication permissions are not enabled by the fixture. See [submission contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+## ABR-17 M3 — Host-only provider clients
+
+`submission-github-broker.mjs` remains read-only by default; explicit M3 publication enables repository-scoped pull_requests:write only (no contents write), scoped PR list/create/read and validated exact head/base. `submission-linear-worker.mjs` uses fixed Linear GraphQL and mapped HTTPS Worker /complete, checks viewer/organization/team/issue and authorized state, verifies comments by operation marker and author, verifies session ownership before completion and reads paginated activities and latest terminal state afterwards. No raw credentials or responses leave these trusted adapters. See [M3 contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).

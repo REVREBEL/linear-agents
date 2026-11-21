@@ -33,8 +33,8 @@ function summarize(value) {
   return sanitizeCheckpointText(value).replace(/[\u0000-\u001f\u007f]+/g,' ')
     .replace(/\s+/g,' ').slice(0,1500).trim();
 }
-function assertJob(job,s,{closed=false}={}) {
-  if(!job||(!ACTIVE.has(job.state)&&!(closed&&job.state==='completed'))||
+function assertJob(job,s,{closed=false,failed=false}={}) {
+  if(!job||(!ACTIVE.has(job.state)&&!(closed&&job.state==='completed')&&!(failed&&job.state==='failed'))||
      job.key!==s.jobKey||job.agentSessionId!==s.sessionId||job.issueId!==s.issueUuid||
      job.issueIdentifier!==s.issueIdentifier||job.tenantId!==s.tenantId||
      job.agent!==s.agentId||job.executionHost!==s.hostId||
@@ -115,7 +115,7 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,isA
     if(!enabled) throw Error('SUBMISSION_DISABLED');
     const s=freezeScope(await verifyAdmission(evidence),now);
     const prior=outbox.get(key(s));
-    assertJob(await jobStore.get(s.jobKey),s,{closed:prior?.stage==='session_closed'});
+    assertJob(await jobStore.get(s.jobKey),s,{closed:prior?.stage==='session_closed',failed:['blocked','failed'].includes(prior?.stage)});
     if(s.expiresAt<=now()||isAdmissionLive(evidence)!==true) throw Error('UNVERIFIED_SUBMISSION_ADMISSION');
     const handle=Object.freeze({});
     handles.set(handle,{scope:s,evidence});
@@ -146,7 +146,7 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,isA
     let row=outbox.claim({id,issueScope:digest([s.tenantId,s.issueUuid]),head:s.headSha,
       data:{summary,scopeDigest,publicationScope}}).record;
     // The claim may have been won by another process after our read.
-    if(row.summary!==summary||row.scopeDigest!==scopeDigest)
+    if(row.failureOutcome||row.summary!==summary||row.scopeDigest!==scopeDigest)
       throw Error('SUBMISSION_RECEIPT_CONFLICT');
     while(nextStep.has(row.stage)) {
       if(row.pending) return result(row);
@@ -165,7 +165,8 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,isA
           const context=Object.freeze({scope:s,summary:row.summary,
             github:row.github?Object.freeze({...row.github}):null,
             previousPr:row.previousPr?Object.freeze({...row.previousPr}):null,
-            operationId:digest([id,next])});
+            operationId:digest([id,next]),
+            authorize:async()=>{requireHandle(handle);assertJob(await jobStore.get(s.jobKey),s);requireHandle(handle);}});
           requireHandle(handle);
           const receipt=await adapters[methods[next]](context);
           patch=checkReceipt(next,receipt,s,row);
@@ -188,7 +189,8 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,isA
     assertJob(await jobStore.get(s.jobKey),s);
     requireHandle(handle);
     const observation=await verifyRecovery(evidence,Object.freeze({
-      scope:s,submissionId:id,stage:row.pending,operationId:digest([id,row.pending]),
+      scope:s,summary:row.summary,submissionId:id,stage:row.pending,operationId:digest([id,row.pending]),
+      authorize:async()=>{requireHandle(handle);assertJob(await jobStore.get(s.jobKey),s);requireHandle(handle);},
       github:row.github?Object.freeze({...row.github}):null,
       previousPr:row.previousPr?Object.freeze({...row.previousPr}):null,
     }));
@@ -198,8 +200,40 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,isA
     requireHandle(handle);
     assertJob(await jobStore.get(s.jobKey),s);
     requireHandle(handle);
-    const patch=row.pending==='validated'?{}:checkReceipt(row.pending,observation.receipt,s,row);
+    const patch=row.pending==='validated'?{}:
+      ['failed','blocked'].includes(row.pending)?failureReceipt(observation.receipt,s,row.pending):
+      checkReceipt(row.pending,observation.receipt,s,row);
     return result(outbox.advance(id,row.stage,row.pending,patch));
   }
-  return Object.freeze({bind,submit,reconcilePending,revoke:handle=>handles.delete(handle)});
+  function failureReceipt(value,s,outcome){
+    if(!value||value.verified!==true||value.sessionId!==s.sessionId||
+       value.agentId!==s.agentId||value.status!=='failed')throw Error('UNVERIFIED_FAILED_SESSION');
+    return {completion:{status:'failed'},outcome};
+  }
+  // Explicit failure from a trusted runner, not an interpretation of tool
+  // text or a timeout. Never publishes or moves an issue to In Review.
+  async function submitFailure(handle,{issueId,summary,outcome}={}){
+    const s=requireHandle(handle),id=key(s);
+    if(!['blocked','failed'].includes(outcome)||![s.issueUuid,s.issueIdentifier].includes(issueId)||
+      typeof adapters.closeFailedSession!=='function')throw Error('FAILED_SUBMISSION_DENIED');
+    const text=summarize(summary);
+    const existing=outbox.get(id);
+    assertJob(await jobStore.get(s.jobKey),s,{failed:['blocked','failed'].includes(existing?.stage)});
+    requireHandle(handle);
+    const row=outbox.claim({id,issueScope:digest([s.tenantId,s.issueUuid]),head:s.headSha,
+      data:{summary:text,scopeDigest:digest(scopeFields.map(k=>s[k])),
+        publicationScope:digest([s.repository,s.branch,s.base,s.installationId,s.appId]),failureOutcome:outcome}}).record;
+    if(row.failureOutcome!==outcome||row.summary!==text||row.scopeDigest!==digest(scopeFields.map(k=>s[k])))
+      throw Error('FAILURE_SUBMISSION_CONFLICT');
+    if(row.stage===outcome||row.pending===outcome)return result(row);
+    if(row.stage!=='received'||row.pending||!outbox.intent(id,'received',outcome))throw Error('FAILURE_SUBMISSION_CONFLICT');
+    try{
+      const authorize=async()=>{requireHandle(handle);assertJob(await jobStore.get(s.jobKey),s);requireHandle(handle);};
+      await authorize();
+      const receipt=await adapters.closeFailedSession(Object.freeze({scope:s,summary:text,outcome,
+        operationId:digest([id,outcome]),authorize}));
+      return result(outbox.advance(id,'received',outcome,failureReceipt(receipt,s,outcome)));
+    }catch{return result(outbox.get(id));}
+  }
+  return Object.freeze({bind,submit,submitFailure,reconcilePending,revoke:handle=>handles.delete(handle)});
 }
