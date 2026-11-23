@@ -80,3 +80,8 @@ The reviewed M12 policy expressions were recorded under `memu,public`. The
 read-only M14 SQL gate pins this schema explicitly before comparing the five
 fingerprints. This does **not** change policies, schemas or grants; it aligns
 the production audit with the disposable cluster's canonical namespace.
+
+Managed-submission release integrity is checked against the immutable
+SOURCE_PROJECT_DIR even when writable runtime paths are redirected; the host
+binding never accepts the rollback workspace's potentially different Git HEAD
+as the trusted executable release.

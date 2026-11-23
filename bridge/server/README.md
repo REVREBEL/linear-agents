@@ -36,3 +36,7 @@ existing writable `/home/bridge/agent-bridge/linear-agent-bridge` runtime.
 The override defaults to the source directory for existing development and
 legacy production launches and rejects relative, traversing and malformed
 paths. See [sealed deployment](../../docs/ABR59_M14_ACTIVATION.md).
+
+The M5 managed-submission source approval continues to verify the separately
+sealed Git checkout from SOURCE_PROJECT_DIR, **not** BRIDGE_RUNTIME_PROJECT_DIR.
+Only job-state, agent workspaces and mutable routing use the runtime override.

@@ -272,7 +272,9 @@ if (process.env.BRIDGE_MANAGED_SUBMISSION_ENABLED === "true") {
   const {loadManagedSubmissionHost,verifyManagedSubmissionActivation,createManagedSubmissionService} =
     await import("../orchestration/managed-submission-service.mjs");
   const hostBinding=await loadManagedSubmissionHost();
-  await verifyManagedSubmissionActivation(hostBinding,path.resolve(PROJECT_DIR,".."));
+  // Submission approval is tied to the immutable executed Git release,
+  // never to the separately writable agent runtime/data checkout.
+  await verifyManagedSubmissionActivation(hostBinding,path.resolve(SOURCE_PROJECT_DIR,".."));
   managedSubmission = createManagedSubmissionService({
     hostBinding,jobStore,jobsDir:JOBS_DIR,
     projectsRoot:PROJECTS_ROOT,reviewInbox,agyRunnerPath:RUN_AGENT_PATH,
