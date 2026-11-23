@@ -7,7 +7,9 @@ const HOST_FILE="/etc/agent-bridge/verified-memory-host.mjs";
 const REPO=/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA=/^[0-9a-f]{40}$/;
 function deny(){throw Error("Verified memory host binding denied");}
-function scopeMatches(a,b){return ["tenantId","agentId","issueId"].every(k=>a?.[k]===b[k]);}
+function scopeMatches(a,b){
+  return ["tenantId","agentId","repositoryId","issueId"].every(k=>a?.[k]===b[k]);
+}
 
 /**
  * Root-owned host file contains ONLY a bridge-service client for a separately
@@ -28,9 +30,11 @@ export async function loadVerifiedMemoryBridgeHost({
   if(typeof module.createVerifiedMemoryBridgeHost!=="function")deny();
   const host=await module.createVerifiedMemoryBridgeHost();
   if(typeof host?.getApprovedScopedRecall!=="function"||
-     typeof host?.notifyIssueCompleted!=="function")deny();
+     typeof host?.notifyIssueCompleted!=="function"||
+     typeof host?.repositoryIdForRoot!=="function")deny();
   return Object.freeze({
     getApprovedScopedRecall:host.getApprovedScopedRecall.bind(host),
+    repositoryIdForRoot:host.repositoryIdForRoot.bind(host),
     notifyIssueCompleted:host.notifyIssueCompleted.bind(host),
   });
 }
@@ -39,7 +43,8 @@ export function createVerifiedMemoryBridge({host,enabled=false,logger=console,ti
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<50||timeoutMs>5000)deny();
   if(enabled!==true)return Object.freeze({enabled:false});
   if(!host||typeof host.getApprovedScopedRecall!=="function"||
-     typeof host.notifyIssueCompleted!=="function")deny();
+     typeof host.notifyIssueCompleted!=="function"||
+     typeof host.repositoryIdForRoot!=="function")deny();
   const metric=kind=>{try{logger.log?.("[verified memory] "+kind);}catch{/* no effects */}};
   async function bounded(operation){
     let timer;
@@ -57,12 +62,15 @@ export function createVerifiedMemoryBridge({host,enabled=false,logger=console,ti
       try {
         // The protected host maps the admitted route to a canonical GitHub
         // repository and validates operator-pinned job and signed approval.
+        // Resolve the GitHub repository identity independently from the
+        // reviewed host-owned map, not the lower-trust recall response.
+        const repositoryId=await bounded(()=>host.repositoryIdForRoot(repositoryRoot));
+        if(!REPO.test(repositoryId||"")){metric("denied");return "";}
         const result=await bounded(()=>host.getApprovedScopedRecall(Object.freeze({
           tenantId,agentId,repositoryRoot,issueId,jobKey})));
         if(result==null){metric("miss");return "";}
         const scope=result.scope;
-        if(!scopeMatches(scope,{tenantId,agentId,issueId})||
-           !REPO.test(scope?.repositoryId||"")||
+        if(!scopeMatches(scope,{tenantId,agentId,repositoryId,issueId})||
            result.trust!=="untrusted-reference-only"||
            result.schemaVersion!==1||!Array.isArray(result.entries)||
            result.entries.length>5||result.entries.length===0) {metric("denied");return "";}

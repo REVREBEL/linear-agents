@@ -13,6 +13,7 @@ test("default off never invokes provider and cannot add prompt instructions",asy
   const log=[];
   const h=createVerifiedMemoryBridge({host:{
     getApprovedScopedRecall:()=>{throw Error("should not read");},
+    repositoryIdForRoot:()=>{throw Error("should not map");},
     notifyIssueCompleted:()=>{throw Error("should not notify");}
   },logger:{log:x=>log.push(x)}});
   assert.equal(h.enabled,false);
@@ -23,7 +24,9 @@ test("trusted host reference is validated and explicitly labeled as lower-trust"
   const received=[],log=[];
   const h=createVerifiedMemoryBridge({enabled:true,host:{
     getApprovedScopedRecall:async x=>{received.push(x);return envelope;},
-    notifyIssueCompleted:async x=>{received.push(x);}
+    notifyIssueCompleted:async x=>{received.push(x);},
+    repositoryIdForRoot:async root=>{assert.equal(root,request.repositoryRoot);
+      return scope.repositoryId;},
   },logger:{log:x=>log.push(x)}});
   const result=await h.loadForTask(request);
   assert.match(result,/LOWER-TRUST REFERENCE ONLY/);
@@ -39,6 +42,7 @@ test("foreign, mutated, expired, secret and directive references are withheld",a
   for(const variant of [
     {...envelope,scope:{...scope,agentId:"foreign"}},
     {...envelope,scope:{...scope,repositoryId:"missing repo"}},
+    {...envelope,scope:{...scope,repositoryId:"REVREBEL/another-repo"}},
     {...envelope,trust:"trusted-instructions"},
     {...envelope,entries:[{...item,content:"altered"}]},
     {...envelope,entries:[{...item,expiresAt:"2020-01-01T00:00:00Z"}]},
@@ -47,7 +51,8 @@ test("foreign, mutated, expired, secret and directive references are withheld",a
     {...envelope,entries:[item,item]},
   ]){
     const h=createVerifiedMemoryBridge({enabled:true,host:{
-      async getApprovedScopedRecall(){return variant;},async notifyIssueCompleted(){}
+      async getApprovedScopedRecall(){return variant;},async notifyIssueCompleted(){},
+      async repositoryIdForRoot(){return scope.repositoryId;}
     },logger:{log(){}}});
     assert.equal(await h.loadForTask(request),"");
   }
@@ -56,6 +61,7 @@ test("provider failures and invalid completion hints fail independently",async()
   const events=[];
   const h=createVerifiedMemoryBridge({enabled:true,host:{
     async getApprovedScopedRecall(){throw Error("secret provider details");},
+    async repositoryIdForRoot(){return scope.repositoryId;},
     async notifyIssueCompleted(){throw Error("secret callback details");},
   },logger:{log:x=>events.push(x)}});
   assert.equal(await h.loadForTask(request),"");
@@ -74,6 +80,7 @@ test("nonresponsive protected host is bounded without blocking task or completio
   const events=[];
   const h=createVerifiedMemoryBridge({enabled:true,timeoutMs:50,host:{
     getApprovedScopedRecall:()=>new Promise(()=>{}),
+    repositoryIdForRoot:()=>scope.repositoryId,
     notifyIssueCompleted:()=>new Promise(()=>{}),
   },logger:{log:e=>events.push(e)}});
   const start=Date.now();
@@ -81,4 +88,15 @@ test("nonresponsive protected host is bounded without blocking task or completio
   await h.completionHint({issueId:"ABR-59"});
   assert.ok(Date.now()-start<1000);
   assert.deepEqual(events,["[verified memory] timeout","[verified memory] completion-hint-timeout"]);
+});
+
+test("independent host mapping cannot authorize foreign repository recall",async()=>{
+  const events=[];
+  const h=createVerifiedMemoryBridge({enabled:true,host:{
+    async repositoryIdForRoot(root){assert.equal(root,request.repositoryRoot);return "REVREBEL/another-repo";},
+    async getApprovedScopedRecall(){return envelope;},
+    async notifyIssueCompleted(){},
+  },logger:{log:e=>events.push(e)}});
+  assert.equal(await h.loadForTask(request),"");
+  assert.deepEqual(events,["[verified memory] denied"]);
 });
