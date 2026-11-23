@@ -67,7 +67,7 @@ review cycle and finding fingerprint). No raw PR body, diff, prompt,
 credential, model payload or secret is stored. Existing GitHub review
 admission, deduplication, handoff, response and Linear routing are unchanged.
 Shadow failures are logged with a bounded code without altering the live
-handoff. `off` and `enforced` do **not** activate new dispatch in Phase 1.
+handoff. PR author is taken from the signed `pull_request.user.login` (or `issue.user.login` for review comments) and is distinct from `sender.login` / the comment author. Routine Renovate PR filtering uses the trusted PR creator, not whichever actor delivered a synchronize event. Substantive comments are never discarded solely because of the PR creator. Missing verified PR authorship defers initial review; self-authored loop suppression still checks the **event actor**. `off` and `enforced` do **not** activate new dispatch in Phase 1.
 
 Phase 2 must connect signed no-prompt Linear Worker notifications to a
 durable, verifiable Bridge intake and enrich GitHub check/review state.

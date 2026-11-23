@@ -14,7 +14,7 @@ const repo = "REVREBEL/linear-agents";
 const github = (overrides = {}) => normalizeVerifiedGithubEvent({
   delivery: "delivery-0001", event: "pull_request", action: "opened",
   repository: repo, number: 285, headSha: SHA, installationId: 847,
-  actorLogin: "trae-reviewer", actorId: 1234, ...overrides,
+  actorLogin: "trae-reviewer", actorId: 1234, prAuthorLogin: "trae-coding", ...overrides,
 }, "antigravity");
 const linear = props => normalizeVerifiedLinearEvent({
   deliveryId: "linear-0001", eventType: "Linear.AppUserNotification",
@@ -34,7 +34,10 @@ test("T-01: signed-context Linear notification without prompt is held for enrich
 });
 
 test("T-02 / T-03: Renovate routinely ignored, verified security evidence deferred", () => {
-  const event = github({actorLogin: "renovate[bot]", actorId: 205});
+  const event = github({actorLogin: "human-maintainer", actorId: 205,
+    prAuthorLogin: "renovate[bot]"});
+  assert.equal(event.actor.login,"human-maintainer");
+  assert.equal(event.target.prAuthorLogin,"renovate[bot]");
   assert.equal(classify(event).reason, "routine-renovate-no-verified-security-evidence");
   assert.equal(classify(event).decision, "ignore");
   assert.deepEqual(
@@ -42,6 +45,16 @@ test("T-02 / T-03: Renovate routinely ignored, verified security evidence deferr
       classify(event, {verifiedSecurityAdvisory:true}).intent],
     ["defer", "dependency_security"]);
   assert.equal(classify(event, {verifiedSecurityAdvisory:true}).priority, "high");
+  // Bot *sender* on a human PR is not evidence that the PR was authored by Renovate.
+  assert.equal(classify(github({actorLogin:"renovate[bot]",prAuthorLogin:"human-dev"})).decision,"defer");
+  assert.equal(classify(github({actorLogin:"renovate[bot]",prAuthorLogin:"human-dev"}),{
+    verifiedCi:"success",authorizedReviewRoute:true}).decision,"dispatch");
+  assert.equal(classify(github({actorLogin:"renovate[bot]",prAuthorLogin:null}),{
+    verifiedCi:"success",authorizedReviewRoute:true}).decision,"defer");
+  // Even on Renovate PRs, comments require substantive verification first.
+  assert.equal(classify(github({event:"issue_comment",action:"created",
+    actorLogin:"sourcery-ai[bot]",prAuthorLogin:"renovate[bot]"})).decision,
+    "needs_human_review");
 });
 
 test("T-04/T-05: bot findings are not automatically discarded or launched", () => {
@@ -124,7 +137,7 @@ test("authenticated Bridge ingress writes shadow decision only when opted-in", a
   const root = await fs.mkdtemp(path.join(os.tmpdir(),"abr18-route-"));
   const raw = {event:"pull_request",delivery:"live-0001",payload:{
     action:"opened", repository:{full_name:repo},sender:{login:"trae-reviewer",id:7},
-    installation:{id:847},pull_request:{number:285,html_url:
+    installation:{id:847},pull_request:{number:285,user:{login:"trae-coding"},html_url:
       "https://github.com/REVREBEL/linear-agents/pull/285",
       head:{sha:SHA},draft:false}}};
   const log = [];

@@ -32,6 +32,8 @@ function envelope(input) {
     target: Object.freeze({
       repository: input.target?.repository ?? null, prNumber: input.target?.prNumber ?? null,
       issueId: input.target?.issueId ?? null, headSha: input.target?.headSha ?? null,
+      prAuthorLogin: input.provider === "github" && typeof input.target?.prAuthorLogin === "string"
+        ? safe(input.target.prAuthorLogin) : null,
     }),
     hasPromptContext: input.hasPromptContext === true,
     contentHash: input.contentHash ?? null,
@@ -58,7 +60,7 @@ export function normalizeVerifiedGithubEvent(event, source) {
     actor: { id: event.actorId ?? null, login: event.actorLogin || event.author || "",
       isBot: event.authorType === "Bot" || /\[bot\]$/i.test(event.actorLogin || event.author || "") },
     target: { repository: event.repository ?? null, prNumber: event.number ?? null,
-      headSha: event.headSha ?? null },
+      headSha: event.headSha ?? null, prAuthorLogin: event.prAuthorLogin ?? null },
     contentHash: event.commentBody ? sha256(event.commentBody) : null,
     hasPromptContext: false,
   });
@@ -104,7 +106,12 @@ export function classifyEventIntelligence(event, {
       event.eventType === "pull_request.converted_to_draft") {
     return outcome("ignore", "informational", "terminal-or-informational-event", "low");
   }
-  const renovate = isRenovate(actor);
+  // A signed webhook actor may be a reviewer, merger, or commit pusher on
+  // another person's PR. Suppress routine Renovate *PR updates* only when the
+  // signed PR's author is Renovate. Never suppress substantive comment review
+  // solely because a notification sender is a dependency bot.
+  const isPrUpdate = event.eventType.startsWith("pull_request.");
+  const renovate = isPrUpdate && isRenovate(event.target.prAuthorLogin);
   if (renovate && !verifiedSecurityAdvisory) {
     return outcome("ignore", "informational", "routine-renovate-no-verified-security-evidence", "low");
   }
@@ -122,6 +129,9 @@ export function classifyEventIntelligence(event, {
   if (event.eventType === "pull_request.opened" ||
       event.eventType === "pull_request.ready_for_review") {
     if (!event.target.headSha) return outcome("defer", "initial_pr_review", "missing-verified-head");
+    if (!event.target.prAuthorLogin) {
+      return outcome("defer", "initial_pr_review", "await-verified-pr-authorship");
+    }
     if (alreadyReviewed) return outcome("ignore", "informational", "review-cycle-already-covered", "low");
     if (verifiedCi === "success" && authorizedReviewRoute) {
       return outcome("dispatch", "initial_pr_review", "verified-review-ready");

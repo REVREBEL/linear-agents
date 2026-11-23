@@ -638,7 +638,7 @@ The reviewed `integrations/event-intelligence.mjs` module supplies deterministic
 GitHub/Linear event normalization and advisory triage. With
 `EVENT_INTELLIGENCE_MODE=shadow`, authenticated GitHub ingress also stores
 bounded, metadata-only classifications in the existing private job directory;
-legacy review routing and execution remain unchanged. No new model,
+legacy review routing and execution remain unchanged. Routine Renovate PR filtering uses verified PR authorship rather than the webhook sender; the self-authored loop gate still uses the event actor. No new model,
 auto-review dispatcher, Cloudflare deployment or production activation is
 included. The signed no-prompt Linear Worker intake and trusted enrichment
 are later milestones. Run the focused regression via
