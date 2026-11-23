@@ -42,7 +42,11 @@ export async function verifyManagedSubmissionActivation(binding,repositoryRoot){
   if(process.platform!=='linux'||!process.getuid?.()||
     typeof binding?.verifyActivation!=='function')throw deny();
   const env={PATH:'/usr/bin:/bin',LANG:'C',GIT_OPTIONAL_LOCKS:'0'};
-  const git=args=>execFileSync('/usr/bin/git',['-C',repositoryRoot,...args],
+  // The sealed release is owned by root while the service runs as bridge.
+  // Trust this one operator-pinned checkout only for Git's ownership check;
+  // never grant a user-wide safe.directory exception.
+  const git=args=>execFileSync('/usr/bin/git',
+    ['-c','safe.directory='+repositoryRoot,'-C',repositoryRoot,...args],
     {encoding:'utf8',timeout:3000,env}).trim();
   const head=git(['rev-parse','HEAD']);
   if(!/^[a-f0-9]{40}$/.test(head)||

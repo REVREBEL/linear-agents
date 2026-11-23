@@ -202,3 +202,14 @@ mounts a pinned read-only fixture copy, not the CI checkout path. The strict
 executor REPL assertion uses a bounded 2-second prompt deadline. All 57
 executor/structure/M2/M5 tests passed as bridge UID 994, using a private
 temporary fixture directory.
+
+## ABR-17 M5 host readiness / sealed Git source
+
+`submission-host-readiness.py` derives the executable release and strict
+sandbox probe from systemd's current MainPID and uses its actual inherited
+PATH when reporting installed native CLI discovery. It always reports
+`releaseReady=false`: diagnostics cannot grant deployment approval.
+`test-submission-host-readiness.py` provides parser and denial regressions,
+and `linux/m5-sealed-git-access.sh` is the separately operator-run, read-only
+index ACL check after a root-owned sealed release is installed. The operator
+script must not be run from the mutable workspace.

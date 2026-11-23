@@ -487,3 +487,39 @@ AgentSession/activity schema on an existing scoped session from the current
 job ledger. Session ID, issue ID and app user matched; the first 100 activity
 records were accessible. This validates the query shape and authorization,
 not a new terminal activity or a complete staging publication transaction.
+
+### November 23, 2026 — sealed-release Git access and host acceptance
+
+The current sealed production source is a clean, root-owned
+`/var/lib/bridge-runtime` checkout at `b9a6035a3c21edbdb5582a19ae12f0544cbc1501`.
+The actual `agent-bridge.service` is running as UID 994 and its sealed
+startup preflight passes. The narrowly scoped AppArmor/Bubblewrap policy is
+active. Under the real `bridge` UID, 47 isolated M2/M5/REPL regression
+tests passed with no failures, skipped tests or credential disclosures.
+
+The service-account release verifier exposed an operational blocker:
+Git rejected the root-owned release as a dubious ownership checkout, and
+the sealed `.git/index` was `0600 root:root`. The fix is a **per-command**
+`-c safe.directory=<exact sealed release>` exception, plus a **read-only**
+`u:bridge:r--` ACL on that one Git index. A root-operated, fail-closed
+`scripts/linux/m5-sealed-git-access.sh` records how to reapply the ACL
+after an approved sealed Git deployment. The live service UID successfully
+validated the exact clean root-owned release and sandbox after the ACL change;
+a dirty checkout was rejected before the (test-only) approval callback.
+
+The read-only host report now derives the Git release and strict sandbox
+probe from the service's **actual running Node entrypoint**, not whichever
+development checkout invokes the diagnostic. Native binary discovery uses
+the service's real inherited PATH, not historic home paths. New parser tests
+cover exact Node entrypoint, missing Git metadata, invalid PIDs, and duplicate
+or incorrect PATH entries.
+
+**Release gate remains blocked.** The operator binding
+`/etc/agent-bridge/managed-submission-host.mjs` has not been installed;
+managed submission has not been activated. AGY is not on the live service's
+inherited PATH, although its approved absolute binary exists; Trae's native
+CLI is installed but its provider config is absent. Dedicated coding-agent
+credential isolation, native model egress, successful end-to-end provider
+canaries, one-shot publication and recovery proof, MCP/Mac transport, and
+ABR-18 delivery acknowledgment remain unverified. None of these findings
+is an approval to restart the service, publish a PR, or mark ABR-17 complete.

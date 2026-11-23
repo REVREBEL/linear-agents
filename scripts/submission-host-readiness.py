@@ -43,6 +43,36 @@ def trusted_binding_present():
     return True
 
 
+def running_release(pid, proc_root=pathlib.Path("/proc")):
+    """Identify the exact Node entrypoint of the active systemd MainPID."""
+    if not pid or not pid.isdecimal() or int(pid) < 1:
+        return None
+    try:
+        argv = (proc_root / pid / "cmdline").read_bytes().split(b"\0")
+        entry = pathlib.Path(argv[1].decode("utf-8"))
+        if not entry.is_absolute() or entry.name != "agent-bridge.mjs":
+            return None
+        release = entry.resolve(strict=True).parent.parent
+        if not (release / ".git").is_dir():
+            return None
+        return release
+    except (OSError, UnicodeError, IndexError, ValueError):
+        return None
+
+
+def service_path(pid, proc_root=pathlib.Path("/proc")):
+    if not pid or not pid.isdecimal() or int(pid) < 1:
+        return ""
+    try:
+        values = (proc_root / pid / "environ").read_bytes().split(b"\0")
+        matches = [v[5:] for v in values if v.startswith(b"PATH=")]
+        # Missing or duplicate PATH values are ambiguous; never select one
+        # and accidentally claim a native launcher is discoverable.
+        return matches[-1].decode("utf-8") if len(matches) == 1 else ""
+    except (OSError, UnicodeError):
+        return ""
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--node", type=pathlib.Path,
@@ -55,10 +85,17 @@ def main():
     except KeyError:
         pass
     state = property_value("ActiveState")
-    head_rc, head = run(["/usr/bin/git", "-C", str(ROOT), "rev-parse", "HEAD"])
-    status_rc, dirty = run(["/usr/bin/git", "-C", str(ROOT), "status", "--porcelain",
-                    "--untracked-files=no"])
+    pid = property_value("MainPID")
+    release = running_release(pid) if state == "active" else None
+    # Always measure the running, root-owned sealed release. A development
+    # checkout or dirty user-owned worktree is not the activated service.
+    head_rc, head = run(["/usr/bin/git", "-c", "safe.directory=" + str(release),
+                        "-C", str(release), "rev-parse", "HEAD"]) if release else (1, "")
+    status_rc, dirty = run(["/usr/bin/git", "-c", "safe.directory=" + str(release),
+                            "-C", str(release), "status", "--porcelain",
+                            "--untracked-files=no"]) if release else (1, "")
     result = {"schemaVersion": 1, "mode": "read_only_host_probe",
+              "releasePath": str(release) if release else None,
               "commit": head if head_rc == 0 and len(head) == 40 else None,
               "trackedClean": status_rc == 0 and not dirty, "serviceState": state,
               "serviceUid": uid, "protectedBindingPresent": trusted_binding_present(),
@@ -71,7 +108,6 @@ def main():
               "deploymentAuthorized": False, "releaseReady": False}
     if uid and (os.getuid() == uid or os.getuid() == 0):
         prefix = [] if os.getuid() == uid else ["/usr/sbin/runuser", "-u", user, "--"]
-        pid = property_value("MainPID")
         node = args.node
         if node is None and pid and pid.isdecimal() and int(pid) > 0:
             try:
@@ -92,7 +128,7 @@ def main():
         rc, stdout = run(prefix + ["/usr/bin/env", "-i",
                               "HOME=" + pwd.getpwnam(user).pw_dir,
                               "PATH=/usr/bin:/bin", "LANG=C",
-                              str(node), str(ROOT / "scripts/mcp-executor-probe.mjs"), "--strict"]) if node else (1, "")
+                              str(node), str(release / "scripts/mcp-executor-probe.mjs"), "--strict"]) if node and release else (1, "")
         try:
             probe = json.loads(stdout)
             if probe.get("uid") == uid:
@@ -102,10 +138,17 @@ def main():
                     result["sandboxFailure"] = "namespace_permission_denied" if "Permission denied" in str(probe.get("error")) else "probe_failed"
         except ValueError:
             pass
+        # Test the PATH inherited by the running service rather than a
+        # hard-coded, historic user-home PATH. Native binaries are configured
+        # by absolute path elsewhere; discovery is observational only.
+        runtime_path = service_path(pid)
         for name in ("agy", "trae-cli", "opencode"):
-            rc, _ = run(prefix + ["/bin/sh", "-c",
-                'PATH=/home/bridge/.volta/bin:/home/bridge/.local/bin:/usr/local/bin:/usr/bin:/bin; command -v "$1" >/dev/null', "probe", name])
-            result["nativeDiscovery"][name] = "found" if rc == 0 else "not_on_service_path"
+            rc, _ = run(prefix + ["/usr/bin/env", "-i",
+                "HOME=" + pwd.getpwnam(user).pw_dir,
+                "PATH=" + runtime_path, "LANG=C",
+                "/bin/sh", "-c", 'command -v "$1" >/dev/null', "probe", name])
+            result["nativeDiscovery"][name] = (
+                "found" if runtime_path and rc == 0 else "not_on_service_path")
     print(json.dumps(result, indent=2, sort_keys=True))
     return 2  # This probe cannot grant release approval.
 

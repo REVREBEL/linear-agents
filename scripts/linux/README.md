@@ -97,3 +97,30 @@ root-owned compatibility symlink. The reviewed launcher pins the **actual**
 existing job-state records. If the physical workspace moves again, re-review
 the expected path and its immutable runtime boundary; never weaken this
 check to accept an arbitrary existing or empty directory.
+
+## ABR-17 M5 — sealed Git verification by the bridge service UID
+
+The production release under `/var/lib/bridge-runtime` is root-owned.
+Managed submission checks its **actual clean release SHA** from the non-root
+`bridge` account. Git's ownership exception must be restricted to that
+release, and the root-owned `.git/index` must allow **read-only** access to
+the service UID. A global `safe.directory=*` is prohibited.
+
+After each reviewed sealed checkout deployment, run the operator-owned script
+from the **sealed** installed release (not the writable workspace):
+
+```sh
+/usr/bin/bash /var/lib/bridge-runtime/scripts/linux/m5-sealed-git-access.sh --apply
+/usr/bin/bash /var/lib/bridge-runtime/scripts/linux/m5-sealed-git-access.sh --check
+```
+
+The script refuses a non-root operator, mutable ancestors, symlinked Git
+metadata, or a dirty release. It grants only `u:bridge:r--` on the index;
+it does not change the service environment, enable managed submission, or
+mint provider credentials. Recheck after Git deployments, which may replace
+the index inode and its ACL.
+
+`scripts/submission-host-readiness.py` now reads the running systemd
+MainPID's sealed Node entrypoint and actual service PATH. It reports
+`releaseReady=false` until the independent protected binding, native
+isolation, provider canaries and recovery acceptance are established.
