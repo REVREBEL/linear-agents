@@ -47,3 +47,14 @@ host report resolves the active systemd service's exact sealed Node release
 rather than a writable development checkout and rejects malformed PATH/IDs.
 The tracked workflow also includes the narrowly scoped sealed Git ACL
 operator script in its change filters.
+
+## ABR-103 M5 — Native staging-only isolation unit coverage
+
+The ABR-17 Submission Coordinator workflow tracks
+`scripts/abr103-native-staging-canary.mjs` and its pure denial tests,
+running `node --test scripts/test-abr103-native-staging-canary.mjs`
+without provider binaries or credentials in CI. This is distinct from the
+service-UID **host** canary, which uses actual native AGY/Trae/OpenCode
+`--version` executables with Bubblewrap and validates child FD3,
+the absence of tested host credentials and blocked loopback. Neither
+coverage tier authorizes production managed submission or model egress.

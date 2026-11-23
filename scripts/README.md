@@ -213,3 +213,30 @@ PATH when reporting installed native CLI discovery. It always reports
 and `linux/m5-sealed-git-access.sh` is the separately operator-run, read-only
 index ACL check after a root-owned sealed release is installed. The operator
 script must not be run from the mutable workspace.
+
+## ABR-103 M5 — native staging-only isolation canary
+
+`abr103-native-staging-canary.mjs` performs **non-mutating** native startup
+verification under the non-root `bridge` account. It creates a disposable
+private staging workspace, pins its directory through FD 4, and uses
+Bubblewrap to deny network, avoid mounting agent credentials and expose
+only each approved executable and its runtime dependencies. Separate
+Python process-descendant proof verifies inherited private **FD 3** across
+an exec boundary. The three provider checks execute `--version` only.
+
+Run on the Ubuntu host with a service-owned staging TMPDIR:
+
+```sh
+runuser -u bridge -- env -i HOME=/home/bridge TMPDIR=/var/tmp/abr17-m5-acceptance PATH=/usr/bin:/bin /usr/bin/node scripts/abr103-native-staging-canary.mjs
+```
+
+The JSON report must indicate `pass:true`, three provider passes,
+`descendantFd3:true`, `credentialVisible:false` and
+`networkReachable:false`. It never invokes agents with task prompts,
+model access tokens, network egress, repository mutation or publication
+authority. It is **not** a production native supervisor and cannot
+authorize enabling managed submission. Independent network egress,
+authenticated model grants, descendant FD3 through native CLIs and
+approved end-to-end staging sessions remain mandatory.
+`test-abr103-native-staging-canary.mjs` exercises the staging workspace
+denials and non-root enforcement in CI without requiring native models.

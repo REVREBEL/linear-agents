@@ -523,3 +523,20 @@ credential isolation, native model egress, successful end-to-end provider
 canaries, one-shot publication and recovery proof, MCP/Mac transport, and
 ABR-18 delivery acknowledgment remain unverified. None of these findings
 is an approval to restart the service, publish a PR, or mark ABR-17 complete.
+
+### November 23, 2026 — ABR-103 native staging isolation evidence
+
+The provider-startup acceptance script
+`scripts/abr103-native-staging-canary.mjs` ran under service UID 994
+with a service-owned disposable workspace. Each exact native binary
+executed successfully within a network-denied Bubblewrap namespace:
+Antigravity 1.5.14, OpenCode 1.19.5 and Trae CLI 0.1.0.
+A *separate* Python descendant executed inside the same isolation
+profile and sent the expected marker on inherited private FD 3;
+the tested host-credential paths and host loopback were inaccessible.
+The script did not enable managed submission, open a Linear session,
+publish a GitHub PR or grant a model credential. Version-startup and
+independent FD3 checks **do not** prove FD3 travels through an actual
+native CLI model/tool descendant, production-grade process supervision,
+authenticated model egress or controlled recovery. The production host
+binding is still absent, so ABR-103 remains open.

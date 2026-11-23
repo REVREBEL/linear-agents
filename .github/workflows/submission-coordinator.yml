@@ -16,6 +16,8 @@ on:
       - 'scripts/recover-managed-submission.mjs'
       - 'scripts/submission-host-readiness.py'
       - 'scripts/test-submission-host-readiness.py'
+      - 'scripts/abr103-native-staging-canary.mjs'
+      - 'scripts/test-abr103-native-staging-canary.mjs'
       - 'scripts/linux/m5-sealed-git-access.sh'
       - 'jobs/persistence/submission-exclusive-lease.mjs'
       - 'scripts/fixtures/submission-provider-fixture.mjs'
@@ -50,6 +52,8 @@ on:
       - 'scripts/recover-managed-submission.mjs'
       - 'scripts/submission-host-readiness.py'
       - 'scripts/test-submission-host-readiness.py'
+      - 'scripts/abr103-native-staging-canary.mjs'
+      - 'scripts/test-abr103-native-staging-canary.mjs'
       - 'scripts/linux/m5-sealed-git-access.sh'
       - 'jobs/persistence/submission-exclusive-lease.mjs'
       - 'scripts/fixtures/submission-provider-fixture.mjs'
@@ -96,6 +100,8 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y bubblewrap
           fi
+      - name: Native staging canary static denial tests
+        run: node --test scripts/test-abr103-native-staging-canary.mjs
       - name: Sealed release readiness parser tests
         run: python3 scripts/test-submission-host-readiness.py
       - name: Private command and real isolated Git preflight
