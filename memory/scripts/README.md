@@ -77,3 +77,9 @@ not accepted. Later GitHub and Linear stages require successful provider
 authentication and the actual independently verified review, check, issue and
 attachment evidence. Keep secrets out of console output, issue comments and
 Git; do not weaken verification to obtain a passing result.
+
+## Restricted native PostgreSQL canary (ABR-59 M12)
+
+`verify-memu-restricted-db.sh` runs as the bridge OS account against a fresh Unix-socket-only PostgreSQL 18 cluster, and uses distinct **authenticated** non-owner reader/writer logins rather than SET ROLE from a privileged connection. It bootstraps the native memU schema, reproduces the audited legacy owner layout, applies the M12 migration and provisions five independent scope pairs. The native adapter uses local Ollama embeddings and memU validate-only mode. It exercises raw SQL isolation, signed approved-ID recall, denied writes and privilege escalation, uncertain partial commits, restart, logical backup/restore and fail-closed disable/row preservation. All review/issue records are synthetic; production data and services are not used. Invoke from a reviewed worktree as bridge; the script owns and cleans only its private test directories. `restricted-memu-native.py` is the bounded native implementation called from the M12 host factory, not a general-purpose CLI or an agent tool.
+
+The native preflight identifies each database privilege and group-membership result by its SQL alias, requiring mutually exclusive reader/writer membership, and safe membership flags for both. The disposable canary exercises real writer commits and reader recalls and denies unexpected additional group membership.

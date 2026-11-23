@@ -608,3 +608,7 @@ The [submission coordinator contract](docs/ABR17_SUBMISSION_COORDINATOR.md) desc
 ## ABR-17 M5 — Operational acceptance
 
 See [M5 operational evidence and rollback](docs/ABR17_SUBMISSION_COORDINATOR.md#m5--operational-evidence-operator-recovery-and-rollback). Managed activation is fail-closed until the clean release is independently approved and the actual non-root service sandbox passes. Source fixtures and observed host blockers are tracked separately.
+
+## ABR-59 M12 — Database authorization and production-safe persistence
+
+The ABR-59 M12 restricted PostgreSQL persistence path and its scope identity tests are included in the Bridge and reliability suites; the native disposable database and operator rollout procedures are documented in [memory/README.md](memory/README.md) and [the M12 database authority runbook](docs/ABR59_DATABASE_AUTHORITY.md). These changes do not activate the production memory service.
