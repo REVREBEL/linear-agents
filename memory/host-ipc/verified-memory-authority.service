@@ -1,0 +1,28 @@
+[Unit]
+Description=REVREBEL verified-memory root authority (operator activation only)
+After=postgresql.service agent-bridge.service
+RequiresMountsFor=/var/lib/bridge-memory-authority /var/lib/bridge-memory-authority-code
+
+[Service]
+Type=simple
+User=root
+Group=bridge
+UMask=0077
+WorkingDirectory=/var/lib/bridge-memory-authority-code
+ExecStart=/usr/bin/python3 /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/bridge-memory-authority /run/bridge-memory-authority
+RuntimeDirectory=bridge-memory-authority
+RuntimeDirectoryMode=0750
+PrivateDevices=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

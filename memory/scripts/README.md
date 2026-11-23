@@ -87,3 +87,9 @@ The native preflight identifies each database privilege and group-membership res
 ## M13 combined native integration
 
 The M12 disposable PostgreSQL acceptance harness additionally runs M13's operator-pinned promotion pipeline in the same private, already-restarted cluster. A fixture reviewed GitHub PR and completed Linear issue permit one native memU commit and signed approval; an entirely new Node process then reads the actual restricted PostgreSQL record using signed evidence. Review revocation, a reopened issue, foreign scope and duplicate promotion all deny. `memu-m13-recall-child.mjs` is an isolated fixture, not a production runnable memory service. Backup/restore and rollback then verify the extra approved native file remains intact.
+
+## M14 operator readiness
+
+`memory/host-ipc/readiness.py` audits the current host's root custody, immutable checkout, sealed Python runtime, protected Bridge client/socket, scoped DB RLS/role state, private activation manifest, service unit, trusted release, and independently recorded live canary. It performs read-only metadata checks and reports redacted booleans. `host-ipc/test_*.py` and `host-ipc/*.test.mjs` cover bounded protocol, kernel process identity, scope and job allowlists, and standalone client. Operational approval and rollback are described in [M14](../../docs/ABR59_M14_ACTIVATION.md).
+
+The M14 PostgreSQL readiness fixture is now part of the M12 disposable native database canary. It proves the exact scoped role/policy grants against PostgreSQL 18 using a private peer-authenticated socket, deliberately grants unauthorized `memu.resources` read access and adds an unknown scope mapping, asserts fail-closed readiness, then restores and rechecks the expected safe state. The production reader verifies the explicit port 5433 and default socket rather than relying on `PGPORT` or a compile-time default.

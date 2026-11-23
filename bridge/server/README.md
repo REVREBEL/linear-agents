@@ -21,3 +21,7 @@ The managed flag also requires successful strict non-root sandbox probe, clean r
 ## M13 memory source integration
 
 `BRIDGE_VERIFIED_MEMORY_ENABLED=true` opts into the reviewed root-owned **non-credential** host-client binding. Missing/untrusted binding fails startup rather than falling back to an agent-writable source, while the unset/default-off flag preserves existing service behavior. Only the existing local task-preparation and authenticated issue-completion handlers consume the client; no root credentials or DB write access enter the bridge process. The host service, separate OS access boundary and M12 rollout are M14 gates. See [M13 contract](../../docs/ABR59_VERIFIED_MEMORY_LIFECYCLE.md).
+
+## ABR-59 M14 — protected root-memory boundary
+
+The proposed root-owned client is loaded only through the existing opt-in Bridge feature after separately approved deployment. A Linux AF_UNIX service authenticates the exact systemd Bridge process rather than trusting the shared coding-agent uid. Neither the existing HTTP server nor its agent children obtain root credentials, database write roles or a generic privileged command. Source merge alone never activates the service. See [M14](../../docs/ABR59_M14_ACTIVATION.md).

@@ -1,0 +1,33 @@
+name: M14 memory authority source isolation
+on:
+  pull_request:
+    paths:
+      - "memory/host-ipc/**"
+      - "docs/ABR59_M14_ACTIVATION.md"
+      - ".github/workflows/memory-authority-m14.yml"
+  push:
+    branches: [main]
+    paths:
+      - "memory/host-ipc/**"
+      - ".github/workflows/memory-authority-m14.yml"
+permissions:
+  contents: read
+jobs:
+  isolated-unix-protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Python kernel peer credentials and root manifest negative tests
+        run: python3 -m unittest discover -s memory/host-ipc -p 'test_*.py' -v
+      - name: Node signed-job policy and standalone client Unix fixture
+        run: node --test memory/host-ipc/*.test.mjs
+      - name: Syntax and intentionally inactive production readiness
+        run: |
+          python3 -m py_compile memory/host-ipc/authority-server.py memory/host-ipc/readiness.py
+          node --check memory/host-ipc/operator-worker.mjs
+          node --check memory/host-ipc/verified-memory-host.mjs
+          python3 memory/host-ipc/readiness.py

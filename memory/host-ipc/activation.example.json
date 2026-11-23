@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "activation": false,
+  "releaseSha": "0000000000000000000000000000000000000000",
+  "bridge": {
+    "pid": 0,
+    "startTicks": "0",
+    "unit": "agent-bridge.service",
+    "entrypoint": "/var/lib/bridge-runtime/linear-agent-bridge/agent-bridge.mjs",
+    "releaseSha": "0000000000000000000000000000000000000000"
+  },
+  "repositories": {
+    "/home/bridge/agent-bridge": "REVREBEL/linear-agents"
+  },
+  "jobs": [
+    {
+      "jobKey": "agent-name:delivery-id",
+      "trustedJob": {
+        "jobId": "approved-job-id",
+        "scope": {
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "agentId": "agent-name",
+          "repositoryId": "REVREBEL/linear-agents",
+          "issueId": "ABR-EXAMPLE"
+        },
+        "prNumber": 1,
+        "headSha": "0000000000000000000000000000000000000000"
+      },
+      "policy": {
+        "requiredChecks": [
+          "verify"
+        ],
+        "allowedCheckApps": [
+          "github-actions"
+        ],
+        "permittedReviewers": [
+          "independent-reviewer"
+        ]
+      },
+      "sourcePath": "docs/verified-learnings/reviewed-example.txt"
+    }
+  ],
+  "sourceCheckouts": {
+    "REVREBEL/linear-agents": {
+      "root": "/var/lib/bridge-memory-sources/linear-agents",
+      "headSha": "0000000000000000000000000000000000000000"
+    }
+  },
+  "ledgerRoot": "/home/bridge/agent-bridge/linear-agent-bridge/linear-jobs/job-state"
+}
