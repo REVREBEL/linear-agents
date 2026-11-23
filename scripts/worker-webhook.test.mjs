@@ -741,3 +741,187 @@ test("trae: Agent Location label is forwarded to the Ubuntu bridge", { concurren
     assert.equal(forwarded.routing.projectId, "project-1");
   } finally { globalThis.fetch = original; }
 });
+
+const noPromptIssueId = "1f982fb0-d74b-46d2-b7c9-d6d94e723937";
+const noPromptOrgId = "dcedfdda-3793-4c5f-aa63-703897e9618b";
+const noPromptProjectId = "ef1bf601-dfbb-467a-96bb-7388f5a67b8d";
+function signedNoPromptNotification({ issueId = noPromptIssueId, url = "https://github.com/REVREBEL/linear-agents/pull/289", invalidSignature = false,
+  description = "", includeIssue = true } = {}) {
+  const body = JSON.stringify({organizationId:noPromptOrgId,type:"AppUserNotification",
+    action:"create",webhookTimestamp:Date.now(),
+    notification:{ ...(includeIssue?{issueId}:{}),url },
+    ...(description?{data:{issue:{description}}}:{})});
+  const digest = crypto.createHash("sha256").update(body).digest("hex");
+  const signature = crypto.createHmac("sha256","webhook-secret").update(body).digest("hex");
+  return {digest, request: () => new Request("https://worker.test/webhook", {
+    method:"POST",headers:{
+      "linear-signature":invalidSignature?"0".repeat(64):signature,
+      "linear-delivery":"malicious-unsigned-delivery-header",
+      "linear-event":"AppUserNotification", "linear-timestamp":String(JSON.parse(body).webhookTimestamp),
+    },body,
+  })};
+}
+function noPromptWorkerConfig(worker,store) {
+  const config=env(store);
+  config.SERVICE_NAME="linear-chatgpt-agent";
+  config.EVENT_INTELLIGENCE_MODE="shadow";
+  config.EVENT_INTELLIGENCE_INTAKE_TOKEN="separate-reviewer-intake-secret-for-phase2";
+  config.DELIVERY_COORDINATOR=makeCoordinatorNamespace(worker,config);
+  return config;
+}
+const installedNoPrompt=()=>JSON.stringify({
+  ...JSON.parse(installed(Date.now()+3600000)),organizationId:noPromptOrgId,
+});
+
+test("chatgpt Phase 2: signed no-prompt notification reaches durable Bridge intake, never /jobs", {concurrency:false}, async()=>{
+  const worker=await loadWorker("chatgpt");
+  const store=kv({["installation:"+noPromptOrgId]:installedNoPrompt()});
+  const config=noPromptWorkerConfig(worker,store);
+  const source=signedNoPromptNotification({description:"Even a fallback issue description must not become executable promptContext"});
+  const previousFetch=globalThis.fetch;
+  const requests=[];
+  try {
+    globalThis.fetch=async(url,options)=>{
+      const u=String(url);requests.push(u);
+      if(u.includes("api.linear.app/graphql")){
+        const query=JSON.parse(String(options.body));
+        assert.match(query.query,/EventIntelligenceVerifiedIssue/);
+        assert.equal(query.variables.id,noPromptIssueId);
+        assert.equal(options.headers.authorization,"Bearer access");
+        return Response.json({data:{issue:{id:noPromptIssueId,identifier:"ABR-18",
+          team:{organization:{id:noPromptOrgId}},project:{id:noPromptProjectId},
+          state:{type:"started"}}}});
+      }
+      if(u.endsWith("/event-intelligence/intake")){
+        const submitted=JSON.parse(String(options.body));
+        assert.equal(submitted.deliveryId,"event:"+source.digest);
+        assert.equal(submitted.signedPayloadSha256,source.digest);
+        assert.equal(submitted.organizationId,noPromptOrgId);
+        assert.equal(submitted.workerIdentity,"linear-chatgpt-agent");
+        assert.equal(submitted.issueId,noPromptIssueId);
+        assert.equal(submitted.verifiedIssue.identifier,"ABR-18");
+        assert.equal(submitted.prCandidate.repository,"REVREBEL/linear-agents");
+        assert.equal(submitted.prCandidate.number,289);
+        assert.equal(submitted.hasPromptContext,false);
+        assert.equal(submitted.promptContext,undefined);
+        assert.equal(options.headers["x-bridge-worker"],"linear-chatgpt-agent");
+        assert.equal(options.headers.authorization,
+          "Bearer separate-reviewer-intake-secret-for-phase2");
+        return Response.json({ok:true,accepted:true,durable:true,duplicate:false,
+          deliveryHash:"b".repeat(64),stage:"awaiting_verified_github_evidence",
+          dispatchStatus:"not_started",reviewLaunchStatus:"not_started"},{status:202});
+      }
+      throw Error("Unexpected outbound request "+u);
+    };
+    const response=await worker.default.fetch(source.request(),config,{});
+    assert.equal(response.status,202);
+    const value=await response.json();
+    assert.equal(value.accepted,true);
+    assert.equal(value.durable,true);
+    assert.equal(value.forwarded,false);
+    assert.equal(value.dispatched,false);
+    assert.equal(value.reviewLaunchStatus,"not_started");
+    assert.equal(requests.filter(u=>u.includes("/jobs")).length,0);
+    assert.equal(requests.filter(u=>u.endsWith("/event-intelligence/intake")).length,1);
+    assert.equal(requests.filter(u=>u.includes("api.linear.app/graphql")).length,1);
+    assert.equal([...store.map.keys()].filter(k=>k.startsWith("webhook:")).length,1);
+    const retry=await worker.default.fetch(source.request(),config,{});
+    assert.equal((await retry.json()).duplicate,true);
+    assert.equal(requests.filter(u=>u.endsWith("/event-intelligence/intake")).length,1);
+  } finally {globalThis.fetch=previousFetch;}
+});
+
+test("chatgpt Phase 2: failed durable intake stays retryable, no KV claim or fake review ACK", {concurrency:false}, async()=>{
+  const worker=await loadWorker("chatgpt");
+  const store=kv({["installation:"+noPromptOrgId]:installedNoPrompt()});
+  const config=noPromptWorkerConfig(worker,store);
+  const source=signedNoPromptNotification();
+  const oldFetch=globalThis.fetch;
+  let attempts=0;
+  try {
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).includes("api.linear.app/graphql")){
+        return Response.json({data:{issue:{id:noPromptIssueId,identifier:"ABR-18",
+          team:{organization:{id:noPromptOrgId}},project:{id:noPromptProjectId},state:{type:"started"}}}});
+      }
+      if(String(url).endsWith("/event-intelligence/intake")){
+        attempts++;
+        if(attempts===1)return Response.json({ok:false,accepted:false,error:"durable intake unavailable"},{status:503});
+        return Response.json({ok:true,accepted:true,durable:true,duplicate:true,
+          deliveryHash:"b".repeat(64),stage:"awaiting_verified_github_evidence",
+          dispatchStatus:"not_started",reviewLaunchStatus:"not_started"},{status:202});
+      }
+      throw Error("Unexpected URL");
+    };
+    const first=await worker.default.fetch(source.request(),config,{});
+    assert.equal(first.status,503);
+    assert.equal((await first.json()).accepted,false);
+    assert.equal([...store.map.keys()].some(k=>k.startsWith("webhook:")),false);
+    const second=await worker.default.fetch(source.request(),config,{});
+    assert.equal(second.status,202);
+    assert.equal(attempts,2);
+    assert.equal([...store.map.keys()].filter(k=>k.startsWith("webhook:")).length,1);
+  } finally {globalThis.fetch=oldFetch;}
+});
+
+test("chatgpt Phase 2: invalid signature or foreign OAuth issue never enters protected intake", {concurrency:false}, async()=>{
+  const worker=await loadWorker("chatgpt");
+  const store=kv({["installation:"+noPromptOrgId]:installedNoPrompt()});
+  const config=noPromptWorkerConfig(worker,store);
+  const invalid=signedNoPromptNotification({invalidSignature:true});
+  let outbound=0;
+  const previousFetch=globalThis.fetch;
+  try {
+    globalThis.fetch=async(url,options)=>{
+      outbound++;
+      assert.equal(String(url),"https://api.linear.app/graphql");
+      return Response.json({data:{issue:{id:noPromptIssueId,identifier:"ABR-18",
+        team:{organization:{id:"another-workspace-id"}},project:{id:noPromptProjectId},
+        state:{type:"started"}}}});
+    };
+    assert.equal((await worker.default.fetch(invalid.request(),config,{})).status,401);
+    assert.equal(outbound,0);
+    const valid=signedNoPromptNotification();
+    const response=await worker.default.fetch(valid.request(),config,{});
+    assert.equal(response.status,422);
+    assert.equal((await response.json()).accepted,false);
+    assert.equal(outbound,1);
+    assert.equal([...store.map.keys()].some(k=>k.startsWith("webhook:")),false);
+  } finally {globalThis.fetch=previousFetch;}
+});
+
+test("chatgpt Phase 2: shadow off preserves the existing ignored-no-prompt response", {concurrency:false}, async()=>{
+  const worker=await loadWorker("chatgpt");
+  const store=kv({["installation:"+noPromptOrgId]:installedNoPrompt()});
+  const config=noPromptWorkerConfig(worker,store);
+  config.EVENT_INTELLIGENCE_MODE="off";
+  const source=signedNoPromptNotification();
+  const previousFetch=globalThis.fetch;
+  let outbound=0;
+  try {
+    globalThis.fetch=async()=>{outbound++;throw Error("No outbound calls permitted")};
+    const response=await worker.default.fetch(source.request(),config,{});
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).ignored,true);
+    assert.equal(outbound,0);
+  } finally {globalThis.fetch=previousFetch;}
+});
+
+
+test("chatgpt Phase 2: missing reviewer-only intake token refuses before OAuth and KV acceptance", {concurrency:false}, async()=>{
+  const worker=await loadWorker("chatgpt");
+  const store=kv({["installation:"+noPromptOrgId]:installedNoPrompt()});
+  const config=noPromptWorkerConfig(worker,store);
+  delete config.EVENT_INTELLIGENCE_INTAKE_TOKEN;
+  const signed=signedNoPromptNotification();
+  const previousFetch=globalThis.fetch;
+  let remoteCalls=0;
+  try {
+    globalThis.fetch=async()=>{remoteCalls++;throw Error("No fetch permitted without reviewer credential")};
+    const response=await worker.default.fetch(signed.request(),config,{});
+    assert.equal(response.status,503);
+    assert.equal((await response.json()).accepted,false);
+    assert.equal(remoteCalls,0);
+    assert.equal([...store.map.keys()].some(key=>key.startsWith("webhook:")),false);
+  } finally {globalThis.fetch=previousFetch;}
+});

@@ -47,3 +47,22 @@ agent-writable runtime checkout. Any historical `RUN_AGENT_PATH` override is
 ignored for the sealed runtime. Shortcut subprocesses receive a minimal
 environment without Bridge OAuth, API or shared-secret variables. Existing
 development launches preserve their previous path overrides.
+
+## ABR-18 Phase 2A — private no-prompt notification intake
+
+`http-route-composition.mjs` checks the optional
+`POST /event-intelligence/intake` handler **after diagnostics and before**
+the existing GitHub/Trae/review callbacks. This path is not a job
+admission route and never invokes an agent or review dispatcher.
+It is enabled only with `EVENT_INTELLIGENCE_MODE=shadow` and the
+separate, reviewer-only `EVENT_INTELLIGENCE_INTAKE_TOKEN` (32+ characters)
+from the protected Bridge environment; the general `BRIDGE_SHARED_SECRET`
+that authorizes coding jobs does not grant access.
+
+The route verifies the precise `linear-chatgpt-agent` identity,
+validates bounded, typed metadata and fsyncs the private intake record
+before returning a durable 202. Its response explicitly reports
+`dispatchStatus:not_started` and `reviewLaunchStatus:not_started`,
+so an accepted notification is not mistaken for a launched or finished
+review. Default `off` preserves existing route ordering and behavior.
+The approved source is not auto-deployed or activated by merging.
