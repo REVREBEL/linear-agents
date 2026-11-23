@@ -204,3 +204,7 @@ linear-mock-worker/worker-configuration.d.ts
 .DS_Store
 .gitconfig
 __pycache__
+
+# Shared host-managed runtime and agent profiles
+.kilo
+.volta
