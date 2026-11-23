@@ -155,3 +155,14 @@ timeouts and denials continue normal cleanup without bypassing the security
 gate. An operator may clean retained canary inbox files only after an
 independently verified native commit, new-session recall, and recovery
 acceptance, never as part of the request that triggers promotion.
+
+
+A second (or later) completion callback must not erase source proof if a
+previous protected hint was durably accepted. The Bridge persists per-job
+`memoryVerificationPending: true` in its existing durable job ledger before
+acknowledging retention and honors that marker even on subsequent root
+denials, timeouts, or temporary feature disablement. Failure to save the
+marker does not trigger normal task deletion. The root operator alone
+may clear the marker after receipt verification, new-session recall and
+manual reconciliation, never merely because the Worker sent a repeated
+cleanup request.

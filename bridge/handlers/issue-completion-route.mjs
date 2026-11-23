@@ -35,6 +35,7 @@ export function createIssueCompletionRoute({
     }
     const records = await jobStore.findByIssueId(issueId);
     let cleaned = 0;
+    let retained = 0;
     for (const record of records) {
       if (record.executionHost === "macos" && record.remoteTask) {
         if (record.inboxClearedAt) continue;
@@ -49,22 +50,29 @@ export function createIssueCompletionRoute({
         cleaned++;
         continue;
       }
-      // A durable root promotion intent requires its immutable admission
-      // evidence. Never unlink it before the root worker has independently
-      // verified GitHub, Linear, PR/CI, Git blob and signed the native receipt.
-      // Non-matching issues and failed hints continue normal cleanup.
-      if (preserveOriginalTask) continue;
       const file = record.taskFile;
       if (typeof file !== "string" || !file.endsWith(".json") ||
-          !file.includes(`${path.sep}.linear-agent${path.sep}projects${path.sep}`) ||
-          !file.includes(`${path.sep}inbox${path.sep}`)) continue;
+          !file.includes(path.sep + ".linear-agent" + path.sep + "projects" + path.sep) ||
+          !file.includes(path.sep + "inbox" + path.sep)) continue;
+      // Persist a root-accepted retention decision BEFORE acknowledging it.
+      // Replayed callbacks may see denied/timeout root hints while a durable
+      // native commit is pending; they must never erase the original task.
+      if (preserveOriginalTask && record.memoryVerificationPending !== true) {
+        await jobStore.transition(record.key, record.state, {
+          memoryVerificationPending: true,
+        });
+      }
+      if (preserveOriginalTask || record.memoryVerificationPending === true) {
+        retained++;
+        continue;
+      }
       await fs.unlink(file).catch(error => { if (error.code !== "ENOENT") throw error; });
       await jobStore.transition(record.key, record.state, { inboxClearedAt: new Date().toISOString() });
       cleaned++;
     }
     sendJson(response, 200, {
       ok: true, issueId, cleaned,
-      ...(preserveOriginalTask ? { memoryVerificationPending: true } : {}),
+      ...(retained ? { memoryVerificationPending: true, retained } : {}),
     });
     return true;
   };

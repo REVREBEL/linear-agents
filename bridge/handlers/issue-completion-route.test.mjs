@@ -50,9 +50,11 @@ test("accepted root promotion hint preserves canonical admission file",async()=>
      }});
    assert.equal(await route(req,response,{url:new URL("http://local/issue-completed")}),true);
    assert.equal(response.code,200);
-   assert.deepEqual(response.data,{ok:true,issueId,cleaned:0,memoryVerificationPending:true});
+   assert.deepEqual(response.data,{ok:true,issueId,cleaned:0,memoryVerificationPending:true,retained:1});
    assert.deepEqual(events,[{issueId}]);
-   assert.deepEqual(transitions,[]);
+   assert.equal(transitions.length,1);
+   assert.equal(transitions[0][0],"mock:delivery");
+   assert.equal(transitions[0][2].memoryVerificationPending,true);
    assert.equal(await fs.readFile(task,"utf8"),'{"task":"approved"}');
  }finally{await fs.rm(root,{recursive:true,force:true})}
 });
@@ -80,4 +82,58 @@ test("ordinary cleanup proceeds when operator denies or host is missing",async()
      await assert.rejects(fs.access(file));
    }finally{await fs.rm(root,{recursive:true,force:true})}
  }
+});
+
+test("root-accepted retention survives later duplicate callbacks, timeout and feature disable",async()=>{
+ const os=await import("node:os"),fs=await import("node:fs/promises"),path=await import("node:path");
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr59-retention-replay-"));
+ try{
+   const file=path.join(root,".linear-agent","projects","project","inbox","job.json");
+   await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,"verified original");
+   const issueId="dcedfdda-3793-4c5f-aa63-703897e9618b";
+   const record={key:"mock:authentic-delivery",state:"awaiting_external",taskFile:file};
+   let accepts=0,writes=0;
+   const store={
+     async findByIssueId(){return[structuredClone(record)]},
+     async transition(key,state,patch){
+       assert.equal(key,record.key);assert.equal(state,record.state);
+       Object.assign(record,patch);writes++;
+     }
+   };
+   const callbacks=[async()=>{accepts++;return true},
+     async()=>{throw Error("duplicate in progress")},async()=>false,undefined];
+   for(let step=0;step<callbacks.length;step++){
+     const request=Readable.from([Buffer.from(JSON.stringify({issueId}))]);
+     request.method="POST";request.headers={authorization:"Bearer bridge-key"};
+     const response={writeHead(status){this.status=status},end(body){this.data=JSON.parse(body)}};
+     const route=createIssueCompletionRoute({sharedSecret:"bridge-key",jobStore:store,
+       cleanupMacTrae:async()=>{throw Error("unexpected remote cleanup")},
+       onIssueCompletionHint:callbacks[step]});
+     await route(request,response,{url:new URL("http://local/issue-completed")});
+     assert.equal(response.status,200);
+     assert.deepEqual(response.data,{ok:true,issueId,cleaned:0,memoryVerificationPending:true,retained:1});
+     assert.equal(record.memoryVerificationPending,true);
+     assert.equal(await fs.readFile(file,"utf8"),"verified original");
+   }
+   assert.equal(accepts,1);
+   assert.equal(writes,1,"duplicate callbacks must not rewrite or requeue accepted intents");
+ }finally{await fs.rm(root,{recursive:true,force:true})}
+});
+test("failed durable retention persistence never deletes the original task",async()=>{
+ const os=await import("node:os"),fs=await import("node:fs/promises"),path=await import("node:path");
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr59-retention-error-"));
+ try{
+   const file=path.join(root,".linear-agent","projects","project","inbox","job.json");
+   await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,"original");
+   const req=Readable.from([Buffer.from('{"issueId":"dcedfdda-3793-4c5f-aa63-703897e9618b"}')]);
+   req.method="POST";req.headers={authorization:"Bearer bridge-key"};
+   const route=createIssueCompletionRoute({sharedSecret:"bridge-key",
+     jobStore:{async findByIssueId(){return [{key:"mock:job",state:"awaiting_external",taskFile:file}]},
+       async transition(){throw Error("disk unavailable")}},
+     cleanupMacTrae:async()=>{},
+     onIssueCompletionHint:async()=>true});
+   const response={writeHead(){},end(){}};
+   await assert.rejects(route(req,response,{url:new URL("http://local/issue-completed")}),/disk unavailable/);
+   assert.equal(await fs.readFile(file,"utf8"),"original");
+ }finally{await fs.rm(root,{recursive:true,force:true})}
 });

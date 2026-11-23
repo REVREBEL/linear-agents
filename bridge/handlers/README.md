@@ -29,3 +29,15 @@ or any return value other than the boolean `true` preserves the **existing
 ordinary cleanup** semantics, with no privileged fallback. The root operator
 must complete the verified lifecycle and separately clear the retained task
 only after final approved receipt and backup/rollback acceptance.
+
+
+### Durable retention across repeated completion callbacks
+
+The handler writes `memoryVerificationPending: true` into the exact
+issue-matched canonical job ledger before it returns accepted retention.
+Subsequent callbacks honor that durable marker even if the protected operator
+refuses a duplicate, is offline, times out, or the optional feature is
+temporarily disabled. A failure to persist the marker fails the request
+before any task deletion. Replaying callbacks **never** automatically repeats
+a native commit. Only the operator may explicitly clear that retention marker
+after independent receipt/reconciliation and final cleanup approval.
