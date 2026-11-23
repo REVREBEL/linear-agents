@@ -47,7 +47,7 @@ test("client sends only bounded operation metadata and decodes UTF-8 response",a
     if(request.op==="recall")return {ok:true,result:{
       schemaVersion:1,trust:"untrusted-reference-only",entries:[{
         content:"Verified café memory",sourceGitSha:"a".repeat(40)}]}};
-    if(request.op==="complete")return {ok:true,accepted:true};
+    if(request.op==="complete")return {ok:true,accepted:true,jobKey:"qwen:delivery"};
     return {ok:false,error:"denied"};
   };
   responder.test=async(host,events)=>{
@@ -56,7 +56,7 @@ test("client sends only bounded operation metadata and decodes UTF-8 response",a
       tenantId:"tenant",agentId:"qwen",repositoryRoot:"/approved/route",
       issueId:"ABR-59",jobKey:"qwen:delivery"});
     assert.equal(recall.entries[0].content,"Verified café memory");
-    await host.notifyIssueCompleted({issueId:"ABR-59"});
+    assert.equal(await host.notifyIssueCompleted({issueId:"ABR-59"}),"qwen:delivery");
     assert.deepEqual(events,[
       {op:"repo",repositoryRoot:"/approved/route"},
       {op:"recall",tenantId:"tenant",agentId:"qwen",repositoryRoot:"/approved/route",
@@ -70,7 +70,17 @@ test("client never exposes rejected operator data or accepts denial",async()=>{
   const responder=()=>({ok:false,error:"denied"});
   responder.test=async host=>{
     await assert.rejects(host.repositoryIdForRoot("/approved/route"),/unavailable/);
-    await assert.rejects(host.notifyIssueCompleted({issueId:"ABR-59"}),/unavailable/);
+    await assert.rejects(host.notifyIssueCompleted({issueId:"ABR-59"}),
+      e=>e.code==="EHOST_MEMORY_DENIED");
   };
   await run(responder);
+});
+
+test("missing durable pinned job key cannot become an accepted completion hint",async()=>{
+ const responder=request=>({ok:true,accepted:true});
+ responder.test=async host=>{
+   await assert.rejects(host.notifyIssueCompleted({issueId:"ABR-59"}),
+     error=>error.code==="EHOST_MEMORY_UNCERTAIN");
+ };
+ await run(responder);
 });

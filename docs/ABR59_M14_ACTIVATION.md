@@ -138,3 +138,49 @@ job in the current ledger. A fresh, actually admitted and independently
 reviewed job is required to prove the final M14 live promotion and new-session
 recall. Do not use the prior M11 record or a synthetic fixture as a
 replacement for an admitted Bridge identity.
+
+### M14 production completion-hint ordering
+
+The canonical source admission check requires reading the admitted original
+task JSON *from its existing inbox path*. The pre-M14 `/issue-completed`
+cleanup removed the inbox file **before** sending the advisory hint, making
+independent promotion impossible for a legitimate finished task. The revised
+route now sends the authenticated, issue-only hint first. If and only if
+the protected authority confirms a **durable queued intent** for an exact
+approved job, the Bridge preserves that issue's task file for root source,
+tenant, agent and session attestation. It returns
+`memoryVerificationPending: true`; that acknowledgement is **not** a claim
+of GitHub approval, persistence or recall. Other issues, missing host,
+timeouts and denials continue normal cleanup without bypassing the security
+gate. An operator may clean retained canary inbox files only after an
+independently verified native commit, new-session recall, and recovery
+acceptance, never as part of the request that triggers promotion.
+
+
+A second (or later) completion callback must not erase source proof if a
+previous protected hint was durably accepted. The Bridge persists per-job
+`memoryVerificationPending: true` in its existing durable job ledger before
+acknowledging retention and honors that marker even on subsequent root
+denials, timeouts, or temporary feature disablement. Failure to save the
+marker does not trigger normal task deletion. The root operator alone
+may clear the marker after receipt verification, new-session recall and
+manual reconciliation, never merely because the Worker sent a repeated
+cleanup request.
+
+
+### Exact-job retention and uncertain completion replies
+
+Root completion IPC now returns the **exact job key** for its one approved
+issue. A successful response only protects the matching local task.
+The root service acknowledges duplicate requests for a previously durable
+queued/running/reconcile/completed intent without re-enqueueing the native
+write. The exact manifest digest must still match.
+
+A notification timeout or lost response after possible root enqueue is
+not a definitive denial. The Bridge durably preserves local task evidence
+for the authenticated issue until an operator can reconcile the uncertain
+outcome. Explicit root rejection still permits normal cleanup of unrelated,
+unmarked tasks. Previously durably retained records remain protected even
+during root outages or when the optional feature is disabled. No
+acknowledgment, retention marker or original task file is itself evidence
+that signed native promotion or a fresh-session recall succeeded.

@@ -2,7 +2,10 @@
  * 0644). This client has NO signing, Linear, GitHub, DB or privilege APIs. */
 import net from "node:net";
 const SOCKET="/run/bridge-memory-authority/bridge.sock";
-function deny(){return Error("protected memory host unavailable");}
+function deny(code="EHOST_MEMORY_UNCERTAIN"){
+  const error=Error("protected memory host unavailable");
+  error.code=code;return error;
+}
 function call(payload,timeoutMs=1500){
   const json=JSON.stringify(payload)+"\n";
   if(Buffer.byteLength(json)>2048)throw deny();
@@ -10,10 +13,10 @@ function call(payload,timeoutMs=1500){
     let finished=false,total=0,parts=[];
     const client=net.createConnection({path:SOCKET,allowHalfOpen:false});
     const timer=setTimeout(()=>finish(null),timeoutMs);
-    function finish(value){
+    function finish(value,code="EHOST_MEMORY_UNCERTAIN"){
       if(finished)return;
       finished=true;clearTimeout(timer);client.destroy();
-      if(value===null)reject(deny());else resolve(value);
+      if(value===null)reject(deny(code));else resolve(value);
     }
     client.on("connect",()=>client.write(json));
     client.on("data",chunk=>{
@@ -25,7 +28,7 @@ function call(payload,timeoutMs=1500){
         const data=Buffer.concat(parts,total).toString("utf8");
         if(!data.endsWith("\n")||data.indexOf("\n")!==data.length-1)throw deny();
         const answer=JSON.parse(data);
-        if(answer?.ok!==true)throw deny();
+        if(answer?.ok!==true){finish(null,"EHOST_MEMORY_DENIED");return;}
         finish(answer);
       }catch{finish(null);}
     });
@@ -49,7 +52,9 @@ export async function createVerifiedMemoryBridgeHost(){
     },
     async notifyIssueCompleted({issueId}={}){
       const reply=await call({op:"complete",issueId});
-      if(reply.accepted!==true)throw deny();
+      if(reply.accepted!==true||typeof reply.jobKey!=="string"||
+         !/^[A-Za-z0-9._:-]{1,256}$/.test(reply.jobKey))throw deny();
+      return reply.jobKey;
     },
   });
 }

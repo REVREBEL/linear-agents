@@ -59,3 +59,16 @@ wrong script and extra-argument refusals, a stale process, and environment
 mismatches. Service-file tests inspect active `Environment=` and
 `ExecStart=` directives by line, so comments containing correct-looking
 settings cannot satisfy the security test.
+
+
+### Exact pinned job and uncertain response handling
+
+The root completion IPC returns the exact approved `jobKey`, not just a
+boolean. Duplicate requests for an already-fsynced intent are acknowledged
+with that job identity without scheduling another native commit. A changed
+manifest digest is refused. The no-secret client distinguishes an explicit
+root denial from a timeout, lost reply or malformed response. Uncertainty
+cannot authorize memory, but requires temporary preservation of source
+evidence in case the root already queued a write. Per-job durable retention
+survives subsequent cleanup callbacks and can only be cleared during
+reviewed operator closeout.

@@ -112,7 +112,7 @@ class AuthorizationTests(unittest.TestCase):
     def test_completion_is_only_hint_for_exact_unique_issue(self):
         calls = []
         self.assertEqual(server.dispatch({"op": "complete", "issueId": ISSUE}, self.config,
-            scheduler=lambda *x: calls.append(x), manifest_digest="a"*64), {"ok": True, "accepted": True})
+            scheduler=lambda *x: calls.append(x), manifest_digest="a"*64), {"ok": True, "accepted": True, "jobKey": "qwen:delivery-id"})
         self.assertEqual(calls, [("qwen:delivery-id", ISSUE, "a"*64)])
         with self.assertRaises(server.Refused):
             server.dispatch({"op": "complete", "issueId": "ABR-60"}, self.config,
@@ -180,3 +180,53 @@ class AuthorizationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class DurableDuplicateCompletionTests(unittest.TestCase):
+    def test_root_acknowledges_same_pinned_intent_without_rescheduling(self):
+        import threading
+        import types
+        from unittest.mock import patch
+        manifest = server.checked_manifest(fixture())
+        digest = "a" * 64
+        stored = {}
+        jobs = []
+        pending = {"keys": set(), "lock": threading.Lock()}
+        class Executor:
+            def submit(self, task):
+                jobs.append(task)
+                return object()
+        class Connection:
+            def __init__(self):
+                self.message = b""
+                self.closed = False
+            def sendall(self, data):
+                self.message += data
+            def close(self):
+                self.closed = True
+        def enqueue(key, input_digest):
+            if key in stored:
+                raise ValueError("duplicate must not reenqueue")
+            stored[key] = {"jobKey": key, "state": "queued", "digest": input_digest}
+            return True
+        private_intent = types.SimpleNamespace(read=lambda key: stored.get(key), enqueue=enqueue,
+            write=lambda *args: None)
+        def check():
+            conn = Connection()
+            server.serve_one(conn, Executor(), pending, main_pid_reader=lambda: 1)
+            self.assertTrue(conn.closed)
+            self.assertEqual(json.loads(conn.message), {
+                "ok": True, "accepted": True, "jobKey": "qwen:delivery-id"})
+        import json
+        with patch.object(server, "private_config", return_value=(manifest,digest)), \
+             patch.object(server, "peer_authorized", return_value=True), \
+             patch.object(server, "read_message", return_value={"op": "complete","issueId": ISSUE}), \
+             patch.object(server, "admitted_job", return_value=True), \
+             patch.object(server, "intent", private_intent):
+            check()  # first callback actually queues
+            self.assertEqual(len(jobs), 1)
+            check()  # duplicate while in pending set returns same pin
+            self.assertEqual(len(jobs), 1)
+            pending["keys"].clear()  # simulated restart / detached in-flight
+            check()  # durable intent exists: no new native commit
+            self.assertEqual(len(jobs), 1)
+            self.assertEqual(stored["qwen:delivery-id"]["state"], "queued")
