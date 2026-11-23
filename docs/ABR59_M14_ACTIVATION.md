@@ -85,3 +85,36 @@ Managed-submission release integrity is checked against the immutable
 SOURCE_PROJECT_DIR even when writable runtime paths are redirected; the host
 binding never accepts the rollback workspace's potentially different Git HEAD
 as the trusted executable release.
+
+### PR #279 review closeout: immutable launch boundaries
+
+The sealed Bridge and operator process must retain the canonical systemd
+name `agent-bridge.service`. The reviewed template is
+`scripts/linux/systemd/agent-bridge.service`, installed over the existing
+unit only during an authorized service switch. A separately named
+`agent-bridge-sealed.service` would fail peer authentication.
+
+Legacy `RUN_AGENT_PATH` overrides are not permitted for sealed launches:
+Antigravity's Python runner and the GitHub shortcut handoff program must
+load from immutable `SOURCE_PROJECT_DIR`. The handoff subprocess working
+directory is the sealed source root and only minimal non-secret environment
+variables are forwarded. The agent-writable runtime retains job state
+and agent workspaces, not executable scripts with Bridge authority.
+
+The launcher validates that the legacy data symlink resolves to the exact
+expected production directory and contains an existing
+`linear-jobs/job-state/*/state.json`. Failure refuses startup rather than
+opening a fresh ledger and risking duplicate delivery. `--preflight` checks
+that invariant without sourcing credentials or starting a process.
+
+Noninteractive Bash evaluates `BASH_ENV` before executing the script; the
+canonical unit strips that variable, along with `ENV`, `SHELLOPTS` and
+`BASHOPTS`, in `/usr/bin/env` before starting Bash. Preflight utilities
+use absolute `/usr/bin` paths. The pinned `/usr/bin/node` is root-owned,
+Node 22.22.1 on the audited host, and requires Node 20+. The shared Volta
+shim is `bridge`-writable and must not replace the system interpreter.
+
+The readiness gate reads the actual root authority process capabilities
+from `/proc/<pid>/status`, requiring `CapEff`, `CapPrm` and `CapBnd` to
+equal only `CAP_DAC_READ_SEARCH`. An updated systemd unit without a restarted
+matching process cannot count as activated.

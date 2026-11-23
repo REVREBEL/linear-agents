@@ -11,7 +11,9 @@ WorkingDirectory=/home/bridge/agent-bridge
 Environment=HOME=/home/bridge
 Environment=VOLTA_HOME=/opt/global-tools/volta
 Environment=PATH=/opt/global-tools/volta/bin:/home/agent-bridge/.bun/bin:/home/agent-bridge/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/usr/bin/bash /var/lib/bridge-runtime/scripts/linux/launch-sealed-bridge.sh
+# Noninteractive Bash would evaluate BASH_ENV before the launcher executes.
+# Strip untrusted shell startup hooks at the service boundary.
+ExecStart=/usr/bin/env -u BASH_ENV -u ENV -u SHELLOPTS -u BASHOPTS -u CDPATH -u GLOBIGNORE /usr/bin/bash /var/lib/bridge-runtime/scripts/linux/launch-sealed-bridge.sh
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30

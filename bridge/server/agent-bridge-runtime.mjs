@@ -185,10 +185,13 @@ async function claimGithubReviewDispatch(event, source) {
 
 function launchGithubShortcutHandoff(handoff) {
   if (handoff.reviewQueued) return;
-  const script = path.resolve(PROJECT_DIR, "../scripts/chatgpt-shortcuts/handoff.mjs");
+  const script = path.resolve(SOURCE_PROJECT_DIR, "../scripts/chatgpt-shortcuts/handoff.mjs");
   void enqueueChatgptHandoff(() => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, "--handoff-file", handoff.handoffFile], {
-      cwd: path.resolve(PROJECT_DIR, ".."), env: process.env, stdio: ["ignore", "pipe", "pipe"],
+      cwd: path.resolve(SOURCE_PROJECT_DIR, ".."),
+      env: {HOME: process.env.HOME ?? os.homedir(), PATH: "/usr/bin:/bin",
+        CHATGPT_SHORTCUT_NAME: process.env.CHATGPT_SHORTCUT_NAME},
+      stdio: ["ignore", "pipe", "pipe"],
     });
     child.stdout?.on("data", chunk => console.log("[GitHub ChatGPT handoff] " + String(chunk).trimEnd()));
     child.stderr?.on("data", chunk => console.error("[GitHub ChatGPT handoff] " + String(chunk).trimEnd()));
@@ -213,8 +216,12 @@ const AGENT_JOB_DIRS = {
 
 const PYTHON_BIN =
   process.env.PYTHON_BIN || path.join(PROJECT_DIR, ".venv", "bin", "python");
-const RUN_AGENT_PATH =
-  process.env.RUN_AGENT_PATH || path.join(PROJECT_DIR, "run_agent.py");
+// A sealed release must never execute an agent-modifiable runner even when
+// older deployments set RUN_AGENT_PATH to a writable checkout. Unsealed
+// development keeps its existing override behavior.
+const RUN_AGENT_PATH = process.env.BRIDGE_RUNTIME_PROJECT_DIR
+  ? path.join(SOURCE_PROJECT_DIR, "run_agent.py")
+  : (process.env.RUN_AGENT_PATH || path.join(PROJECT_DIR, "run_agent.py"));
 
 // Public hostnames that Cloudflare Tunnel forwards to this same local listener.
 const ANTIGRAVITY_HOST =

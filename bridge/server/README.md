@@ -40,3 +40,10 @@ paths. See [sealed deployment](../../docs/ABR59_M14_ACTIVATION.md).
 The M5 managed-submission source approval continues to verify the separately
 sealed Git checkout from SOURCE_PROJECT_DIR, **not** BRIDGE_RUNTIME_PROJECT_DIR.
 Only job-state, agent workspaces and mutable routing use the runtime override.
+
+For sealed launches, executable Antigravity `run_agent.py` and the GitHub
+shortcut handoff script resolve from `SOURCE_PROJECT_DIR`, never from the
+agent-writable runtime checkout. Any historical `RUN_AGENT_PATH` override is
+ignored for the sealed runtime. Shortcut subprocesses receive a minimal
+environment without Bridge OAuth, API or shared-secret variables. Existing
+development launches preserve their previous path overrides.

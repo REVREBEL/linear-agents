@@ -28,3 +28,10 @@ schema path. The native policies remain unchanged. The operator unit allows
 **only CAP_DAC_READ_SEARCH** to read the Bridge-owned mode-0600 canonical job
 ledger under `ProtectHome=read-only`; it retains `NoNewPrivileges=true` and
 does not grant CAP_DAC_OVERRIDE or any right to modify agent-owned job data.
+
+The live authority readiness audit reads the actual running
+`/proc/<MainPID>/status`, requiring `CapEff`, `CapPrm` and `CapBnd` to
+contain only `CAP_DAC_READ_SEARCH` (bit 2). Updating the unit file without
+restarting the active authority cannot satisfy this gate. The sealed Bridge
+unit must retain the canonical name `agent-bridge.service` for peer
+authentication and PID/start-time validation.

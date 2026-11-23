@@ -33,3 +33,8 @@ The M4 workflow runs the AGY Python unit suite in a disposable venv as well as N
 M14 production hardening extends isolated CI to verify the reviewed
 immutable-code/runtime-data split, shell launcher and both systemd units,
 in addition to native Python and Node IPC controls.
+
+The M14 isolation workflow listens to changes in the canonical
+`bridge/server/agent-bridge-runtime.mjs` for both pull requests and main
+pushes, and validates the reviewed canonical `agent-bridge.service`
+deployment template (rather than a separately named sealed service).

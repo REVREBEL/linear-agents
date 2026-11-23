@@ -83,7 +83,8 @@ class StrictGateTests(unittest.TestCase):
             return types.SimpleNamespace(returncode=0,
                 stdout="\n".join(k+"="+v for k,v in values.items()))
         with patch.object(checks,"protected_file",return_value=True), \
-             patch.object(checks.pathlib.Path,"read_bytes",return_value=b"reviewed"):
+             patch.object(checks.pathlib.Path,"read_bytes",return_value=b"reviewed"), \
+             patch.object(checks,"authority_effective_capabilities",return_value=True):
             self.assertTrue(checks.systemd_unit_exists(run=lambda *a,**k:unit_stub()))
             for kwargs in [{"state":"inactive"},{"group":"rebel"},
                            {"dropin":"/etc/systemd/system/override.conf"}]:
@@ -116,3 +117,37 @@ class ProductionSchemaPathTests(unittest.TestCase):
         self.assertIn("CapabilityBoundingSet=CAP_DAC_READ_SEARCH",source)
         self.assertNotIn("CAP_DAC_OVERRIDE",source.split("CapabilityBoundingSet=",1)[1])
         self.assertIn("ProtectHome=read-only",source)
+
+class ActiveAuthorityCapabilitiesTests(unittest.TestCase):
+    def test_effective_process_capability_must_match_exact_dac_read_search(self):
+        def status(effective, permitted=None, bounded=None):
+            def hx(value): return f"{value:016x}"
+            return ("Name:\tpython3\n"
+                    f"CapEff:\t{hx(effective)}\n"
+                    f"CapPrm:\t{hx(effective if permitted is None else permitted)}\n"
+                    f"CapBnd:\t{hx(effective if bounded is None else bounded)}\n")
+        self.assertTrue(checks.authority_effective_capabilities(123,
+            read_text=lambda:status(4)))
+        for values in [status(0),status(6),status(4,bounded=0),
+                       status(4,permitted=0),"CapEff:\t0004\n",
+                       "CapEff:\tinvalid\n"]:
+            with self.subTest(status=values):
+                self.assertFalse(checks.authority_effective_capabilities(123,
+                    read_text=lambda value=values:value))
+        self.assertFalse(checks.authority_effective_capabilities(0,
+            read_text=lambda:status(4)))
+
+    def test_installed_unit_rejected_when_running_process_lacks_capability(self):
+        import types
+        values={"FragmentPath":"/etc/systemd/system/verified-memory-authority.service",
+            "DropInPaths":"","User":"root","Group":"bridge",
+            "NoNewPrivileges":"yes","ProtectSystem":"strict",
+            "ProtectHome":"read-only","PrivateTmp":"yes",
+            "ActiveState":"active","MainPID":"123",
+            "ExecStart":"/usr/bin/python3 /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py"}
+        output="\n".join(k+"="+v for k,v in values.items())
+        result=types.SimpleNamespace(returncode=0,stdout=output)
+        with patch.object(checks,"protected_file",return_value=True), \
+             patch.object(checks.pathlib.Path,"read_bytes",return_value=b"reviewed"), \
+             patch.object(checks,"authority_effective_capabilities",return_value=False):
+            self.assertFalse(checks.systemd_unit_exists(run=lambda *a,**k:result))

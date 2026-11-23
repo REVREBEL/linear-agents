@@ -259,6 +259,23 @@ def cluster_state(manifest, run, *, host="/var/run/postgresql",
         return False
 
 
+def authority_effective_capabilities(pid, read_text=None):
+    """Require the actual active authority process, not the unit on disk, to
+    have precisely CAP_DAC_READ_SEARCH (Linux capability 2) and nothing else."""
+    try:
+        if type(pid) is not int or pid <= 1:
+            return False
+        reader = read_text or pathlib.Path(f"/proc/{pid}/status").read_text
+        status = reader()
+        values = dict(line.split(":", 1) for line in status.splitlines()
+                      if ":" in line)
+        permitted = 1 << 2
+        return all(int(values[field].strip(), 16) == permitted
+                   for field in ("CapEff", "CapPrm", "CapBnd"))
+    except (OSError, KeyError, ValueError, TypeError):
+        return False
+
+
 def systemd_unit_exists(run=subprocess.run):
     """Match the exact reviewed unit and effective sandbox, not any unit path."""
     deployed = "/etc/systemd/system/verified-memory-authority.service"
@@ -286,7 +303,8 @@ def systemd_unit_exists(run=subprocess.run):
         }.items():
             if values.get(field) != value:
                 return False
-        if int(values.get("MainPID","0")) <= 1:
+        pid = int(values.get("MainPID","0"))
+        if pid <= 1 or not authority_effective_capabilities(pid):
             return False
         expected = "/usr/bin/python3 " + CODE + "/memory/host-ipc/authority-server.py"
         return expected in values.get("ExecStart","")
