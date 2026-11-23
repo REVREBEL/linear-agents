@@ -276,6 +276,44 @@ def authority_effective_capabilities(pid, read_text=None):
         return False
 
 
+def authority_process_no_bytecode(pid, read_bytes=None):
+    """Inspect the running MainPID: unit reload alone proves no process flags."""
+    if type(pid) is not int or pid <= 1:
+        return False
+    try:
+        read = read_bytes or (lambda filename: pathlib.Path(filename).read_bytes())
+        cmdline = read(f"/proc/{pid}/cmdline").split(b"\x00")
+        if cmdline[-1:] == [b""]:
+            cmdline.pop()
+        expected = [
+            b"/usr/bin/python3",
+            b"-B",
+            (CODE + "/memory/host-ipc/authority-server.py").encode("ascii"),
+        ]
+        if cmdline != expected:
+            return False
+        env = read(f"/proc/{pid}/environ").split(b"\x00")
+        return env.count(b"PYTHONDONTWRITEBYTECODE=1") == 1
+    except (OSError, TypeError, UnicodeError, ValueError):
+        return False
+
+
+def reviewed_authority_execstart(value):
+    """Match the sole executable argv; reject prefix and wrong-script matches."""
+    expected = "/usr/bin/python3 -B " + CODE + "/memory/host-ipc/authority-server.py"
+    if value == expected:
+        return True
+    if not isinstance(value, str):
+        return False
+    # systemctl show -p ExecStart uses structured argv[] records.
+    match = re.fullmatch(
+        r"\{ path=/usr/bin/python3 ; argv\[\]=" + re.escape(expected) +
+        r" ; ignore_errors=no(?: ; [^{}]*)?\}",
+        value,
+    )
+    return match is not None
+
+
 def systemd_unit_exists(run=subprocess.run):
     """Match the exact reviewed unit and effective sandbox, not any unit path."""
     deployed = "/etc/systemd/system/verified-memory-authority.service"
@@ -306,8 +344,8 @@ def systemd_unit_exists(run=subprocess.run):
         pid = int(values.get("MainPID","0"))
         if pid <= 1 or not authority_effective_capabilities(pid):
             return False
-        expected = "/usr/bin/python3 -B " + CODE + "/memory/host-ipc/authority-server.py"
-        return expected in values.get("ExecStart","")
+        return (reviewed_authority_execstart(values.get("ExecStart")) and
+                authority_process_no_bytecode(pid))
     except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
         return False
 
