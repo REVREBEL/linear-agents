@@ -2,7 +2,8 @@
 # Narrowly grant the bridge service read-only Git index access in a root-owned sealed release.
 # Execute only from the reviewed, root-owned installed release; never from a writable agent worktree.
 set -euo pipefail
-mode="${1:---check}"
+mode='--check'
+if [[ -n "${1:-}" ]]; then mode="$1"; fi
 [[ "$mode" == "--check" || "$mode" == "--apply" ]] || exit 2
 ROOT=/var/lib/bridge-runtime
 INDEX="$ROOT/.git/index"
@@ -13,7 +14,8 @@ for path in / /var /var/lib "$ROOT" "$ROOT/.git"; do
 done
 [[ -f "$INDEX" && ! -L "$INDEX" && "$(stat -c %u "$INDEX")" == 0 ]] || exit 1
 [[ "$(stat -c %a "$INDEX")" == 600 || "$(stat -c %a "$INDEX")" == 640 ]] || {
-  # With a named ACL, stat reflects the effective ACL mask.
+  # A named-user ACL may change the reported group-class bits from 0600 to
+  # 0640. The actual bridge user's read-only access is proved below.
   echo 'sealed index permissions are not constrained' >&2; exit 1;
 }
 if [[ "$mode" == "--apply" ]]; then

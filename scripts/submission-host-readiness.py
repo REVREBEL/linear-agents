@@ -66,6 +66,8 @@ def service_path(pid, proc_root=pathlib.Path("/proc")):
     try:
         values = (proc_root / pid / "environ").read_bytes().split(b"\0")
         matches = [v[5:] for v in values if v.startswith(b"PATH=")]
+        # Missing or duplicate PATH values are ambiguous; never select one
+        # and accidentally claim a native launcher is discoverable.
         return matches[-1].decode("utf-8") if len(matches) == 1 else ""
     except (OSError, UnicodeError):
         return ""
