@@ -48,10 +48,13 @@ SyslogIdentifier=agent-bridge
 
 [Install]
 WantedBy=multi-user.target"
+source "$(dirname -- "${BASH_SOURCE[0]}")/shared-volta-preflight.sh"
+
 case "${ACTION}" in
   --print) printf '%s\n' "${UNIT_TEXT}";;
   --install|--replace)
     (( EUID == 0 )) || { echo "Administrative privileges required for installing a system unit" >&2; exit 1; }
+    verify_shared_volta_runtime "/opt/global-tools/volta" "${USER_NAME}"
     [[ -f "${ROOT}/scripts/with-env.sh" && -f "${ROOT}/linear-agent-bridge/agent-bridge.mjs" ]] || {
       echo "Missing production checkout at ${ROOT}" >&2; exit 1;
     }

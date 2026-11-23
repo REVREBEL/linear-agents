@@ -43,3 +43,12 @@ The home-level routes `/home/bridge/.volta` and `/home/bridge/.kilo` point to
 those same canonical locations. Keep Kilo agent definitions under
 `/opt/agents/kilo/.kilo/agents`; the checkout excludes both host symlinks from
 Git. See [the shared runtime path reference](../../docs/operations/shared-runtime-paths.md).
+
+## Shared Volta installer preflight
+
+Both systemd installers source `shared-volta-preflight.sh` before writing units.
+The preflight requires the canonical `/opt/global-tools/volta` directory,
+executable `volta` and `node` shims, and at least one installed Node binary
+that the `bridge` service account can execute. Missing or unusable runtimes
+cause installation to stop before any unit file is written or replaced.
+Print-only mode remains available without a host Volta installation.

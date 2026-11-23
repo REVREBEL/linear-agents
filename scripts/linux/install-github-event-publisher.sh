@@ -50,10 +50,13 @@ Unit=agent-bridge-github-events.service
 
 [Install]
 WantedBy=timers.target"
+source "$(dirname -- "${BASH_SOURCE[0]}")/shared-volta-preflight.sh"
+
 case "${ACTION}" in
   --print) printf '%s\n\n%s\n' "${SERVICE_TEXT}" "${TIMER_TEXT}";;
   --install|--replace)
     (( EUID == 0 )) || { echo "Administrative privileges required" >&2; exit 1; }
+    verify_shared_volta_runtime "/opt/global-tools/volta" "${USER_NAME}"
     [[ -f "${ROOT}/scripts/publish-github-events.mjs" && -f "${ROOT}/scripts/linux/run-github-event-publisher.sh" ]] || {
       echo "Missing publisher checkout at ${ROOT}" >&2; exit 1;
     }
