@@ -616,3 +616,7 @@ The ABR-59 M12 restricted PostgreSQL persistence path and its scope identity tes
 ## ABR-59 M13 — opt-in verified memory lifecycle
 
 The [M13 lifecycle contract](docs/ABR59_VERIFIED_MEMORY_LIFECYCLE.md) adds an operator-side pinned GitHub/Linear/native memU promotion coordinator and disabled-by-default, protected Bridge client hooks for issue-completion hints and bounded, lower-trust task reference injection. A separate root-controlled operator service and live database rollout require M14 approval; the existing Bridge service remains unchanged until explicitly activated.
+
+## ABR-59 M14 — protected host authority and readiness
+
+The [M14 controlled activation contract](docs/ABR59_M14_ACTIVATION.md) adds a reviewable root-owned Unix IPC authority, immutable per-job review/recall routing, operator-only execution, and a read-only production readiness matrix. The root service and Bridge memory feature stay disabled pending explicit operator authorization, scoped PostgreSQL migration and a live canary.

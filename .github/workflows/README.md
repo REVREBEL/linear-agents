@@ -27,3 +27,5 @@ The MCP security/tool source audit and full deferred-gate list are at [ABR-94](.
 The M4 workflow runs the AGY Python unit suite in a disposable venv as well as Node managed-dispatch fixtures.
 
 **ABR-17 M5:** strict isolated Linux fixture CI includes the real FD/sandbox canary, exclusive lock/crash test, offline receipt recovery and root activation refusal. The host readiness report must separately verify actual service UID conditions at rollout.
+
+**ABR-59 M14 — memory-authority-m14.yml:** Read-only isolated Ubuntu tests for a root-protected AF_UNIX memory authority, pinned per-job manifest and client protocol. Exercises actual kernel `SO_PEERCRED` negatives, bounded requests and standalone Node client without touching real credentials, production databases or services. The readiness output deliberately reports pending deployment/acceptance gates.
