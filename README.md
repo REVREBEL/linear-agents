@@ -17,6 +17,10 @@
 
 See [AGENTS.md](AGENTS.md) for the current architecture, local file paths, safety invariants and agent development checklist. Historical review notes under `docs/` may describe older implementations.
 
+## Platform installer validation
+
+Run `npm run platform:scripts:test` to validate the Linux/macOS platform scripts and the shared Volta preflight used by both Linux systemd installers. The shared preflight fails closed unless `/opt/global-tools/volta` contains executable Volta and Node shims and the `bridge` service account can execute an installed Node runtime. The installers retain print-only behavior without requiring a host runtime; installation and replacement validate the shared runtime before writing unit files.
+
 ---
 
 ## Architecture

@@ -17,9 +17,9 @@ BRIDGE_HOME="${BRIDGE_USER_HOME:-$(getent passwd "${USER_NAME}" 2>/dev/null | cu
 BRIDGE_HOME="${BRIDGE_HOME:-/home/agent-bridge}"
 ROOT_Q="$(quote_unit "${ROOT}")"
 HOME_Q="$(quote_unit "HOME=${BRIDGE_HOME}")"
-VOLTA_Q="$(quote_unit "VOLTA_HOME=${BRIDGE_HOME}/.volta")"
+VOLTA_Q="$(quote_unit "VOLTA_HOME=/opt/global-tools/volta")"
 UNIT=/etc/systemd/system/agent-bridge.service
-PATH_Q="$(quote_unit "PATH=${BRIDGE_HOME}/.volta/bin:${BRIDGE_HOME}/.bun/bin:${BRIDGE_HOME}/.opencode/bin:${BRIDGE_HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")"
+PATH_Q="$(quote_unit "PATH=/opt/global-tools/volta/bin:${BRIDGE_HOME}/.bun/bin:${BRIDGE_HOME}/.opencode/bin:${BRIDGE_HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")"
 SCRIPT_Q="$(quote_unit "${ROOT}/scripts/with-env.sh")"
 UNIT_TEXT="[Unit]
 Description=Agent Bridge
@@ -48,10 +48,13 @@ SyslogIdentifier=agent-bridge
 
 [Install]
 WantedBy=multi-user.target"
+source "$(dirname -- "${BASH_SOURCE[0]}")/shared-volta-preflight.sh"
+
 case "${ACTION}" in
   --print) printf '%s\n' "${UNIT_TEXT}";;
   --install|--replace)
     (( EUID == 0 )) || { echo "Administrative privileges required for installing a system unit" >&2; exit 1; }
+    verify_shared_volta_runtime "/opt/global-tools/volta" "${USER_NAME}"
     [[ -f "${ROOT}/scripts/with-env.sh" && -f "${ROOT}/linear-agent-bridge/agent-bridge.mjs" ]] || {
       echo "Missing production checkout at ${ROOT}" >&2; exit 1;
     }
