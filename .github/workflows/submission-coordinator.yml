@@ -15,6 +15,8 @@ on:
       - 'scripts/test-submission-m5.mjs'
       - 'scripts/recover-managed-submission.mjs'
       - 'scripts/submission-host-readiness.py'
+      - 'scripts/test-submission-host-readiness.py'
+      - 'scripts/linux/m5-sealed-git-access.sh'
       - 'jobs/persistence/submission-exclusive-lease.mjs'
       - 'scripts/fixtures/submission-provider-fixture.mjs'
       - '.agents/skills/**/SKILL.md'
@@ -47,6 +49,8 @@ on:
       - 'scripts/test-submission-m5.mjs'
       - 'scripts/recover-managed-submission.mjs'
       - 'scripts/submission-host-readiness.py'
+      - 'scripts/test-submission-host-readiness.py'
+      - 'scripts/linux/m5-sealed-git-access.sh'
       - 'jobs/persistence/submission-exclusive-lease.mjs'
       - 'scripts/fixtures/submission-provider-fixture.mjs'
       - '.agents/skills/**/SKILL.md'
@@ -92,6 +96,8 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y bubblewrap
           fi
+      - name: Sealed release readiness parser tests
+        run: python3 scripts/test-submission-host-readiness.py
       - name: Private command and real isolated Git preflight
         run: sudo "$(command -v node)" --test scripts/test-submission-m2.mjs scripts/test-submission-m5.mjs
       - run: npm run bridge:test
