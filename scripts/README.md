@@ -240,3 +240,20 @@ authenticated model grants, descendant FD3 through native CLIs and
 approved end-to-end staging sessions remain mandatory.
 `test-abr103-native-staging-canary.mjs` exercises the staging workspace
 denials and non-root enforcement in CI without requiring native models.
+
+### ABR-103 staging process-tree guard
+
+`abr103-staging-tree-guard.mjs` bounds staging native probes and
+terminates the detached Bubblewrap process group on timeout, explicit
+cancellation, parent exit or error. `--unshare-pid` and
+`--die-with-parent` also require remaining PID-namespace descendants
+to exit when their namespace init terminates. The real service-UID
+canary uses this guard; `test-abr103-staging-tree-guard.mjs` tests
+invalid inputs, a timed-out parent **and actual descendant**, and
+explicit cancellation without granting model credentials.
+
+This staging guard is not production process supervision: it does not
+support controlled model egress, daemonized processes that escape the
+approved namespace, a service-wide task ledger, or authenticated
+publication. The production operator binding remains separately
+controlled and fail-closed.

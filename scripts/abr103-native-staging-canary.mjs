@@ -8,6 +8,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {once} from 'node:events';
+import {guardStagingProcessTree} from './abr103-staging-tree-guard.mjs';
 
 // Use hexadecimal bytes for the trailing newline: no JavaScript/Python
 // double-escaping ambiguity across the two Python interpreters.
@@ -73,24 +74,29 @@ print(json.dumps({"credentialVisible":any(os.path.exists(x) for x in paths),"net
   }finally{closeSync(fd)}
   return child;
 }
-async function collect(child,{timeout=15000}={}){
-  let stdout='',stderr='',fd3='';
-  child.stdout.on('data',v=>{stdout=(stdout+v).slice(0,4096)});
-  child.stderr.on('data',v=>{stderr=(stderr+v).slice(0,4096)});
-  child.stdio[3].on('data',v=>{fd3=(fd3+v).slice(0,4096)});
-  let timedOut=false;
-  const kill=()=>{
-    timedOut=true;
-    try{process.kill(-child.pid,'SIGKILL')}catch{}
-    try{child.kill('SIGKILL')}catch{}
-  };
-  const timer=setTimeout(kill,timeout);
+export async function collectStagingChild(child,{timeout=15000}={}){
+  let stdout='',stderr='',fd3='',guard=null,guardError=null;
+  child.stdout?.on('data',v=>{stdout=(stdout+v).slice(0,4096)});
+  child.stderr?.on('data',v=>{stderr=(stderr+v).slice(0,4096)});
+  child.stdio?.[3]?.on('data',v=>{fd3=(fd3+v).slice(0,4096)});
+  // Register close/error before spawn: failed exec has no PID and emits error
+  // asynchronously. Never construct a process-group guard for that child.
+  // This promise also retains a fast child's close event during startup.
+  const completion=once(child,'close');
+  child.once('spawn',()=>{
+    try{guard=guardStagingProcessTree(child,{timeoutMs:timeout})}
+    catch(error){guardError=error;child.kill?.('SIGKILL')}
+  });
   try{
-    const [code,signal]=await once(child,'close');
-    return {code,signal,stdout:stdout.trim(),stderr:stderr.trim(),fd3:fd3.trim(),timedOut};
+    const [code,signal]=await completion;
+    return {code:guardError?null:code,signal,stdout:stdout.trim(),
+      stderr:stderr.trim(),fd3:fd3.trim(),timedOut:guard?.status().timedOut??false,
+      ...(guardError?{errorType:guardError.name}: {})};
   }catch(error){
-    return {code:null,signal:null,stdout,stderr,fd3,timedOut,errorType:error.name};
-  }finally{clearTimeout(timer)}
+    guard?.terminate();
+    return {code:null,signal:null,stdout:stdout.trim(),stderr:stderr.trim(),
+      fd3:fd3.trim(),timedOut:guard?.status().timedOut??false,errorType:error.name};
+  }
 }
 export async function runCanary({root=tmpdir()}={}){
   if(process.platform!=='linux'||process.getuid?.()===0)throw Error('NON_ROOT_ONLY');
@@ -102,7 +108,7 @@ export async function runCanary({root=tmpdir()}={}){
   const report={schemaVersion:1,mode:'network_denied_no_credentials',uid:process.getuid(),
     providers:{},probe:null,pass:false};
   try{
-    const probe=await collect(start({root,workspace:work,probe:true}));
+    const probe=await collectStagingChild(start({root,workspace:work,probe:true}));
     let result;
     try{result=JSON.parse(probe.stdout)}catch{result={}}
     report.probe={pass:probe.code===0&&!probe.timedOut&&!result.credentialVisible&&
@@ -113,7 +119,7 @@ export async function runCanary({root=tmpdir()}={}){
       descendantFd3:probe.fd3==='M5_FD3_DESCENDANT_OK',
       processExit:probe.code};
     for(const agent of Object.keys(cliPaths)){
-      const output=await collect(start({root,workspace:work,agent}));
+      const output=await collectStagingChild(start({root,workspace:work,agent}));
       report.providers[agent]={pass:output.code===0&&!output.timedOut&&
         !!output.stdout&&output.stderr.length===0,
         processExit:output.code,version:output.code===0?output.stdout.slice(0,120):null,

@@ -540,3 +540,19 @@ independent FD3 checks **do not** prove FD3 travels through an actual
 native CLI model/tool descendant, production-grade process supervision,
 authenticated model egress or controlled recovery. The production host
 binding is still absent, so ABR-103 remains open.
+
+### November 23, 2026 — staging process-tree termination
+
+ABR-103 follow-up adds a bounded staging process-tree guard. Under the
+actual `bridge` UID, seven staging/denial tests passed, including
+explicit cancellation and a **500 ms expiration of a detached parent
+with a real child process**, verifying the child stopped executing.
+The three approved provider native executables continued to pass
+network-disabled Bubblewrap startup checks, with independent private
+FD3 descendant confirmation and host-secret denial.
+
+This does not close the production supervisor gate: the final launcher
+must still prove credentials, authenticated model networking and FD3
+through each actual provider tool descendant; it needs operator-approved
+configuration, canonical job lifecycle, and real Linear/GitHub receipts.
+The root-owned operator host binding is intentionally fail-closed.

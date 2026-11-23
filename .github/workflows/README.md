@@ -58,3 +58,14 @@ service-UID **host** canary, which uses actual native AGY/Trae/OpenCode
 `--version` executables with Bubblewrap and validates child FD3,
 the absence of tested host credentials and blocked loopback. Neither
 coverage tier authorizes production managed submission or model egress.
+
+### ABR-103 M5 staging process-tree guard
+
+The ABR-17 CI workflow adds both
+`scripts/abr103-staging-tree-guard.mjs` and
+`scripts/test-abr103-staging-tree-guard.mjs` to the source filters
+and runs the process-group timeout/cancellation tests alongside the
+native-staging denial tests. The tests require Linux process groups but
+not any installed provider model, network egress or credentials.
+They **do not** certify the eventual production isolation supervisor,
+provider configuration, authenticated egress or publication.
