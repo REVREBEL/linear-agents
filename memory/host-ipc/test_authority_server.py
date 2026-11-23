@@ -102,6 +102,47 @@ class AuthorizationTests(unittest.TestCase):
                             self.config, worker=work, manifest_digest="a"*64)
         self.assertEqual(len(work_calls), 1)
 
+    def test_completed_signed_recall_survives_bridge_pid_repin_without_write_replay(self):
+        # The original intent has the old manifest digest from before restart.
+        # The worker must get the current digest and still verify signed data.
+        request = {"op": "recall", "tenantId": "workspace", "agentId": "qwen",
+                   "repositoryRoot": "/home/bridge/agent-bridge",
+                   "issueId": ISSUE, "jobKey": "qwen:delivery-id"}
+        calls = []
+        def verified_worker(*args):
+            calls.append(args)
+            return {"schemaVersion": 1, "trust": "untrusted-reference-only",
+                    "scope": self.config["jobs"][0]["trustedJob"]["scope"],
+                    "entries": [{"sourcePath": "docs/verified-learnings/pinned.md"}]}
+        with patch.object(server.intent, "read", return_value={
+            "jobKey": "qwen:delivery-id", "state": "completed",
+            "digest": "a" * 64,
+        }):
+            result = server.dispatch(request, self.config,
+                                     worker=verified_worker, manifest_digest="b" * 64)
+            self.assertEqual(result["ok"], True)
+            self.assertEqual(len(result["result"]["entries"]), 1)
+        self.assertEqual(calls, [("recall", "qwen:delivery-id", 8, "b" * 64)])
+        for state in ("queued", "running", "reconcile"):
+            with self.subTest(state=state), patch.object(server.intent, "read",
+                return_value={"jobKey": "qwen:delivery-id", "state": state,
+                              "digest": "a" * 64}):
+                with self.assertRaises(server.Refused):
+                    server.dispatch(request, self.config, worker=verified_worker,
+                                    manifest_digest="b" * 64)
+        for key, value in (("tenantId", "foreign"),
+                           ("agentId", "chatgpt"),
+                           ("repositoryRoot", "/home/bridge/other"),
+                           ("issueId", "ABR-60"),
+                           ("jobKey", "qwen:foreign-delivery")):
+            with self.subTest(field=key), patch.object(server.intent, "read",
+                return_value={"jobKey": "qwen:delivery-id", "state": "completed",
+                              "digest": "a" * 64}):
+                with self.assertRaises(server.Refused):
+                    server.dispatch({**request,key:value}, self.config,
+                                    worker=verified_worker, manifest_digest="b" * 64)
+        self.assertEqual(len(calls), 1)
+
     def test_repo_mapping_independently_pinned(self):
         self.assertEqual(server.dispatch({"op": "repo",
             "repositoryRoot": "/home/bridge/agent-bridge"}, self.config),
@@ -230,3 +271,38 @@ class DurableDuplicateCompletionTests(unittest.TestCase):
             check()  # durable intent exists: no new native commit
             self.assertEqual(len(jobs), 1)
             self.assertEqual(stored["qwen:delivery-id"]["state"], "queued")
+
+    def test_manifest_pid_change_does_not_reauthorize_completed_write(self):
+        # Only READ-ONLY recall may survive an old full-manifest digest.
+        # Duplicate completions remain denied on digest mismatch and the
+        # executor must never receive a second native commit task.
+        import json
+        import threading
+        manifest = server.checked_manifest(fixture())
+        pending = {"keys": set(), "lock": threading.Lock()}
+        class Connection:
+            def __init__(self):
+                self.message = b""
+            def sendall(self, data):
+                self.message += data
+            def close(self):
+                pass
+        class RejectExecutor:
+            def submit(self, task):
+                raise AssertionError("native commit replayed")
+        earlier = types.SimpleNamespace(
+            read=lambda key: {"jobKey": key, "state": "completed",
+                              "digest": "a" * 64},
+            enqueue=lambda *args: (_ for _ in ()).throw(
+                AssertionError("completed job re-enqueued")))
+        connection = Connection()
+        with patch.object(server, "private_config", return_value=(manifest, "b" * 64)), \
+             patch.object(server, "peer_authorized", return_value=True), \
+             patch.object(server, "read_message", return_value={"op": "complete",
+                                                                "issueId": ISSUE}), \
+             patch.object(server, "admitted_job", return_value=True), \
+             patch.object(server, "intent", earlier):
+            server.serve_one(connection, RejectExecutor(), pending,
+                             main_pid_reader=lambda: 1)
+        self.assertEqual(json.loads(connection.message),
+                         {"ok": False, "error": "denied"})

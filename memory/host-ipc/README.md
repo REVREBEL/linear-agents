@@ -72,3 +72,22 @@ cannot authorize memory, but requires temporary preservation of source
 evidence in case the root already queued a write. Per-job durable retention
 survives subsequent cleanup callbacks and can only be cleared during
 reviewed operator closeout.
+
+### M14 post-restart signed recall and completed intent digest
+
+A successfully **completed** root intent was bound to the full activation
+manifest digest at commit time. That original digest includes the volatile
+Bridge `MainPID` and `startTicks`. Normal production restart requires
+re-pinning those fields, which changes the manifest bytes even when the
+reviewed executable, source, issue, scope, reviewer and approved memory
+are unchanged.
+
+For **read-only recall only**, a completed intent may therefore have an
+older manifest digest. Every recall still verifies the **current** manifest
+digest in both root IPC and the immutable operator worker, the actual
+Bridge MainPID/start tick, canonical admission evidence, root-owned release
+and source checkout, the signed approval receipt, the exact four-dimensional
+scope and PostgreSQL RLS. An `intent` in `queued`, `running` or `reconcile`
+remains denied. A changed digest never authorizes another memory write:
+duplicate completion scheduling stays bound to the original digest and
+the native journal's one-shot commit/confirmed markers.
