@@ -8,6 +8,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {once} from 'node:events';
+import {guardStagingProcessTree} from './abr103-staging-tree-guard.mjs';
 
 // Use hexadecimal bytes for the trailing newline: no JavaScript/Python
 // double-escaping ambiguity across the two Python interpreters.
@@ -78,19 +79,16 @@ async function collect(child,{timeout=15000}={}){
   child.stdout.on('data',v=>{stdout=(stdout+v).slice(0,4096)});
   child.stderr.on('data',v=>{stderr=(stderr+v).slice(0,4096)});
   child.stdio[3].on('data',v=>{fd3=(fd3+v).slice(0,4096)});
-  let timedOut=false;
-  const kill=()=>{
-    timedOut=true;
-    try{process.kill(-child.pid,'SIGKILL')}catch{}
-    try{child.kill('SIGKILL')}catch{}
-  };
-  const timer=setTimeout(kill,timeout);
+  const guard=guardStagingProcessTree(child,{timeoutMs:timeout});
   try{
     const [code,signal]=await once(child,'close');
-    return {code,signal,stdout:stdout.trim(),stderr:stderr.trim(),fd3:fd3.trim(),timedOut};
+    return {code,signal,stdout:stdout.trim(),stderr:stderr.trim(),fd3:fd3.trim(),
+      timedOut:guard.status().timedOut};
   }catch(error){
-    return {code:null,signal:null,stdout,stderr,fd3,timedOut,errorType:error.name};
-  }finally{clearTimeout(timer)}
+    guard.terminate();
+    return {code:null,signal:null,stdout,stderr,fd3,
+      timedOut:guard.status().timedOut,errorType:error.name};
+  }
 }
 export async function runCanary({root=tmpdir()}={}){
   if(process.platform!=='linux'||process.getuid?.()===0)throw Error('NON_ROOT_ONLY');
