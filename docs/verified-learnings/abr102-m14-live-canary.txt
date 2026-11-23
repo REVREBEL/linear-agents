@@ -1,0 +1,1 @@
+On the Ubuntu Agent Bridge, the protected memory IPC checks the exact systemd MainPID and process start ticks; an unrelated process using the same bridge Unix account cannot request privileged memory. The reviewed executable source is root-owned and separated from the writable job ledger.
