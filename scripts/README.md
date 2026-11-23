@@ -257,3 +257,30 @@ support controlled model egress, daemonized processes that escape the
 approved namespace, a service-wide task ledger, or authenticated
 publication. The production operator binding remains separately
 controlled and fail-closed.
+
+### ABR-103 native Trae local-model staging
+
+`abr103-trae-local-inference.mjs` is a **non-production** local
+inference canary. It constructs an ephemeral, bridge-owned private
+staging HOME/workspace and Trae YAML with **only the `task_done` tool**
+and Ollama model `qwen3.5:9b-opencode`. It pins
+`--trajectory-file` inside that private staging HOME, bounds execution
+by the staging process-tree guard, verifies the recorded model response
+and step, returns bounded credential-free JSON evidence and deletes
+the complete ephemeral directory. CI covers only the transcript
+validator and root rejection; no AI inference runs in CI.
+
+On the approved Ubuntu host with Ollama listening at
+`127.0.0.1:11434`, run as the non-root Bridge user:
+
+```sh
+runuser -u bridge -- env -i HOME=/opt/state/agent-bridge/m5-provider-homes/trae PATH=/usr/bin:/bin /usr/bin/node scripts/abr103-trae-local-inference.mjs
+```
+
+The parent `/opt/state/agent-bridge/m5-provider-homes/trae` must
+already exist, be owned by `bridge` and mode `0700`. A successful
+report has `nativeLaunch=true`, `validatedTrajectory=true` and
+`pass=true`. This canary **intentionally uses host loopback** for
+local Ollama, so it does **not** establish the external-credential
+isolation, authenticated model egress, native private FD3, production
+process supervisor or Linear/GitHub write/receipt acceptance gates.

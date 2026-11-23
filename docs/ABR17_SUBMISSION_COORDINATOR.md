@@ -556,3 +556,21 @@ must still prove credentials, authenticated model networking and FD3
 through each actual provider tool descendant; it needs operator-approved
 configuration, canonical job lifecycle, and real Linear/GitHub receipts.
 The root-owned operator host binding is intentionally fail-closed.
+
+### November 23, 2026 — ABR-103 real Trae local inference
+
+Trae CLI 0.1.0 executed a true read-only inference using locally
+installed `qwen3.5:9b-opencode` through Ollama, with only
+`task_done` enabled. The recorded trajectory reported one model
+interaction, one agent step and a successful result. The first
+ad-hoc run placed the trajectory in the invoking Desktop Commander
+tool's current directory rather than the private staging HOME;
+the follow-up operator canary pins a private
+`--trajectory-file` and deletes the ephemeral directory after
+checking the exact provider/model and finite step count.
+
+Local inference is **not** authenticated external model access and
+does not prove approved egress or FD3 through Trae's own tool
+descendants. AGY and ChatGPT CLI still require their independent
+native-authenticated coding identities; publication/recovery
+acceptance remains open.
