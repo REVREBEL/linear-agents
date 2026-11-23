@@ -22,7 +22,9 @@ RuntimeDirectoryMode=0750
 PrivateDevices=yes
 LockPersonality=yes
 RestrictNamespaces=yes
-CapabilityBoundingSet=
+# Canonical Bridge ledger entries are mode 0600 owned by the bridge uid.
+# Permit DAC read/search only, not CAP_DAC_OVERRIDE or file modification.
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
 
 [Install]
 WantedBy=multi-user.target

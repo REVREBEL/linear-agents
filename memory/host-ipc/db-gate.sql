@@ -1,5 +1,8 @@
 -- Operator-only, read-only PostgreSQL 18 metadata inspection.
 -- A psql variable carries JSON; no model-derived SQL identifiers are interpolated.
+-- PostgreSQL pg_get_expr adds schema qualifiers depending on search_path.
+-- Pin the namespace used when the five exact policy fingerprints were audited.
+SET search_path=memu,public;
 WITH bindings AS (
  SELECT DISTINCT * FROM jsonb_to_recordset(:'bindings'::jsonb)
  AS b(reader text, writer text, user_id text, agent_id text)

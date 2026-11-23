@@ -54,3 +54,67 @@ Disable the Bridge feature flag and stop the root authority service first. For f
 - **Operation deadlines:** Lookup/notification are bounded to 1.5 seconds; approved read-only recall has an 11-second client limit and 12.5-second Bridge cap, allowing the eight-second native worker plus launch and verification overhead. Failed reads omit optional context, never trigger a retry of a write.
 
 These are tested source properties, not production activation or a live canary.
+
+## Production code/data separation and schema audit correction
+
+The immutable Bridge source must not write mutable `linear-jobs` and agent
+workspace files into the root-controlled Git checkout. The reviewed launch
+uses `BRIDGE_RUNTIME_PROJECT_DIR` to retain the existing writable
+`/home/bridge/agent-bridge/linear-agent-bridge` runtime, while importing
+only from the clean Git release at `/var/lib/bridge-runtime`. Its root-owned
+`/etc/agent-bridge/bridge.env` must have mode 0640, be group-readable but
+non-writable by the bridge Unix account, and be copied from the currently
+running service environment under operator supervision. The launcher sources
+only that path, clears `NODE_OPTIONS`, `NODE_PATH`, `LD_PRELOAD`,
+`LD_LIBRARY_PATH`, `BASH_ENV`, `ENV` and `PYTHONPATH`, then executes the
+trusted `/usr/bin/node` binary against the reviewed entrypoint. Existing
+writable source and job-state remain available for service rollback.
+
+The root authority needs CAP_DAC_READ_SEARCH to inspect the mode-0600
+canonical job ledger under `ProtectHome=read-only`. Without it, the old
+empty capability bounding set refused job state, and `ProtectHome=yes` would
+hide the directory. The authority still cannot alter agent-owned files.
+
+PostgreSQL policy expression fingerprints depend on `search_path` rendering.
+The reviewed M12 policy expressions were recorded under `memu,public`. The
+read-only M14 SQL gate pins this schema explicitly before comparing the five
+fingerprints. This does **not** change policies, schemas or grants; it aligns
+the production audit with the disposable cluster's canonical namespace.
+
+Managed-submission release integrity is checked against the immutable
+SOURCE_PROJECT_DIR even when writable runtime paths are redirected; the host
+binding never accepts the rollback workspace's potentially different Git HEAD
+as the trusted executable release.
+
+### PR #279 review closeout: immutable launch boundaries
+
+The sealed Bridge and operator process must retain the canonical systemd
+name `agent-bridge.service`. The reviewed template is
+`scripts/linux/systemd/agent-bridge.service`, installed over the existing
+unit only during an authorized service switch. A separately named
+`agent-bridge-sealed.service` would fail peer authentication.
+
+Legacy `RUN_AGENT_PATH` overrides are not permitted for sealed launches:
+Antigravity's Python runner and the GitHub shortcut handoff program must
+load from immutable `SOURCE_PROJECT_DIR`. The handoff subprocess working
+directory is the sealed source root and only minimal non-secret environment
+variables are forwarded. The agent-writable runtime retains job state
+and agent workspaces, not executable scripts with Bridge authority.
+
+The launcher validates that the legacy data symlink resolves to the exact
+expected production directory and contains an existing
+`linear-jobs/job-state/*/state.json`. Failure refuses startup rather than
+opening a fresh ledger and risking duplicate delivery. `--preflight` checks
+that invariant without sourcing credentials or starting a process.
+
+Noninteractive Bash evaluates `BASH_ENV` before executing the script; the
+canonical unit strips that variable, along with `ENV`, `SHELLOPTS` and
+`BASHOPTS`, in `/usr/bin/env` before starting Bash. Preflight utilities
+use absolute `/usr/bin` paths. The pinned `/usr/bin/node` is root-owned,
+Node 22.22.1 on the audited host, and requires Node 20+. The shared Volta
+shim is `bridge`-writable and must not replace the system interpreter.
+
+The readiness gate reads the actual root authority process capabilities
+from `/proc/<pid>/status`, requiring `CapEff`, `CapPrm` and `CapBnd` to
+equal only `CAP_DAC_READ_SEARCH`. An updated systemd unit without a restarted
+matching process cannot count as activated.

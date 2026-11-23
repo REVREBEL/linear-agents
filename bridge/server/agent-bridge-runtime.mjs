@@ -3,6 +3,7 @@ import { MANAGED_PROVIDERS } from "../orchestration/managed-submission-runner.mj
 import { createHttpRouteComposer } from "./http-route-composition.mjs";
 import { coordinateRemoteExecution } from "../orchestration/remote-execution-coordinator.mjs";
 import { coordinateLocalExecution } from "../orchestration/local-execution-coordinator.mjs";
+import { resolveBridgeProjectDirectory } from "./runtime-project-root.mjs";
 import {createVerifiedMemoryBridge,loadVerifiedMemoryBridgeHost} from "../orchestration/verified-memory-bridge.mjs";
 import { coordinateJobAdmission } from "../orchestration/job-admission-coordinator.mjs";
 import { createAgyProjectConversationStore } from "../../conversations/agy-project-conversations.mjs";
@@ -67,7 +68,8 @@ const LINEAR_API_KEY = process.env.LINEAR_API_KEY || "";
 const LINEAR_ACCESS_TOKEN = process.env.LINEAR_ACCESS_TOKEN || "";
 
 // Stable runtime root for systemd and Mac LaunchAgent compatibility.
-const PROJECT_DIR = path.dirname(new URL("../../linear-agent-bridge/agent-bridge.mjs", import.meta.url).pathname);
+const SOURCE_PROJECT_DIR = path.dirname(new URL("../../linear-agent-bridge/agent-bridge.mjs", import.meta.url).pathname);
+const PROJECT_DIR = resolveBridgeProjectDirectory(SOURCE_PROJECT_DIR, process.env.BRIDGE_RUNTIME_PROJECT_DIR);
 const AGENT_ENV_FILE = process.env.AGENT_ENV_FILE || path.join(PROJECT_DIR, ".env");
 const PROJECTS_ROOT = process.env.LINUX_PROJECTS_ROOT ||
   process.env.PROJECTS_ROOT || path.join(os.homedir(), "github-revrebel");
@@ -183,10 +185,13 @@ async function claimGithubReviewDispatch(event, source) {
 
 function launchGithubShortcutHandoff(handoff) {
   if (handoff.reviewQueued) return;
-  const script = path.resolve(PROJECT_DIR, "../scripts/chatgpt-shortcuts/handoff.mjs");
+  const script = path.resolve(SOURCE_PROJECT_DIR, "../scripts/chatgpt-shortcuts/handoff.mjs");
   void enqueueChatgptHandoff(() => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, "--handoff-file", handoff.handoffFile], {
-      cwd: path.resolve(PROJECT_DIR, ".."), env: process.env, stdio: ["ignore", "pipe", "pipe"],
+      cwd: path.resolve(SOURCE_PROJECT_DIR, ".."),
+      env: {HOME: process.env.HOME ?? os.homedir(), PATH: "/usr/bin:/bin",
+        CHATGPT_SHORTCUT_NAME: process.env.CHATGPT_SHORTCUT_NAME},
+      stdio: ["ignore", "pipe", "pipe"],
     });
     child.stdout?.on("data", chunk => console.log("[GitHub ChatGPT handoff] " + String(chunk).trimEnd()));
     child.stderr?.on("data", chunk => console.error("[GitHub ChatGPT handoff] " + String(chunk).trimEnd()));
@@ -211,8 +216,12 @@ const AGENT_JOB_DIRS = {
 
 const PYTHON_BIN =
   process.env.PYTHON_BIN || path.join(PROJECT_DIR, ".venv", "bin", "python");
-const RUN_AGENT_PATH =
-  process.env.RUN_AGENT_PATH || path.join(PROJECT_DIR, "run_agent.py");
+// A sealed release must never execute an agent-modifiable runner even when
+// older deployments set RUN_AGENT_PATH to a writable checkout. Unsealed
+// development keeps its existing override behavior.
+const RUN_AGENT_PATH = process.env.BRIDGE_RUNTIME_PROJECT_DIR
+  ? path.join(SOURCE_PROJECT_DIR, "run_agent.py")
+  : (process.env.RUN_AGENT_PATH || path.join(PROJECT_DIR, "run_agent.py"));
 
 // Public hostnames that Cloudflare Tunnel forwards to this same local listener.
 const ANTIGRAVITY_HOST =
@@ -270,7 +279,9 @@ if (process.env.BRIDGE_MANAGED_SUBMISSION_ENABLED === "true") {
   const {loadManagedSubmissionHost,verifyManagedSubmissionActivation,createManagedSubmissionService} =
     await import("../orchestration/managed-submission-service.mjs");
   const hostBinding=await loadManagedSubmissionHost();
-  await verifyManagedSubmissionActivation(hostBinding,path.resolve(PROJECT_DIR,".."));
+  // Submission approval is tied to the immutable executed Git release,
+  // never to the separately writable agent runtime/data checkout.
+  await verifyManagedSubmissionActivation(hostBinding,path.resolve(SOURCE_PROJECT_DIR,".."));
   managedSubmission = createManagedSubmissionService({
     hostBinding,jobStore,jobsDir:JOBS_DIR,
     projectsRoot:PROJECTS_ROOT,reviewInbox,agyRunnerPath:RUN_AGENT_PATH,

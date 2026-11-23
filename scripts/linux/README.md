@@ -52,3 +52,38 @@ executable `volta` and `node` shims, and at least one installed Node binary
 that the `bridge` service account can execute. Missing or unusable runtimes
 cause installation to stop before any unit file is written or replaced.
 Print-only mode remains available without a host Volta installation.
+
+## ABR-59 M14 sealed Bridge launch
+
+`scripts/linux/launch-sealed-bridge.sh` and the reviewed
+`systemd/agent-bridge.service` provide the operator-controlled migration
+from bridge-writable source to a separately reviewed, root-owned Git release.
+The launcher reads **only** `/etc/agent-bridge/bridge.env` (root:bridge 0640),
+clears executable loader injection variables, uses `/usr/bin/node`, and binds
+the existing Bridge job-state/agent workspace with
+`BRIDGE_RUNTIME_PROJECT_DIR`. Neither source file deploys or restarts the
+service. Preserve the existing writable job state for rollback.
+
+### Preflight, canonical service identity, and Node provenance
+
+Install the reviewed `scripts/linux/systemd/agent-bridge.service` **under
+`/etc/systemd/system/agent-bridge.service`**, replacing the pre-approved
+service unit under that same name. The root memory authority authenticates
+`agent-bridge.service`'s MainPID, cgroup and start ticks; do not deploy a
+separate `agent-bridge-sealed.service` identity.
+
+Before deployment, run `launch-sealed-bridge.sh --preflight` as the Bridge
+user to check the sealed environment, the exact existing canonical runtime
+symlink target (`/opt/workspaces/bridge/agent-bridge/linear-agent-bridge`),
+and at least one prior `linear-jobs/job-state/*/state.json`. An absent,
+replaced or empty ledger causes startup refusal; the launcher cannot initialize
+a new empty ledger under an alternate directory. Preflight exits without
+reading secret values or starting Node.
+
+The unit strips `BASH_ENV`, `ENV`, `SHELLOPTS` and `BASHOPTS` before Bash
+starts; the launcher uses absolute `/usr/bin` paths for preflight utilities
+to avoid PATH-injected replacements. The executable remains root-owned
+`/usr/bin/node` (Node 22.22.1 verified on production), not the agent-writable
+Volta shim at `/opt/global-tools/volta/bin/node`. The sealed launcher requires
+system Node 20+ and fails closed without it; Volta remains available to
+regular agent CLI processes.

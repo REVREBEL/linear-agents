@@ -29,3 +29,12 @@ The M4 workflow runs the AGY Python unit suite in a disposable venv as well as N
 **ABR-17 M5:** strict isolated Linux fixture CI includes the real FD/sandbox canary, exclusive lock/crash test, offline receipt recovery and root activation refusal. The host readiness report must separately verify actual service UID conditions at rollout.
 
 **ABR-59 M14 — memory-authority-m14.yml:** Read-only isolated Ubuntu tests for a root-protected AF_UNIX memory authority, pinned per-job manifest and client protocol. Exercises actual kernel `SO_PEERCRED` negatives, bounded requests and standalone Node client without touching real credentials, production databases or services. The readiness output deliberately reports pending deployment/acceptance gates.
+
+M14 production hardening extends isolated CI to verify the reviewed
+immutable-code/runtime-data split, shell launcher and both systemd units,
+in addition to native Python and Node IPC controls.
+
+The M14 isolation workflow listens to changes in the canonical
+`bridge/server/agent-bridge-runtime.mjs` for both pull requests and main
+pushes, and validates the reviewed canonical `agent-bridge.service`
+deployment template (rather than a separately named sealed service).

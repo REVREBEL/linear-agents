@@ -3,12 +3,22 @@ on:
   pull_request:
     paths:
       - "memory/host-ipc/**"
+      - "bridge/server/agent-bridge-runtime.mjs"
+      - "bridge/server/runtime-project-root.mjs"
+      - "bridge/server/runtime-project-root.test.mjs"
+      - "scripts/linux/launch-sealed-bridge.sh"
+      - "scripts/linux/systemd/agent-bridge.service"
       - "docs/ABR59_M14_ACTIVATION.md"
       - ".github/workflows/memory-authority-m14.yml"
   push:
     branches: [main]
     paths:
       - "memory/host-ipc/**"
+      - "bridge/server/agent-bridge-runtime.mjs"
+      - "bridge/server/runtime-project-root.mjs"
+      - "bridge/server/runtime-project-root.test.mjs"
+      - "scripts/linux/launch-sealed-bridge.sh"
+      - "scripts/linux/systemd/agent-bridge.service"
       - ".github/workflows/memory-authority-m14.yml"
 permissions:
   contents: read
@@ -25,6 +35,11 @@ jobs:
         run: python3 -m unittest discover -s memory/host-ipc -p 'test_*.py' -v
       - name: Node signed-job policy and standalone client Unix fixture
         run: node --test memory/host-ipc/*.test.mjs
+      - name: Source and data split, shell and systemd preflight
+        run: |
+          node --test bridge/server/runtime-project-root.test.mjs
+          bash -n scripts/linux/launch-sealed-bridge.sh
+          systemd-analyze verify memory/host-ipc/verified-memory-authority.service scripts/linux/systemd/agent-bridge.service
       - name: Syntax and intentionally inactive production readiness
         run: |
           python3 -m py_compile memory/host-ipc/authority-server.py memory/host-ipc/readiness.py

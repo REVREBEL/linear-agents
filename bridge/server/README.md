@@ -25,3 +25,25 @@ The managed flag also requires successful strict non-root sandbox probe, clean r
 ## ABR-59 M14 — protected root-memory boundary
 
 The proposed root-owned client is loaded only through the existing opt-in Bridge feature after separately approved deployment. A Linux AF_UNIX service authenticates the exact systemd Bridge process rather than trusting the shared coding-agent uid. Neither the existing HTTP server nor its agent children obtain root credentials, database write roles or a generic privileged command. Source merge alone never activates the service. See [M14](../../docs/ABR59_M14_ACTIVATION.md).
+
+## ABR-59 M14 — immutable source / writable job-state split
+
+The `BRIDGE_RUNTIME_PROJECT_DIR` environment variable is reserved for the
+operator-owned systemd launcher. The Bridge imports reviewed JS from
+the immutable `/var/lib/bridge-runtime` Git release, while job-state files,
+agent workspaces, routing and CLIs continue using the previously
+existing writable `/home/bridge/agent-bridge/linear-agent-bridge` runtime.
+The override defaults to the source directory for existing development and
+legacy production launches and rejects relative, traversing and malformed
+paths. See [sealed deployment](../../docs/ABR59_M14_ACTIVATION.md).
+
+The M5 managed-submission source approval continues to verify the separately
+sealed Git checkout from SOURCE_PROJECT_DIR, **not** BRIDGE_RUNTIME_PROJECT_DIR.
+Only job-state, agent workspaces and mutable routing use the runtime override.
+
+For sealed launches, executable Antigravity `run_agent.py` and the GitHub
+shortcut handoff script resolve from `SOURCE_PROJECT_DIR`, never from the
+agent-writable runtime checkout. Any historical `RUN_AGENT_PATH` override is
+ignored for the sealed runtime. Shortcut subprocesses receive a minimal
+environment without Bridge OAuth, API or shared-secret variables. Existing
+development launches preserve their previous path overrides.
