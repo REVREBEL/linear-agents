@@ -9,6 +9,10 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {once} from 'node:events';
 
+// Use hexadecimal bytes for the trailing newline: no JavaScript/Python
+// double-escaping ambiguity across the two Python interpreters.
+export const FD3_DESCENDANT_CODE=
+  "import os; os.write(3,bytes.fromhex('4d355f4644335f44455343454e44414e545f4f4b0a'))";
 const cliPaths=Object.freeze({
   antigravity:'/opt/agents/gemini/bin/agy',
   'chatgpt-cli':'/opt/agent-tools/bin/opencode',
@@ -39,7 +43,7 @@ function start({workspace,root,agent,probe=false}){
     command='/usr/bin/python3';
     args=['-c',String.raw`import os,socket,json,subprocess
 paths=["/etc/agent-bridge/bridge.env","/opt/credentials","/opt/agents/gemini/.gemini/oauth_creds.json","/var/lib/bridge-memory-authority/github-app.pem"]
-child=subprocess.run(["/usr/bin/python3","-c","import os; os.write(3,b'M5_FD3_DESCENDANT_OK\\n')"],pass_fds=(3,),capture_output=True)
+child=subprocess.run(["/usr/bin/python3","-c",${JSON.stringify(FD3_DESCENDANT_CODE)}],pass_fds=(3,),capture_output=True)
 s=socket.socket();s.settimeout(0.25)
 network=s.connect_ex(("127.0.0.1",8788))==0
 print(json.dumps({"credentialVisible":any(os.path.exists(x) for x in paths),"networkReachable":network,"descendantExit":child.returncode,"workspaceVisible":os.path.isdir("/workspace")}))
