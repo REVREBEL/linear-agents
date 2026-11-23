@@ -11,3 +11,21 @@ M4 permits a bounded private submission channel lifetime of up to one hour to ma
 ## M13 advisory issue completion hint
 
 The existing authenticated `/issue-completed` cleanup sends only `{issueId}` to the **optional** protected memory client after normal ledger/Mac cleanup, if configured. The shared-secret webhook, provider exit, local job JSON and body are *not proof* of PR merge, review, CI, Linear status or source provenance. The root operator coordinator must re-verify all evidence and reject unpinned jobs, stale approvals and incomplete commits. A missing/failed memory client never blocks the original cleanup response. No new HTTP route.
+
+## M14 — preserve admission evidence until verified promotion
+
+The existing authenticated `/issue-completed` route now asks the opt-in
+protected root memory host for a **durably accepted hint before deleting**
+the original task inbox. A `true` result means only that the exact pinned
+issue/job passed canonical operator admission and its root-private intent
+was accepted; it **does not mean** GitHub review, CI, Linear completion or
+native persistence passed. The original inbox remains for the root worker's
+independent task/tenant/session verification and reconciliation; the HTTP
+response includes `memoryVerificationPending: true` and `cleaned: 0` for
+that accepted pinned local issue.
+
+Absent or untrusted host, a rejected/invalid issue, a failed request, timeout,
+or any return value other than the boolean `true` preserves the **existing
+ordinary cleanup** semantics, with no privileged fallback. The root operator
+must complete the verified lifecycle and separately clear the retained task
+only after final approved receipt and backup/rollback acceptance.

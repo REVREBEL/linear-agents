@@ -23,6 +23,16 @@ export function createIssueCompletionRoute({
       sendJson(response, 400, { ok: false, error: "Invalid issueId" });
       return true;
     }
+    // The root authority must verify the original admitted task while its
+    // canonical taskFile still exists. Its acknowledgment only means a
+    // durable operator intent is queued, NEVER that memory was approved.
+    // Ordinary cleanup remains unchanged when no exact protected job is
+    // pinned, the optional memory feature is off, or the root host refuses.
+    let preserveOriginalTask = false;
+    if (typeof onIssueCompletionHint === "function") {
+      try { preserveOriginalTask = (await onIssueCompletionHint({issueId})) === true; }
+      catch { /* failure must not block ordinary issue cleanup */ }
+    }
     const records = await jobStore.findByIssueId(issueId);
     let cleaned = 0;
     for (const record of records) {
@@ -39,6 +49,11 @@ export function createIssueCompletionRoute({
         cleaned++;
         continue;
       }
+      // A durable root promotion intent requires its immutable admission
+      // evidence. Never unlink it before the root worker has independently
+      // verified GitHub, Linear, PR/CI, Git blob and signed the native receipt.
+      // Non-matching issues and failed hints continue normal cleanup.
+      if (preserveOriginalTask) continue;
       const file = record.taskFile;
       if (typeof file !== "string" || !file.endsWith(".json") ||
           !file.includes(`${path.sep}.linear-agent${path.sep}projects${path.sep}`) ||
@@ -47,13 +62,10 @@ export function createIssueCompletionRoute({
       await jobStore.transition(record.key, record.state, { inboxClearedAt: new Date().toISOString() });
       cleaned++;
     }
-    // Notification is advisory only; the operator must independently check
-    // the actual GitHub PR/CI/review and Linear completion evidence.
-    if (typeof onIssueCompletionHint === "function") {
-      try { await onIssueCompletionHint({issueId}); }
-      catch { /* memory failures must not block legitimate cleanup */ }
-    }
-    sendJson(response, 200, { ok: true, issueId, cleaned });
+    sendJson(response, 200, {
+      ok: true, issueId, cleaned,
+      ...(preserveOriginalTask ? { memoryVerificationPending: true } : {}),
+    });
     return true;
   };
 }

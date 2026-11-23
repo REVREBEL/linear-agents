@@ -34,7 +34,7 @@ test("trusted host reference is validated and explicitly labeled as lower-trust"
   assert.match(result,/Approved tested note/);
   assert.match(result,/docs\/verified-learnings\/test\.md/);
   assert.deepEqual(received[0],request);
-  await h.completionHint({issueId:"ABR-59"});
+  assert.equal(await h.completionHint({issueId:"ABR-59"}),true);
   assert.deepEqual(received[1],{issueId:"ABR-59"});
   assert.deepEqual(log,["[verified memory] injected","[verified memory] completion-hint-sent"]);
 });
@@ -65,8 +65,8 @@ test("provider failures and invalid completion hints fail independently",async()
     async notifyIssueCompleted(){throw Error("secret callback details");},
   },logger:{log:x=>events.push(x)}});
   assert.equal(await h.loadForTask(request),"");
-  await h.completionHint({issueId:"non-id"});
-  await h.completionHint({issueId:"ABR-59"});
+  assert.equal(await h.completionHint({issueId:"non-id"}),false);
+  assert.equal(await h.completionHint({issueId:"ABR-59"}),false);
   assert.deepEqual(events,["[verified memory] unavailable","[verified memory] denied","[verified memory] completion-hint-unavailable"]);
 });
 test("host loader requires exact approved module path before import",async()=>{
@@ -85,7 +85,7 @@ test("nonresponsive protected host is bounded without blocking task or completio
   },logger:{log:e=>events.push(e)}});
   const start=Date.now();
   assert.equal(await h.loadForTask(request),"");
-  await h.completionHint({issueId:"ABR-59"});
+  assert.equal(await h.completionHint({issueId:"ABR-59"}),false);
   assert.ok(Date.now()-start<1000);
   assert.deepEqual(events,["[verified memory] timeout","[verified memory] completion-hint-timeout"]);
 });

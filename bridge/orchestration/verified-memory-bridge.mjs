@@ -101,7 +101,7 @@ export function createVerifiedMemoryBridge({host,enabled=false,logger=console,ti
     },
     async completionHint({issueId}={}){
       if(typeof issueId!=="string"||!/^([0-9a-f]{8}-[0-9a-f-]{27,36}|[A-Za-z]+-[0-9]+)$/i.test(issueId)){
-        metric("denied");return;
+        metric("denied");return false;
       }
       try{
         // An authenticated cleanup webhook is STILL NOT proof of merge,
@@ -110,7 +110,11 @@ export function createVerifiedMemoryBridge({host,enabled=false,logger=console,ti
         await bounded(()=>host.notifyIssueCompleted(Object.freeze({issueId})),
           Math.min(timeoutMs,1500));
         metric("completion-hint-sent");
-      }catch(e){metric(e?.code==="EVERIFIED_MEMORY_TIMEOUT"?"completion-hint-timeout":"completion-hint-unavailable");}
+        return true;
+      }catch(e){
+        metric(e?.code==="EVERIFIED_MEMORY_TIMEOUT"?"completion-hint-timeout":"completion-hint-unavailable");
+        return false;
+      }
     },
   });
 }

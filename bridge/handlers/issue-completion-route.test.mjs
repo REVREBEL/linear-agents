@@ -27,3 +27,57 @@ test("memory hint denial never blocks confirmed issue cleanup response",async()=
  const result=await dispatch({onIssueCompletionHint:async()=>{throw Error("private cause");}});
  assert.equal(result.response.code,200);assert.equal(result.response.payload.cleaned,0);
 });
+
+test("accepted root promotion hint preserves canonical admission file",async()=>{
+ const os=await import("node:os"), fs=await import("node:fs/promises"), path=await import("node:path");
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr59-hint-"));
+ try{
+   const task=path.join(root,".linear-agent","projects","project","inbox","job.json");
+   await fs.mkdir(path.dirname(task),{recursive:true});await fs.writeFile(task,'{"task":"approved"}');
+   const issueId="dcedfdda-3793-4c5f-aa63-703897e9618b";
+   const req=Readable.from([Buffer.from(JSON.stringify({issueId}))]);req.method="POST";
+   req.headers={authorization:"Bearer bridge-key"};
+   const response={writeHead(code){this.code=code;},end(body){this.data=JSON.parse(body);}};
+   const transitions=[],events=[];
+   const route=createIssueCompletionRoute({sharedSecret:"bridge-key",
+     jobStore:{async findByIssueId(){return[{key:"mock:delivery",state:"awaiting_external",taskFile:task}]},
+       async transition(...args){transitions.push(args)}},
+     cleanupMacTrae:async()=>{throw Error("unexpected remote cleanup")},
+     onIssueCompletionHint:async scope=>{
+       events.push(scope);
+       assert.equal(await fs.readFile(task,"utf8"),'{"task":"approved"}');
+       return true;
+     }});
+   assert.equal(await route(req,response,{url:new URL("http://local/issue-completed")}),true);
+   assert.equal(response.code,200);
+   assert.deepEqual(response.data,{ok:true,issueId,cleaned:0,memoryVerificationPending:true});
+   assert.deepEqual(events,[{issueId}]);
+   assert.deepEqual(transitions,[]);
+   assert.equal(await fs.readFile(task,"utf8"),'{"task":"approved"}');
+ }finally{await fs.rm(root,{recursive:true,force:true})}
+});
+
+test("ordinary cleanup proceeds when operator denies or host is missing",async()=>{
+ const os=await import("node:os"),fs=await import("node:fs/promises"),path=await import("node:path");
+ for(const hint of [undefined,async()=>false,async()=>undefined,
+                    async()=>{throw Error("unavailable")},async()=> "true"]){
+   const root=await fs.mkdtemp(path.join(os.tmpdir(),"abr59-clean-"));
+   try{
+     const file=path.join(root,".linear-agent","projects","p","inbox","job.json");
+     await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,"{}");
+     const req=Readable.from([Buffer.from('{"issueId":"dcedfdda-3793-4c5f-aa63-703897e9618b"}')]);
+     req.method="POST";req.headers={authorization:"Bearer bridge-key"};
+     const res={writeHead(code){this.code=code},end(body){this.data=JSON.parse(body)}};
+     const transitions=[];
+     const route=createIssueCompletionRoute({sharedSecret:"bridge-key",
+       jobStore:{async findByIssueId(){return[{key:"mock:delivery",state:"completed",taskFile:file}]},
+         async transition(key,state,metadata){transitions.push({key,state,metadata})}},
+       cleanupMacTrae:async()=>{},onIssueCompletionHint:hint});
+     await route(req,res,{url:new URL("http://local/issue-completed")});
+     assert.equal(res.code,200);assert.equal(res.data.cleaned,1);
+     assert.equal(res.data.memoryVerificationPending,undefined);
+     assert.equal(transitions.length,1);
+     await assert.rejects(fs.access(file));
+   }finally{await fs.rm(root,{recursive:true,force:true})}
+ }
+});

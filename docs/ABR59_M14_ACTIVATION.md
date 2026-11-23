@@ -138,3 +138,20 @@ job in the current ledger. A fresh, actually admitted and independently
 reviewed job is required to prove the final M14 live promotion and new-session
 recall. Do not use the prior M11 record or a synthetic fixture as a
 replacement for an admitted Bridge identity.
+
+### M14 production completion-hint ordering
+
+The canonical source admission check requires reading the admitted original
+task JSON *from its existing inbox path*. The pre-M14 `/issue-completed`
+cleanup removed the inbox file **before** sending the advisory hint, making
+independent promotion impossible for a legitimate finished task. The revised
+route now sends the authenticated, issue-only hint first. If and only if
+the protected authority confirms a **durable queued intent** for an exact
+approved job, the Bridge preserves that issue's task file for root source,
+tenant, agent and session attestation. It returns
+`memoryVerificationPending: true`; that acknowledgement is **not** a claim
+of GitHub approval, persistence or recall. Other issues, missing host,
+timeouts and denials continue normal cleanup without bypassing the security
+gate. An operator may clean retained canary inbox files only after an
+independently verified native commit, new-session recall, and recovery
+acceptance, never as part of the request that triggers promotion.
