@@ -116,7 +116,7 @@ export function createVerifiedMemoryBridge({host,enabled=false,logger=console,ti
         metric("completion-hint-sent");
         return Object.freeze({status:"accepted",jobKey});
       }catch(e){
-        metric(e?.code==="EVERIFIED_MEMORY_TIMEOUT"?"completion-hint-timeout":"completion-hint-unavailable");
+        metric(e?.code==="EHOST_MEMORY_DENIED"?"completion-hint-denied":e?.code==="EVERIFIED_MEMORY_TIMEOUT"?"completion-hint-timeout":"completion-hint-unavailable");
         return Object.freeze({status:e?.code==="EHOST_MEMORY_DENIED"?"denied":"uncertain"});
       }
     },

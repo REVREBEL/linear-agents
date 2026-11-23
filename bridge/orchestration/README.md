@@ -60,3 +60,9 @@ The protected completion client distinguishes
 Only exact accepted job keys grant scoped retention; uncertain results
 conservatively retain authenticated-issue evidence for operator review.
 Previous durable ledger retention persists across later responses.
+
+
+An explicit root completion denial emits the redacted
+`[verified memory] completion-hint-denied` metric, distinct from
+`completion-hint-timeout` and `completion-hint-unavailable`.
+No root error message or credential material is logged.

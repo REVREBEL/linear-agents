@@ -103,16 +103,20 @@ test("independent host mapping cannot authorize foreign repository recall",async
 });
 
 test("explicit root denial is distinct from uncertain lost completion acknowledgment",async()=>{
+ const deniedLogs=[];
  const denied=createVerifiedMemoryBridge({enabled:true,host:{
    async notifyIssueCompleted(){const err=Error("denied");err.code="EHOST_MEMORY_DENIED";throw err},
    async repositoryIdForRoot(){return scope.repositoryId},
    async getApprovedScopedRecall(){return envelope}
- },logger:{log(){}}});
+ },logger:{log:event=>deniedLogs.push(event)}});
  assert.deepEqual(await denied.completionHint({issueId:"ABR-59"}),{status:"denied"});
+ assert.deepEqual(deniedLogs,["[verified memory] completion-hint-denied"]);
+ const ambiguousLogs=[];
  const ambiguous=createVerifiedMemoryBridge({enabled:true,host:{
    async notifyIssueCompleted(){return undefined},
    async repositoryIdForRoot(){return scope.repositoryId},
    async getApprovedScopedRecall(){return envelope}
- },logger:{log(){}}});
+ },logger:{log:event=>ambiguousLogs.push(event)}});
  assert.deepEqual(await ambiguous.completionHint({issueId:"ABR-59"}),{status:"uncertain"});
+ assert.deepEqual(ambiguousLogs,["[verified memory] completion-hint-unavailable"]);
 });
