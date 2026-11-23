@@ -184,3 +184,20 @@ unmarked tasks. Previously durably retained records remain protected even
 during root outages or when the optional feature is disabled. No
 acknowledgment, retention marker or original task file is itself evidence
 that signed native promotion or a fresh-session recall succeeded.
+
+### Post-restart recall of a completed M14 promotion
+
+After an authorized Bridge restart, re-pin only the current systemd MainPID
+and start ticks in the root-owned activation file, and check that the
+reviewed code/source SHA and immutable job scope remain unchanged. A
+completed historical intent keeps its original full-manifest SHA-256
+binding; that byte hash **must not be rewritten** merely to match the
+new process PID. The protected root listener permits read-only recall
+past this volatility only when that intent is **completed**, while the
+immutable worker independently validates the current manifest hash and
+signed source approval, exact scope and native row. Non-completed intents
+still require reconciliation, and no replayed write is authorized.
+
+The production acceptance audit must demonstrate recall from a fresh
+process **after** feature-disable, authority restart, Bridge restart and
+new PID/start-tick pinning, not merely before recovery.

@@ -232,8 +232,15 @@ def dispatch(message, manifest, worker=_worker, scheduler=None, manifest_digest=
         need(len(matches) == 1 and admitted_job(manifest, matches[0]))
         need(isinstance(manifest_digest, str) and len(manifest_digest) == 64)
         current = intent.read(message["jobKey"])
-        need(current is None or (current["state"] == "completed" and
-             current["digest"] == manifest_digest))
+        # The intent digest binds the original write to the exact activation
+        # manifest, including an ephemeral systemd MainPID/start tick. A
+        # legitimate Bridge restart changes those fields without invalidating
+        # an independently signed, scope-bound native memory approval.
+        # Permit READ-ONLY recall only after completed persistence; the worker
+        # still rechecks the *current* manifest digest, canonical job, source
+        # checkout, signed approval, scope and native RLS. Queued, running and
+        # reconciled intents remain denied. This never reauthorizes a write.
+        need(current is None or current["state"] == "completed")
         return {"ok": True, "result": worker("recall", message["jobKey"], 8, manifest_digest)}
     if op == "complete":
         need(set(message) == {"op", "issueId"} and type(message["issueId"]) is str
