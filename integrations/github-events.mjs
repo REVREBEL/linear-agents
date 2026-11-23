@@ -27,6 +27,8 @@ export function sanitizeGithubEvent(input) {
       authorType: comment.user?.type === "Bot" ? "Bot" : "User",
       actorId: Number.isSafeInteger(comment.user?.id) ? comment.user.id : null,
       actorLogin: typeof comment.user?.login === "string" ? comment.user.login.slice(0, 100) : "",
+      // The PR author and the comment actor are distinct identities.
+      prAuthorLogin: typeof issue.user?.login === "string" ? issue.user.login.slice(0, 100) : null,
       headSha: null, draft: false,
       installationId: Number.isSafeInteger(p.installation?.id) ? p.installation.id : null };
   }
@@ -40,6 +42,8 @@ export function sanitizeGithubEvent(input) {
     repository: repo, number: pr.number, url: pr.html_url, headSha: pr.head.sha,
     draft: pr.draft === true, actorId: Number.isSafeInteger(p.sender?.id) ? p.sender.id : null,
     actorLogin: typeof p.sender?.login === "string" ? p.sender.login.slice(0, 100) : "",
+    // Use the signed PR's creator for dependency-bot policy, not the event sender.
+    prAuthorLogin: typeof pr.user?.login === "string" ? pr.user.login.slice(0, 100) : null,
     installationId: Number.isSafeInteger(p.installation?.id) ? p.installation.id : null };
 }
 export async function recordGithubEvent(baseDir, event, source) {

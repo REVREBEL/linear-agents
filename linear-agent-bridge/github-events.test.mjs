@@ -127,6 +127,24 @@ test("filters ChatGPT-authored comments by exact login or account ID", () => {
   assert.equal(shouldDispatchGithubReview(humanLogin, "chatgpt", { ids: ["9001"] }), true);
 });
 
+test("verified PR author remains distinct from the event actor for bot filtering", () => {
+  const renovate = sanitizeGithubEvent({ ...base,payload:{...base.payload,
+    sender:{login:"human-reviewer",id:889},
+    pull_request:{...base.payload.pull_request,user:{login:"renovate[bot]",id:991}}}});
+  assert.equal(renovate.actorLogin,"human-reviewer");
+  assert.equal(renovate.prAuthorLogin,"renovate[bot]");
+  const foreignSender = sanitizeGithubEvent({ ...base,payload:{...base.payload,
+    sender:{login:"renovate[bot]",id:991},
+    pull_request:{...base.payload.pull_request,user:{login:"human-reviewer",id:889}}}});
+  assert.equal(foreignSender.actorLogin,"renovate[bot]");
+  assert.equal(foreignSender.prAuthorLogin,"human-reviewer");
+  const comment = sanitizeGithubEvent({ ...revision,payload:{...revision.payload,
+    issue:{...revision.payload.issue,user:{login:"renovate[bot]"}},
+    comment:{...revision.payload.comment,user:{login:"human-reviewer",id:889}}}});
+  assert.equal(comment.actorLogin,"human-reviewer");
+  assert.equal(comment.prAuthorLogin,"renovate[bot]");
+});
+
 test("PR synchronization checks the event sender, not the original PR creator", () => {
   const pushed = sanitizeGithubEvent({ ...base, payload: { ...base.payload,
     action: "synchronize", sender: { login: "chatgpt-service", id: 9001, type: "User" },

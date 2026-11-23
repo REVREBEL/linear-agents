@@ -58,3 +58,15 @@ that authenticated issue pending operator reconciliation. A definitive
 root denial cleans only records without earlier durable retention. Earlier
 marks survive outages, restarts and repeated completion callbacks. Neither
 a retention mark nor a webhook proves that native memory was approved.
+
+
+## ABR-18 Phase 1 — optional GitHub EventIntelligence shadow receipts
+
+The existing authenticated `/github/events` route may additionally write
+metadata-only classified receipts when the operator explicitly sets
+`EVENT_INTELLIGENCE_MODE=shadow`. The original `recordGithubEvent`, review
+claim, dispatch/recovery, and HTTP responses remain authoritative and
+unchanged. A shadow `dispatch` classification is **advisory only**, never
+a second handoff. Failed shadow storage emits a redacted error code and
+does not claim new review progress. No new public endpoint, model call,
+Worker deployment, or production activation occurs in this phase.

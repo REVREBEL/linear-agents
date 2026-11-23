@@ -18,6 +18,7 @@ This directory owns **source-controlled adapters and normalization utilities** u
 | Source | Responsibility |
 | --- | --- |
 | `github-events.mjs` | Sanitize and classify GitHub PR/comment events, keep a metadata-only event journal and derive review routing/alerts |
+| `event-intelligence.mjs` | ABR-18 Phase 1 trusted GitHub/Linear event normalization, deterministic shadow classification, versioned semantic-work identity, and metadata-only deduplicated shadow journal; no model call, public ingress or new review dispatch |
 | `linear-credentials.mjs` | Fetch agent-specific Linear app credentials through the pinned Worker flow and write local ignored `.env.linear-bridge` with restricted permissions |
 | `review-linear-notifier.mjs` | Create/update deterministically identified Linear **review** issues; distinguishes the ChatGPT review harness from ChatGPT CLI coding assignments |
 | [`litellm/`](litellm/README.md) | Loopback LiteLLM OpenAI-compatible Chat Completions adapter and bounded tool execution |
@@ -46,3 +47,31 @@ Update this README and the nearest provider README with any changes to event cla
 `submission-github-broker.mjs` remains read-only by default; explicit M3 publication enables repository-scoped pull_requests:write only (no contents write), scoped PR list/create/read and validated exact head/base. `submission-linear-worker.mjs` uses fixed Linear GraphQL and mapped HTTPS Worker /complete, checks viewer/organization/team/issue and authorized state, verifies comments by operation marker and author, verifies session ownership before completion and reads paginated activities and latest terminal state afterwards. No raw credentials or responses leave these trusted adapters. See [M3 contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).
 
 M5 offline recovery uses `allowObservation:true` without `allowPublication` in the GitHub App broker. The read-only facade permits exact PR list/read observation and cannot create PRs. Worker secret loading is denied in offline recovery composition.
+
+
+## ABR-18 Phase 1 — EventIntelligence shadow-only observation
+
+`event-intelligence.mjs` consumes **already authenticated** GitHub route events
+or verified Linear installation metadata. It does not verify signatures,
+resolve OAuth installations, authorize reviewer identities, or act on untrusted
+PR text. A missing `promptContext` does **not** imply a linked Linear
+notification is irrelevant: the deterministic prefilter records such
+notifications as `defer` pending issue/PR enrichment.
+
+Only `EVENT_INTELLIGENCE_MODE=shadow` opts the existing authenticated
+GitHub ingress into a second metadata-only receipt under the existing
+`linear-jobs/event-intelligence/shadow` state root. Each delivery is
+atomically claimed by a namespaced SHA-256 key, independently of the
+semantic review key (installation/organization, repository, PR, head SHA,
+review cycle and finding fingerprint). No raw PR body, diff, prompt,
+credential, model payload or secret is stored. Existing GitHub review
+admission, deduplication, handoff, response and Linear routing are unchanged.
+Shadow failures are logged with a bounded code without altering the live
+handoff. PR author is taken from the signed `pull_request.user.login` (or `issue.user.login` for review comments) and is distinct from `sender.login` / the comment author. Routine Renovate PR filtering uses the trusted PR creator, not whichever actor delivered a synchronize event. Substantive comments are never discarded solely because of the PR creator. Missing verified PR authorship defers initial review; self-authored loop suppression still checks the **event actor**. `off` and `enforced` do **not** activate new dispatch in Phase 1.
+
+Phase 2 must connect signed no-prompt Linear Worker notifications to a
+durable, verifiable Bridge intake and enrich GitHub check/review state.
+The reference-only TypeScript prototype in `agents/bridge/event-intelligence/`
+is **not** a runnable production dispatcher. Semantic model inference,
+approval, launch acknowledgment and enforcement require separately reviewed
+work; a shadow `dispatch` recommendation never launches an agent.
