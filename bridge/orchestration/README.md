@@ -42,12 +42,15 @@ The proposed standalone `memory/host-ipc/verified-memory-host.mjs` can be instal
 
 M14 review correction: optional signed memory recalls have a 12.5-second Bridge deadline so an independently bounded eight-second native PostgreSQL worker can finish after IPC and file-verification overhead. The protected client caps its read at 11 seconds; repository mapping and completion hints remain limited to 1.5 seconds. A timeout never escalates authority or retries an uncertain write.
 
-For M14 production promotion, `completionHint` returns boolean `true` only
-after the root IPC acknowledges a durable intent for the exact pinned
-canonical job. This is a queue/retention acknowledgment, not evidence of
-approval or a successful native write. The `/issue-completed` handler uses
-that return to preserve the original admission task file; denied or
-unavailable root calls return `false` so ordinary issue cleanup is unchanged.
+For M14 production promotion, `completionHint` returns
+`{status:"accepted",jobKey}` only after the root IPC acknowledges a durable
+intent for the exact pinned canonical job. This is a queue/retention
+acknowledgment, not evidence of approval or a successful native write.
+The `/issue-completed` handler preserves only that matching original task.
+Explicit `{status:"denied"}` permits ordinary cleanup of unmarked tasks;
+`{status:"uncertain"}` conservatively retains the authenticated issue's
+original task evidence for operator reconciliation after a possible lost
+acknowledgment. Prior durable retention always survives subsequent callbacks.
 
 
 The protected completion client distinguishes

@@ -16,19 +16,19 @@ The existing authenticated `/issue-completed` cleanup sends only `{issueId}` to 
 
 The existing authenticated `/issue-completed` route now asks the opt-in
 protected root memory host for a **durably accepted hint before deleting**
-the original task inbox. A `true` result means only that the exact pinned
-issue/job passed canonical operator admission and its root-private intent
-was accepted; it **does not mean** GitHub review, CI, Linear completion or
-native persistence passed. The original inbox remains for the root worker's
-independent task/tenant/session verification and reconciliation; the HTTP
-response includes `memoryVerificationPending: true` and `cleaned: 0` for
-that accepted pinned local issue.
+the original task inbox. An `{status:"accepted",jobKey}` response identifies
+the exact operator-pinned job with a durably accepted root intent; it **does
+not mean** GitHub review, CI, Linear completion or native persistence passed.
+Only that job's original task remains for the root worker's independent
+verification; the HTTP response includes `memoryVerificationPending: true`.
 
-Absent or untrusted host, a rejected/invalid issue, a failed request, timeout,
-or any return value other than the boolean `true` preserves the **existing
-ordinary cleanup** semantics, with no privileged fallback. The root operator
-must complete the verified lifecycle and separately clear the retained task
-only after final approved receipt and backup/rollback acceptance.
+An explicit `{status:"denied"}` permits ordinary cleanup of unmarked tasks.
+An `{status:"uncertain"}` (including a timeout or lost response after possible
+enqueue) conservatively retains authenticated issue task evidence until root
+operator reconciliation. Previously marked tasks remain retained across
+repeated callbacks or feature disablement. Neither an absent client nor an
+uncertain response grants privileged authorization. The operator separately
+clears retained tasks only after approved receipts and backup/rollback checks.
 
 
 ### Durable retention across repeated completion callbacks
