@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {execFileSync} from "node:child_process";
-import {randomBytes} from "node:crypto";
+import {randomBytes,createHash} from "node:crypto";
 import {restrictedDbIdentity,createDisposableRestrictedMemuPersistence} from "../restricted-memu-persistence.mjs";
 import {createPromotionJournal,promotionReceiptId} from "../promotion-journal.mjs";
 import {executeVerifiedMemuCommit} from "../memu-commit-executor.mjs";
 import {createApprovedSourceStore} from "../approved-source-store.mjs";
 import {recallDigest} from "../scoped-recall.mjs";
+import {createVerifiedMemoryLifecycle} from "../verified-memory-lifecycle.mjs";
 
 const base={tenantId:"tenant-a",agentId:"agent-a",repositoryId:"Canary/memory",issueId:"CAN-1"};
 const scopes=[base,{...base,tenantId:"tenant-b"},{...base,agentId:"agent-b"},
@@ -158,6 +159,75 @@ assert.equal(sql("SELECT count(*) FROM memu.recall_file_segments WHERE recall_fi
 const partialAdapter=await createDisposableRestrictedMemuPersistence({job:partialJob,root,socketRoot});
 assert.equal((await partialAdapter.recall({approvedSources:new Map([[partialId,items[0].source]]),
  trustedDigests:new Set([recallDigest(items[0].source)])})).entries.length,0);
+
+// M13 follows the complete M12 native suite after the restart. This is a
+// fresh operator-pinned fixture job with a distinct PR and reviewed Git source,
+// not a webhook or a model-generated promotion request.
+if(mode==="--resume"){
+  await fs.mkdir(path.join(root,"jobs"),{mode:0o700});
+  const sealedKey=await fs.readFile(keyFile);
+  const keyId=createHash("sha256").update(sealedKey).digest("hex");
+  await fs.writeFile(path.join(root,keyId+".key"),sealedKey,{mode:0o600,flag:"wx"});
+  await fs.writeFile(path.join(root,"active.json"),JSON.stringify({
+    keyId,notBefore:new Date(Date.now()-1000).toISOString(),
+    expiresAt:new Date(Date.now()+86400000).toISOString(),revoked:false,
+  }),{mode:0o600,flag:"wx"});
+  const m13Sha="c".repeat(40);
+  const m13Job={jobId:"m13-native-after-restart",scope:base,prNumber:33,headSha:m13Sha};
+  const m13Source="Native scoped memory promotion is independently verified.";
+  const m13Path="docs/verified-learnings/m13-native.txt";
+  const m13Github={
+    async getPullRequest(){return {number:33,merged:true,state:"closed",head:{sha:m13Sha,repo:{full_name:base.repositoryId}},
+      base:{repo:{full_name:base.repositoryId}},user:{login:"author"},merge_commit_sha:"d".repeat(40)};},
+    async listReviews(){return [{id:33,user:{login:"fixture-reviewer"},state:"APPROVED",
+      commit_id:m13Sha,submitted_at:"2026-11-21T00:00:00Z"}];},
+    async listCheckRuns(){return [{id:33,name:"synthetic-canary",head_sha:m13Sha,
+      status:"completed",conclusion:"success",app:{slug:"github-actions"}}];},
+    async getCollaboratorPermission(){return {permission:"write"};},
+  };
+  let linearDone=true,reviewPass=true;
+  const m13Clients=async()=>({
+    github:{...m13Github,async listReviews(){return reviewPass?m13Github.listReviews():[];}},
+    linear:{async getIssue(id){return {id,statusType:linearDone?"completed":"started",
+      repositoryId:base.repositoryId,headSha:m13Sha};}},
+  });
+  const m13Args={
+    trustedJob:m13Job,policy:{requiredChecks:["synthetic-canary"],allowedCheckApps:["github-actions"],
+      permittedReviewers:["fixture-reviewer"]},sourcePath:m13Path,
+    repositoryRoot:"/fake/root-controlled/fixture",authorityRoot:root,
+    makeClients:m13Clients,
+    makePersistence:async()=>createDisposableRestrictedMemuPersistence({job:m13Job,root,socketRoot}),
+    makeSourceVerifier:()=>async input=>
+      (input.headSha??input.sourceGitSha)===m13Sha&&input.sourcePath===m13Path&&
+      input.revision===1&&input.content===m13Source&&input.scope.repositoryId===base.repositoryId,
+    readGit:async()=>Buffer.from(m13Source),
+  };
+  let lifecycle=createVerifiedMemoryLifecycle(m13Args);
+  assert.equal((await lifecycle.promote({issueId:base.issueId,jobId:m13Job.jobId})).status,"approved");
+  lifecycle=createVerifiedMemoryLifecycle(m13Args);
+  assert.equal((await lifecycle.recall({scope:base})).entries[0].content,m13Source);
+  // Independent Node process must verify the durable signature and query the
+  // native restricted PostgreSQL reader; no in-process approval cache.
+  const freshOutput=execFileSync(process.execPath,[
+    new URL("./memu-m13-recall-child.mjs",import.meta.url).pathname,socketRoot,root],{
+    encoding:"utf8",timeout:12000,env:{PATH:"/usr/bin:/bin",HOME:"/home/bridge"}});
+  assert.deepEqual(JSON.parse(freshOutput.trim()),{
+    freshProcess:true,signedSource:true,nativePostgres:true,scoped:true});
+  assert.equal((await lifecycle.promote({issueId:base.issueId,jobId:m13Job.jobId})).status,"already-confirmed");
+  reviewPass=false;
+  await assert.rejects(createVerifiedMemoryLifecycle(m13Args).promote({
+    issueId:base.issueId,jobId:m13Job.jobId}));
+  reviewPass=true;linearDone=false;
+  await assert.rejects(createVerifiedMemoryLifecycle(m13Args).promote({
+    issueId:base.issueId,jobId:m13Job.jobId}));
+  linearDone=true;
+  await assert.rejects(lifecycle.recall({scope:{...base,tenantId:"other"}}));
+  assert.equal(sql("SELECT count(*) FROM memu.recall_files"),"8");
+  assert.equal(sql("SELECT count(*) FROM memu.recall_file_segments"),"7");
+  console.log(JSON.stringify({m13:"native-promotion-recall",verifiedMergedPr:true,independentReview:true,
+    nativePostgresCommit:true,signedApproval:true,freshProcessRecall:true,
+    replayNoDuplicate:true,revokedReviewDenied:true,reopenedIssueDenied:true,foreignScopeDenied:true}));
+}
 
 console.log(JSON.stringify({phase:mode?"restart":"initial",scopes:5,restrictedLogins:10,
   positiveRecalls:5,foreignScopeDenials:40,unapprovedIdFiltered:true,readerWriteDenied:true,

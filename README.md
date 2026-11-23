@@ -612,3 +612,7 @@ See [M5 operational evidence and rollback](docs/ABR17_SUBMISSION_COORDINATOR.md#
 ## ABR-59 M12 — Database authorization and production-safe persistence
 
 The ABR-59 M12 restricted PostgreSQL persistence path and its scope identity tests are included in the Bridge and reliability suites; the native disposable database and operator rollout procedures are documented in [memory/README.md](memory/README.md) and [the M12 database authority runbook](docs/ABR59_DATABASE_AUTHORITY.md). These changes do not activate the production memory service.
+
+## ABR-59 M13 — opt-in verified memory lifecycle
+
+The [M13 lifecycle contract](docs/ABR59_VERIFIED_MEMORY_LIFECYCLE.md) adds an operator-side pinned GitHub/Linear/native memU promotion coordinator and disabled-by-default, protected Bridge client hooks for issue-completion hints and bounded, lower-trust task reference injection. A separate root-controlled operator service and live database rollout require M14 approval; the existing Bridge service remains unchanged until explicitly activated.
