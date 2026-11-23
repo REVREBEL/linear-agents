@@ -3,13 +3,13 @@
 import net from "node:net";
 const SOCKET="/run/bridge-memory-authority/bridge.sock";
 function deny(){return Error("protected memory host unavailable");}
-function call(payload){
+function call(payload,timeoutMs=1500){
   const json=JSON.stringify(payload)+"\n";
   if(Buffer.byteLength(json)>2048)throw deny();
   return new Promise((resolve,reject)=>{
     let finished=false,total=0,parts=[];
     const client=net.createConnection({path:SOCKET,allowHalfOpen:false});
-    const timer=setTimeout(()=>finish(null),1100);
+    const timer=setTimeout(()=>finish(null),timeoutMs);
     function finish(value){
       if(finished)return;
       finished=true;clearTimeout(timer);client.destroy();
@@ -43,7 +43,7 @@ export async function createVerifiedMemoryBridgeHost(){
       return reply.repositoryId;
     },
     async getApprovedScopedRecall({tenantId,agentId,repositoryRoot,issueId,jobKey}={}){
-      const reply=await call({op:"recall",tenantId,agentId,repositoryRoot,issueId,jobKey});
+      const reply=await call({op:"recall",tenantId,agentId,repositoryRoot,issueId,jobKey},11000);
       if(!reply.result||typeof reply.result!=="object")throw deny();
       return reply.result;
     },

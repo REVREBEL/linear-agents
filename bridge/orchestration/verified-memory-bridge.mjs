@@ -39,19 +39,19 @@ export async function loadVerifiedMemoryBridgeHost({
   });
 }
 /** Fail-open for task admission; fail-closed on content disclosure. */
-export function createVerifiedMemoryBridge({host,enabled=false,logger=console,timeoutMs=1500}={}){
-  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<50||timeoutMs>5000)deny();
+export function createVerifiedMemoryBridge({host,enabled=false,logger=console,timeoutMs=12500}={}){
+  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<50||timeoutMs>15000)deny();
   if(enabled!==true)return Object.freeze({enabled:false});
   if(!host||typeof host.getApprovedScopedRecall!=="function"||
      typeof host.notifyIssueCompleted!=="function"||
      typeof host.repositoryIdForRoot!=="function")deny();
   const metric=kind=>{try{logger.log?.("[verified memory] "+kind);}catch{/* no effects */}};
-  async function bounded(operation){
+  async function bounded(operation,ms=timeoutMs){
     let timer;
     try{return await Promise.race([Promise.resolve().then(operation),
       new Promise((_,reject)=>{timer=setTimeout(()=>{
         reject(Object.assign(Error("verified memory timed out"),{code:"EVERIFIED_MEMORY_TIMEOUT"}));
-      },timeoutMs);})]);}
+      },ms);})]);}
     finally{clearTimeout(timer);}
   }
   return Object.freeze({
@@ -64,7 +64,8 @@ export function createVerifiedMemoryBridge({host,enabled=false,logger=console,ti
         // repository and validates operator-pinned job and signed approval.
         // Resolve the GitHub repository identity independently from the
         // reviewed host-owned map, not the lower-trust recall response.
-        const repositoryId=await bounded(()=>host.repositoryIdForRoot(repositoryRoot));
+        const repositoryId=await bounded(()=>host.repositoryIdForRoot(repositoryRoot),
+          Math.min(timeoutMs,1500));
         if(!REPO.test(repositoryId||"")){metric("denied");return "";}
         const result=await bounded(()=>host.getApprovedScopedRecall(Object.freeze({
           tenantId,agentId,repositoryRoot,issueId,jobKey})));
@@ -106,7 +107,8 @@ export function createVerifiedMemoryBridge({host,enabled=false,logger=console,ti
         // An authenticated cleanup webhook is STILL NOT proof of merge,
         // CI, reviewer permissions or issue completion. Operator service
         // independently verifies every prerequisite before any commit.
-        await bounded(()=>host.notifyIssueCompleted(Object.freeze({issueId})));
+        await bounded(()=>host.notifyIssueCompleted(Object.freeze({issueId})),
+          Math.min(timeoutMs,1500));
         metric("completion-hint-sent");
       }catch(e){metric(e?.code==="EVERIFIED_MEMORY_TIMEOUT"?"completion-hint-timeout":"completion-hint-unavailable");}
     },

@@ -11,3 +11,11 @@ This directory is a **source-only** review artifact until explicit operator acti
 - `test_authority_server.py`, `test_readiness.py`, `activation-contract.test.mjs` and `verified-memory-host.test.mjs` exercise fixed protocol, identity isolation, malicious inputs and default-denied behavior.
 
 Run the Python and Node offline tests as described in the M14 contract. The separate M12/M13 disposable PostgreSQL canary proves native persistence and new-process recall without using the production DB or any live app secrets.
+
+## M14 review hardening
+
+The source-only authority additionally requires fully root-owned and clean Git checkouts for the authority modules and for each separately pinned approved learning repository (`integrity.py`), live canonical admission matching the durable job ledger and the retained task (`admission.py` / `admitted-canonical-job.mjs`), and an exact raw manifest digest bound between IPC admission and privileged worker. The server verifies all dependencies before loading local Python modules; the Node worker uses dynamic imports only after sealing its complete executable checkout.
+
+`intent.py` persists and fsyncs completion hints before acknowledgment, blocks automatic ambiguous retries, and marks queued/running records as requiring operator reconciliation on restart. `db-gate.sql` checks the exact PostgreSQL 18 policy fingerprints, role grants and approved per-scope login mappings; `verify-db-gate-fixture.py` tests authorized and unauthorized grants against an isolated cluster. The active systemd unit uses `ProtectHome=read-only` only to inspect canonical Bridge job evidence, never to write agent files. Live service health, changed Bridge PID/release, stale sockets and incorrect unit/sandbox settings all cause readiness failure.
+
+See [M14 controlled rollout](../../docs/ABR59_M14_ACTIVATION.md) for the separate operator and production canary gates.

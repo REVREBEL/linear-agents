@@ -4,6 +4,7 @@ The authenticated main Bridge PID is pinned by the root-owned manifest. Agent
 children run under the same uid, so checking uid/group/cgroup alone is UNSAFE.
 """
 import concurrent.futures
+import hashlib
 import json
 import os
 import pathlib
@@ -18,6 +19,7 @@ import threading
 
 ROOT = "/var/lib/bridge-memory-authority"
 CODE = "/var/lib/bridge-memory-authority-code"
+INTENTS = ROOT + "/intents"
 SOCKET_DIR = "/run/bridge-memory-authority"
 SOCKET_PATH = SOCKET_DIR + "/bridge.sock"
 MANIFEST = ROOT + "/activation.json"
@@ -31,6 +33,29 @@ ISSUE = re.compile(r"^(?:[a-f0-9-]{36}|[A-Za-z]+-[0-9]+)$", re.I)
 
 class Refused(Exception):
     pass
+
+
+def sealed_code_before_import():
+    """Stdlib-only traversal; run before any local Python module executes."""
+    trusted_path(CODE, is_dir=True)
+    count = 0
+    for base, dirs, files in os.walk(CODE, followlinks=False):
+        for name in (*dirs, *files):
+            st = os.lstat(os.path.join(base, name))
+            count += 1
+            need(count < 60000 and st.st_uid == 0 and
+                 not st.st_mode & 0o022 and
+                 (stat.S_ISDIR(st.st_mode) or stat.S_ISREG(st.st_mode)))
+    need(count > 0)
+
+
+def load_helpers():
+    sealed_code_before_import()
+    global reviewed_checkout, trusted_tree, trusted_release_file, admitted_job
+    from integrity import reviewed_checkout, trusted_tree, trusted_release_file
+    from admission import admitted_job
+    global intent
+    import intent
 
 
 def need(value):
@@ -49,7 +74,7 @@ def trusted_path(filename, is_dir=False):
              else stat.S_ISREG(s.st_mode))
 
 
-def private_config(filename=MANIFEST):
+def private_config(filename=MANIFEST, with_digest=False):
     trusted_path(ROOT, is_dir=True)
     trusted_path(filename)
     need(stat.S_IMODE(os.stat(ROOT).st_mode) == 0o700)
@@ -60,20 +85,23 @@ def private_config(filename=MANIFEST):
              stat.S_IMODE(st.st_mode) == 0o600 and 0 < st.st_size <= 16384)
         raw = os.read(fd, 16385)
         need(0 < len(raw) <= 16384)
-        return checked_manifest(json.loads(raw))
+        result = checked_manifest(json.loads(raw))
+        return (result, hashlib.sha256(raw).hexdigest()) if with_digest else result
     finally:
         os.close(fd)
 
 
 def checked_manifest(m):
     need(type(m) is dict and set(m) == {"schemaVersion", "activation",
-          "bridge", "repositories", "jobs", "releaseSha"})
+          "bridge", "repositories", "sourceCheckouts", "ledgerRoot",
+          "jobs", "releaseSha"})
     need(m["schemaVersion"] == 1 and m["activation"] is True)
     bridge = m["bridge"]
-    need(type(bridge) is dict and set(bridge) == {"pid", "startTicks", "unit", "entrypoint"}
+    need(type(bridge) is dict and set(bridge) == {"pid", "startTicks", "unit", "entrypoint", "releaseSha"}
          and type(bridge["pid"]) is int and bridge["pid"] > 1
          and type(bridge["startTicks"]) is str and bridge["startTicks"].isdigit()
-         and bridge["unit"] == UNIT and type(bridge["entrypoint"]) is str
+         and bridge["unit"] == UNIT and type(bridge["releaseSha"]) is str
+         and HASH.fullmatch(bridge["releaseSha"]) and type(bridge["entrypoint"]) is str
          and bridge["entrypoint"].startswith("/var/lib/bridge-runtime/")
          and bridge["entrypoint"].endswith("/linear-agent-bridge/agent-bridge.mjs"))
     need(type(m["releaseSha"]) is str and HASH.fullmatch(m["releaseSha"]))
@@ -82,6 +110,16 @@ def checked_manifest(m):
     for root, repo in repos.items():
         need(type(root) is str and root.startswith("/") and
              os.path.normpath(root) == root and REPO.fullmatch(repo))
+    checkouts = m["sourceCheckouts"]
+    need(type(checkouts) is dict and set(checkouts) == set(repos.values()))
+    for repo, root in checkouts.items():
+        need(REPO.fullmatch(repo) and type(root) is dict and
+             set(root) == {"root", "headSha"} and
+             type(root["root"]) is str and
+             root["root"].startswith("/var/lib/bridge-memory-sources/") and
+             os.path.normpath(root["root"]) == root["root"] and
+             HASH.fullmatch(root["headSha"]))
+    need(m["ledgerRoot"] == "/home/bridge/agent-bridge/linear-agent-bridge/linear-jobs/job-state")
     jobs = m["jobs"]
     need(type(jobs) is list and 0 < len(jobs) <= 32)
     seen = set()
@@ -100,7 +138,7 @@ def checked_manifest(m):
              and REPO.fullmatch(scope["repositoryId"]) and ISSUE.fullmatch(scope["issueId"])
              and scope["repositoryId"] in repos.values())
         need(type(record["sourcePath"]) is str and
-             re.fullmatch(r"docs/verified-learnings/[A-Za-z0-9_/-]+\.(?:md|txt)", record["sourcePath"])
+             re.fullmatch(r"docs/verified-learnings/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.(?:md|txt)", record["sourcePath"])
              and "//" not in record["sourcePath"] and ".." not in record["sourcePath"])
         policy = record["policy"]
         need(type(policy) is dict and set(policy) == {"requiredChecks", "allowedCheckApps", "permittedReviewers"}
@@ -138,7 +176,8 @@ def peer_authorized(conn, manifest, main_pid_reader=current_main_pid):
     # the next Bridge runtime and impersonate approved memory requests.
     exe = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\x00")
     need(len(exe) >= 2 and exe[1].decode("utf-8") == bridge["entrypoint"])
-    trusted_path(bridge["entrypoint"])
+    need(trusted_release_file("/var/lib/bridge-runtime", bridge["entrypoint"]))
+    need(reviewed_checkout("/var/lib/bridge-runtime", bridge["releaseSha"]))
     return True
 
 
@@ -156,18 +195,24 @@ def read_message(conn):
     return json.loads(data)
 
 
-def _worker(op, key, timeout):
+def _worker(op, key, timeout, manifest_digest):
     # Never pass the caller's JSON, environment, shell, cwd or credential to
     # a privileged child. The worker independently reloads the pinned manifest.
+    checked = private_config(with_digest=True)
+    need(checked[1] == manifest_digest and reviewed_checkout(CODE, checked[0]["releaseSha"]))
+    job = next((j for j in checked[0]["jobs"] if j["jobKey"] == key), None)
+    need(job is not None and admitted_job(checked[0], job))
+    source = checked[0]["sourceCheckouts"][job["trustedJob"]["scope"]["repositoryId"]]
+    need(reviewed_checkout(source["root"], source["headSha"]))
     trusted_path(WORKER)
-    result = subprocess.run(["/usr/bin/node", WORKER, op, key], cwd=CODE,
+    result = subprocess.run(["/usr/bin/node", WORKER, op, key, manifest_digest], cwd=CODE,
         env={"PATH": "/usr/bin:/bin", "HOME": ROOT, "LANG": "C.UTF-8"},
         capture_output=True, text=True, timeout=timeout, check=True)
     need(len(result.stdout) <= 12288)
     return json.loads(result.stdout)
 
 
-def dispatch(message, manifest, worker=_worker, scheduler=None):
+def dispatch(message, manifest, worker=_worker, scheduler=None, manifest_digest=None):
     need(type(message) is dict and isinstance(message.get("op"), str))
     repos = manifest["repositories"]
     op = message["op"]
@@ -184,48 +229,63 @@ def dispatch(message, manifest, worker=_worker, scheduler=None):
         matches = [j for j in manifest["jobs"] if j["jobKey"] == message["jobKey"] and
           j["trustedJob"]["scope"] == dict(tenantId=message["tenantId"], agentId=message["agentId"],
           repositoryId=repo, issueId=message["issueId"])]
-        need(len(matches) == 1)
-        return {"ok": True, "result": worker("recall", message["jobKey"], 8)}
+        need(len(matches) == 1 and admitted_job(manifest, matches[0]))
+        need(isinstance(manifest_digest, str) and len(manifest_digest) == 64)
+        current = intent.read(message["jobKey"])
+        need(current is None or (current["state"] == "completed" and
+             current["digest"] == manifest_digest))
+        return {"ok": True, "result": worker("recall", message["jobKey"], 8, manifest_digest)}
     if op == "complete":
         need(set(message) == {"op", "issueId"} and type(message["issueId"]) is str
              and ISSUE.fullmatch(message["issueId"]))
         matching = [j for j in manifest["jobs"] if j["trustedJob"]["scope"]["issueId"] == message["issueId"]]
-        need(len(matching) == 1 and scheduler is not None)
-        scheduler(matching[0]["jobKey"], message["issueId"])
+        need(len(matching) == 1 and admitted_job(manifest, matching[0]) and scheduler is not None)
+        need(isinstance(manifest_digest, str) and len(manifest_digest) == 64)
+        scheduler(matching[0]["jobKey"], message["issueId"], manifest_digest)
         return {"ok": True, "accepted": True}
     raise Refused("authority denied")
 
 
 def serve_one(conn, executor, pending, main_pid_reader=current_main_pid):
     try:
-        manifest = private_config()
+        manifest, digest = private_config(with_digest=True)
         peer_authorized(conn, manifest, main_pid_reader)
         request = read_message(conn)
-        def schedule(key, issue):
+
+        def schedule(key, issue, digest):
             with pending["lock"]:
                 need(key not in pending["keys"])
+                created = intent.enqueue(key, digest)
+                if not created:
+                    return
                 pending["keys"].add(key)
+
             def task():
                 try:
-                    _worker("promote", key, 75)
-                    print("memory event: promotion-processed", flush=True)
+                    intent.write(key, "running", digest)
+                    _worker("promote", key, 75, digest)
+                    intent.write(key, "completed", digest)
+                    print("memory event: promotion-confirmed", flush=True)
                 except Exception:
-                    print("memory event: promotion-denied-or-reconciliation", flush=True)
+                    intent.write(key, "reconcile", digest)
+                    print("memory event: promotion-reconciliation-required", flush=True)
                 finally:
                     with pending["lock"]:
                         pending["keys"].discard(key)
+
             try:
                 executor.submit(task)
             except Exception:
+                intent.write(key, "reconcile", digest)
                 with pending["lock"]:
                     pending["keys"].discard(key)
                 raise
-        answer = dispatch(request, manifest, scheduler=schedule)
-        raw = json.dumps(answer, separators=(",", ":")).encode() + b"\n"
+
+        response = dispatch(request, manifest, scheduler=schedule, manifest_digest=digest)
+        raw = json.dumps(response, separators=(",", ":")).encode() + b"\n"
         need(len(raw) <= 12288)
         conn.sendall(raw)
     except Exception:
-        # No exception, path, credential, SQL, content or caller data is logged.
         try:
             conn.sendall(b'{"ok":false,"error":"denied"}\n')
         except Exception:
@@ -236,9 +296,11 @@ def serve_one(conn, executor, pending, main_pid_reader=current_main_pid):
 
 def main():
     need(os.geteuid() == 0 and os.getuid() == 0)
-    trusted_path(CODE, is_dir=True)
     trusted_path(__file__)
+    load_helpers()
     checked = private_config()
+    need(reviewed_checkout(CODE, checked["releaseSha"]))
+    intent.recover()
     version = subprocess.run(["/usr/bin/git", "rev-parse", "HEAD"],cwd=CODE,
         env={"PATH":"/usr/bin:/bin", "HOME":"/nonexistent", "GIT_CONFIG_NOSYSTEM":"1",
              "GIT_CONFIG_GLOBAL":"/dev/null", "GIT_NO_REPLACE_OBJECTS":"1"},
@@ -263,9 +325,22 @@ def main():
     server.listen(8)
     pending = {"keys": set(), "lock": threading.Lock()}
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        slots = threading.BoundedSemaphore(8)
+        def dispatch_bounded(client):
+            try:
+                serve_one(client, pool, pending)
+            finally:
+                slots.release()
         while True:
             client, _ = server.accept()
-            pool.submit(serve_one, client, pool, pending)
+            if not slots.acquire(blocking=False):
+                client.close()
+                continue
+            try:
+                pool.submit(dispatch_bounded, client)
+            except Exception:
+                slots.release()
+                client.close()
 
 
 if __name__ == "__main__":

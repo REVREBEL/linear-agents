@@ -48,6 +48,7 @@ while read -r reader writer user agent; do
   psql_private -v reader="$reader" -v writer="$writer" -v user_id="$user" -v agent_id="$agent" -f "$HERE/../migrations/003_memu_scope_login.sql"
   psql_private -c "ALTER ROLE \"$reader\" LOGIN; ALTER ROLE \"$writer\" LOGIN;"
 done < "$ROOT/roles"
+python3 "$HERE/../host-ipc/verify-db-gate-fixture.py" "$ROOT/socket" "$ROOT/roles"
 psql_private -At -c "SELECT has_schema_privilege('bridge','memu','USAGE'),has_table_privilege('bridge','memu.recall_files','SELECT'),has_table_privilege('bridge','memu.recall_files','INSERT');" | grep -qx 'f|f|f'
 "$NODE" "$HERE/memu-restricted-db-canary.mjs" "$ROOT" "$AUTH"
 "$PG/pg_ctl" -D "$ROOT/data" -m fast -w stop >/dev/null

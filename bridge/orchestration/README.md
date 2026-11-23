@@ -39,3 +39,5 @@ The offline coordinator recovery mode forbids ordinary admission, reconstructs t
 ## M14 — protected host implementation
 
 The proposed standalone `memory/host-ipc/verified-memory-host.mjs` can be installed as the exact root-owned `/etc/agent-bridge/verified-memory-host.mjs` client. It uses only a fixed AF_UNIX socket and bounded operations; root peer authentication pins the actual Bridge systemd MainPID, not just the agent-shared Unix uid. Its approved canonical repo mapping and per-job allowlist are root-controlled and unavailable to coding agents. No installation or service activation occurs on PR merge. See [M14](../../docs/ABR59_M14_ACTIVATION.md).
+
+M14 review correction: optional signed memory recalls have a 12.5-second Bridge deadline so an independently bounded eight-second native PostgreSQL worker can finish after IPC and file-verification overhead. The protected client caps its read at 11 seconds; repository mapping and completion hints remain limited to 1.5 seconds. A timeout never escalates authority or retries an uncertain write.

@@ -11,6 +11,13 @@ SOURCE = pathlib.Path(__file__).with_name("authority-server.py")
 spec = importlib.util.spec_from_file_location("authority_server", SOURCE)
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
+from admission import admitted_job
+from integrity import reviewed_checkout, trusted_tree, trusted_release_file
+server.admitted_job = admitted_job
+server.reviewed_checkout = reviewed_checkout
+server.trusted_tree = trusted_tree
+server.trusted_release_file = trusted_release_file
+server.intent = types.SimpleNamespace(read=lambda key: None)
 ISSUE = "ABR-59"
 REPO = "REVREBEL/linear-agents"
 ENTRYPOINT = "/var/lib/bridge-runtime/linear-agent-bridge/agent-bridge.mjs"
@@ -21,8 +28,12 @@ def fixture():
         "schemaVersion": 1, "activation": True,
         "releaseSha": "a" * 40,
         "bridge": {"pid": os.getpid(), "startTicks": "10000",
-                   "unit": "agent-bridge.service", "entrypoint": ENTRYPOINT},
+                   "unit": "agent-bridge.service", "entrypoint": ENTRYPOINT,
+                   "releaseSha": "d" * 40},
         "repositories": {"/home/bridge/agent-bridge": REPO},
+        "sourceCheckouts": {REPO: {"root": "/var/lib/bridge-memory-sources/linear-agents",
+                                   "headSha": "c" * 40}},
+        "ledgerRoot": "/home/bridge/agent-bridge/linear-agent-bridge/linear-jobs/job-state",
         "jobs": [{"jobKey": "qwen:delivery-id", "trustedJob": {
             "jobId": "pinned-job", "scope": {
               "tenantId": "workspace", "agentId": "qwen",
@@ -64,6 +75,9 @@ class ManifestTests(unittest.TestCase):
 class AuthorizationTests(unittest.TestCase):
     def setUp(self):
         self.config = server.checked_manifest(fixture())
+        self.admission_patch = patch.object(server, "admitted_job", return_value=True)
+        self.admission_patch.start()
+        self.addCleanup(self.admission_patch.stop)
 
     def test_recall_limited_to_exact_pinned_job_and_four_dimensions(self):
         work_calls = []
@@ -74,17 +88,18 @@ class AuthorizationTests(unittest.TestCase):
         request = {"op": "recall", "tenantId": "workspace", "agentId": "qwen",
                    "repositoryRoot": "/home/bridge/agent-bridge", "issueId": ISSUE,
                    "jobKey": "qwen:delivery-id"}
-        self.assertTrue(server.dispatch(request, self.config, worker=work)["ok"])
-        self.assertEqual(work_calls, [("recall", "qwen:delivery-id", 8)])
+        self.assertTrue(server.dispatch(request, self.config, worker=work,
+                                         manifest_digest="a"*64)["ok"])
+        self.assertEqual(work_calls, [("recall", "qwen:delivery-id", 8, "a"*64)])
         for k, v in [("tenantId", "other"), ("agentId", "other"),
                      ("repositoryRoot", "/home/bridge/other"), ("issueId", "ABR-60"),
                      ("jobKey", "other:delivery-id")]:
             with self.subTest(key=k):
                 with self.assertRaises(server.Refused):
-                    server.dispatch({**request, k: v}, self.config, worker=work)
+                    server.dispatch({**request, k: v}, self.config, worker=work, manifest_digest="a"*64)
         with self.assertRaises(server.Refused):
             server.dispatch({**request, "sourcePath": "docs/verified-learnings/evil.md"},
-                            self.config, worker=work)
+                            self.config, worker=work, manifest_digest="a"*64)
         self.assertEqual(len(work_calls), 1)
 
     def test_repo_mapping_independently_pinned(self):
@@ -97,11 +112,11 @@ class AuthorizationTests(unittest.TestCase):
     def test_completion_is_only_hint_for_exact_unique_issue(self):
         calls = []
         self.assertEqual(server.dispatch({"op": "complete", "issueId": ISSUE}, self.config,
-            scheduler=lambda *x: calls.append(x)), {"ok": True, "accepted": True})
-        self.assertEqual(calls, [("qwen:delivery-id", ISSUE)])
+            scheduler=lambda *x: calls.append(x), manifest_digest="a"*64), {"ok": True, "accepted": True})
+        self.assertEqual(calls, [("qwen:delivery-id", ISSUE, "a"*64)])
         with self.assertRaises(server.Refused):
             server.dispatch({"op": "complete", "issueId": "ABR-60"}, self.config,
-                scheduler=lambda *x: calls.append(x))
+                scheduler=lambda *x: calls.append(x), manifest_digest="a"*64)
         with self.assertRaises(server.Refused):
             server.dispatch({"op": "complete", "issueId": ISSUE}, self.config)
         self.assertEqual(len(calls), 1)
@@ -122,7 +137,9 @@ class AuthorizationTests(unittest.TestCase):
                  patch.object(server, "process_start_ticks", return_value="10000"), \
                  patch.object(server.pathlib.Path, "read_text", mock_text), \
                  patch.object(server.pathlib.Path, "read_bytes", mock_bytes), \
-                 patch.object(server, "trusted_path"):
+                 patch.object(server, "trusted_path"), \
+                 patch.object(server, "trusted_release_file", return_value=True), \
+                 patch.object(server, "reviewed_checkout", return_value=True):
                 self.assertTrue(server.peer_authorized(accepted, self.config,
                     main_pid_reader=lambda: os.getpid()))
                 with self.assertRaises(server.Refused):

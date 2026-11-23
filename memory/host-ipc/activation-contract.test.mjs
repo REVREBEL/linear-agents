@@ -10,7 +10,10 @@ const record={jobKey:"qwen:delivery",trustedJob:job,
     permittedReviewers:["independent"]},
   sourcePath:"docs/verified-learnings/approved.md"};
 function manifest(){return {schemaVersion:1,activation:true,releaseSha:"b".repeat(40),
-  repositories:{"/home/bridge/agent-bridge":"REVREBEL/linear-agents"},jobs:[structuredClone(record)]};}
+  repositories:{"/home/bridge/agent-bridge":"REVREBEL/linear-agents"},
+  sourceCheckouts:{"REVREBEL/linear-agents":{root:"/var/lib/bridge-memory-sources/linear-agents",
+    headSha:"c".repeat(40)}},
+  ledgerRoot:"/home/bridge/agent-bridge/linear-agent-bridge/linear-jobs/job-state",jobs:[structuredClone(record)]};}
 test("pins operator-approved job and isolates caller return object",()=>{
   const result=selectPinnedMemoryJob(manifest(),"recall","qwen:delivery");
   assert.deepEqual(result,record);
