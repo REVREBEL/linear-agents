@@ -74,7 +74,7 @@ separate `agent-bridge-sealed.service` identity.
 
 Before deployment, run `launch-sealed-bridge.sh --preflight` as the Bridge
 user to check the sealed environment, the exact existing canonical runtime
-symlink target (`/opt/workspaces/bridge/agent-bridge/linear-agent-bridge`),
+symlink target (`/opt/workspaces/linear-agents/linear-agent-bridge`),
 and at least one prior `linear-jobs/job-state/*/state.json`. An absent,
 replaced or empty ledger causes startup refusal; the launcher cannot initialize
 a new empty ledger under an alternate directory. Preflight exits without
@@ -87,3 +87,13 @@ to avoid PATH-injected replacements. The executable remains root-owned
 Volta shim at `/opt/global-tools/volta/bin/node`. The sealed launcher requires
 system Node 20+ and fails closed without it; Volta remains available to
 regular agent CLI processes.
+
+### November 23 workspace relocation
+
+The live Bridge workspace is now physically located at
+`/opt/workspaces/linear-agents`, and `/home/bridge/agent-bridge` is a
+root-owned compatibility symlink. The reviewed launcher pins the **actual**
+`/opt/workspaces/linear-agents/linear-agent-bridge` root, preserving the 104
+existing job-state records. If the physical workspace moves again, re-review
+the expected path and its immutable runtime boundary; never weaken this
+check to accept an arbitrary existing or empty directory.

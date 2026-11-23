@@ -79,7 +79,7 @@ class StrictGateTests(unittest.TestCase):
               "DropInPaths":dropin,"User":"root","Group":group,
               "NoNewPrivileges":"yes","ProtectSystem":"strict",
               "ProtectHome":"read-only","PrivateTmp":"yes","ActiveState":state,
-              "MainPID":"123","ExecStart":"/usr/bin/python3 /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py"}
+              "MainPID":"123","ExecStart":"/usr/bin/python3 -B /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py"}
             return types.SimpleNamespace(returncode=0,
                 stdout="\n".join(k+"="+v for k,v in values.items()))
         with patch.object(checks,"protected_file",return_value=True), \
@@ -144,10 +144,18 @@ class ActiveAuthorityCapabilitiesTests(unittest.TestCase):
             "NoNewPrivileges":"yes","ProtectSystem":"strict",
             "ProtectHome":"read-only","PrivateTmp":"yes",
             "ActiveState":"active","MainPID":"123",
-            "ExecStart":"/usr/bin/python3 /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py"}
+            "ExecStart":"/usr/bin/python3 -B /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py"}
         output="\n".join(k+"="+v for k,v in values.items())
         result=types.SimpleNamespace(returncode=0,stdout=output)
         with patch.object(checks,"protected_file",return_value=True), \
              patch.object(checks.pathlib.Path,"read_bytes",return_value=b"reviewed"), \
              patch.object(checks,"authority_effective_capabilities",return_value=False):
             self.assertFalse(checks.systemd_unit_exists(run=lambda *a,**k:result))
+
+class ImmutableOperatorBytecodeTests(unittest.TestCase):
+    def test_reviewed_authority_unit_disables_python_bytecode_writes(self):
+        text=(pathlib.Path(__file__).resolve().parent /
+              "verified-memory-authority.service").read_text()
+        self.assertIn("Environment=PYTHONDONTWRITEBYTECODE=1",text)
+        self.assertIn("ExecStart=/usr/bin/python3 -B ",text)
+        self.assertNotIn("ExecStart=/usr/bin/python3 /var/lib",text)

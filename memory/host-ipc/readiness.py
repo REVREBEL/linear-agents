@@ -306,7 +306,7 @@ def systemd_unit_exists(run=subprocess.run):
         pid = int(values.get("MainPID","0"))
         if pid <= 1 or not authority_effective_capabilities(pid):
             return False
-        expected = "/usr/bin/python3 " + CODE + "/memory/host-ipc/authority-server.py"
+        expected = "/usr/bin/python3 -B " + CODE + "/memory/host-ipc/authority-server.py"
         return expected in values.get("ExecStart","")
     except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
         return False

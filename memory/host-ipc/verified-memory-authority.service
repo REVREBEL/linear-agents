@@ -9,7 +9,9 @@ User=root
 Group=bridge
 UMask=0077
 WorkingDirectory=/var/lib/bridge-memory-authority-code
-ExecStart=/usr/bin/python3 /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py
+# No ignored Python cache files in an exact SHA-pinned root checkout.
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -B /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=yes

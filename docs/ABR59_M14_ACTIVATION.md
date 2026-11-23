@@ -118,3 +118,23 @@ The readiness gate reads the actual root authority process capabilities
 from `/proc/<pid>/status`, requiring `CapEff`, `CapPrm` and `CapBnd` to
 equal only `CAP_DAC_READ_SEARCH`. An updated systemd unit without a restarted
 matching process cannot count as activated.
+
+### November 23 live-host reconciliation
+
+The writable workspace moved after the earlier rollout review:
+`/home/bridge/agent-bridge` now resolves through a root-owned compatibility
+symlink to `/opt/workspaces/linear-agents`. The reviewed sealed launcher pins
+the new physical `linear-agent-bridge` runtime directory and refuses a
+redirected or empty job ledger.
+
+Operator diagnostics had generated ignored `__pycache__` files in the
+root-owned memory-authority checkout, which made the strict verified-checkout
+guard fail despite a matching Git SHA. Those generated files were removed;
+the reviewed root service now uses `python3 -B` plus
+`PYTHONDONTWRITEBYTECODE=1` to preserve the clean-checkout invariant.
+
+The earlier M11 evidence canary does not match a completed canonical Bridge
+job in the current ledger. A fresh, actually admitted and independently
+reviewed job is required to prove the final M14 live promotion and new-session
+recall. Do not use the prior M11 record or a synthetic fixture as a
+replacement for an admitted Bridge identity.
