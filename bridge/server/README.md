@@ -17,3 +17,7 @@ Legacy AGY quota retry recovery remains per-record, independent of managed submi
 ## ABR-17 M5 — Managed startup gate
 
 The managed flag also requires successful strict non-root sandbox probe, clean release identity and root-owned host verifyActivation approval. Existing default-off operation remains unchanged. Offline recovery needs an inactive service, verified quiescence and a held exclusive lease.
+
+## M13 memory source integration
+
+`BRIDGE_VERIFIED_MEMORY_ENABLED=true` opts into the reviewed root-owned **non-credential** host-client binding. Missing/untrusted binding fails startup rather than falling back to an agent-writable source, while the unset/default-off flag preserves existing service behavior. Only the existing local task-preparation and authenticated issue-completion handlers consume the client; no root credentials or DB write access enter the bridge process. The host service, separate OS access boundary and M12 rollout are M14 gates. See [M13 contract](../../docs/ABR59_VERIFIED_MEMORY_LIFECYCLE.md).

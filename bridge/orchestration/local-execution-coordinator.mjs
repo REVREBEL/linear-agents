@@ -18,6 +18,7 @@ import { dispatchGeminiAgent } from "../../jobs/dispatch/gemini-dispatch.mjs";
 export async function coordinateLocalExecution({
   job, route, agent, jobKey, safeJobId, credential, host,
   jobStore, activeTaskMemory, drainProgressWrites, retrieveMemuMemory,
+  loadVerifiedMemoryReference = null,
   extractDirectTask, extractPromptContext, extractAgentSessionId,
   agySessionQueue, readAgyProjectConversation, saveAgyProjectConversation,
   recordResumedConversation, startAntigravity,
@@ -40,7 +41,7 @@ export async function coordinateLocalExecution({
   const { workspace, filename, routedJob } = await prepareTask({
     job, route, agent, jobKey, safeJobId, jobStore,
     activeTaskMemory, drainProgressWrites, retrieveMemuMemory,
-    extractDirectTask, extractPromptContext,
+    loadVerifiedMemoryReference,extractDirectTask, extractPromptContext,
   });
   jobStore = withLocalAgentCheckpoint({ jobStore, memory: activeTaskMemory, jobKey, agent, logger });
   logger.log("\nLinear job received");

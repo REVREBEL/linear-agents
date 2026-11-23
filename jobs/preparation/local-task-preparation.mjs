@@ -13,6 +13,7 @@ export async function prepareLocalAgentTask({
   job, route, agent, jobKey, safeJobId, jobStore,
   activeTaskMemory, drainProgressWrites, retrieveMemuMemory,
   extractDirectTask, extractPromptContext, logger = console,
+  loadVerifiedMemoryReference = null,
 }) {
     const workspace = route.launchDirectory;
     const taskDir = path.join(route.repositoryRoot, ".linear-agent", "projects", route.scopeKey, "inbox");
@@ -86,7 +87,23 @@ export async function prepareLocalAgentTask({
     const approvedDigest = approvedFactoryBrainDigest(brainScope,
       process.env.FACTORY_BRAIN_APPROVALS_JSON || "");
     const factoryBrain = await loadFactoryBrain({ ...brainScope, approvedDigest });
-    const directTask = [factoryBrain, recovery, originalTask].filter(Boolean).join("\n\n");
+    // Optional M13 host-mediated signed memory references, never unscoped
+    // memU CLI results. Failure only omits the reference, not the job.
+    let verifiedMemoryReference = "";
+    if (typeof loadVerifiedMemoryReference === "function") {
+      try {
+        verifiedMemoryReference = await loadVerifiedMemoryReference({
+          tenantId: requestedScope.tenantId,agentId:agent,
+          repositoryRoot:route.repositoryRoot,issueId,jobKey,
+        });
+        if (typeof verifiedMemoryReference !== "string" ||
+            verifiedMemoryReference.length > 3000) verifiedMemoryReference = "";
+      } catch {
+        logger.warn?.("[verified memory] reference unavailable");
+      }
+    }
+    const directTask = [factoryBrain, recovery, verifiedMemoryReference, originalTask]
+      .filter(Boolean).join("\n\n");
     // Persist and dispatch one canonical prompt. The raw Linear webhook embeds
     // the same issue in agentSession.issue and promptContext; keeping it
     // duplicates instructions and unnecessarily expands downstream context.

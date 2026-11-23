@@ -3,6 +3,7 @@ import { MANAGED_PROVIDERS } from "../orchestration/managed-submission-runner.mj
 import { createHttpRouteComposer } from "./http-route-composition.mjs";
 import { coordinateRemoteExecution } from "../orchestration/remote-execution-coordinator.mjs";
 import { coordinateLocalExecution } from "../orchestration/local-execution-coordinator.mjs";
+import {createVerifiedMemoryBridge,loadVerifiedMemoryBridgeHost} from "../orchestration/verified-memory-bridge.mjs";
 import { coordinateJobAdmission } from "../orchestration/job-admission-coordinator.mjs";
 import { createAgyProjectConversationStore } from "../../conversations/agy-project-conversations.mjs";
 import { createAgentHostResolver } from "../config/agent-host-resolver.mjs";
@@ -277,6 +278,14 @@ if (process.env.BRIDGE_MANAGED_SUBMISSION_ENABLED === "true") {
   });
 }
 
+// M13 is inert until the operator separately enables the flag and installs
+// a root-owned binding to the protected authority service. Never run native
+// memU or read operator credentials directly in this non-root Bridge process.
+const verifiedMemory=process.env.BRIDGE_VERIFIED_MEMORY_ENABLED==="true"
+  ? createVerifiedMemoryBridge({enabled:true,
+      host:await loadVerifiedMemoryBridgeHost()})
+  : createVerifiedMemoryBridge();
+
 const recovered = await jobStore.reconcile();
 if (recovered) console.warn(`Marked ${recovered} unfinished jobs interrupted; manual reconciliation required.`);
 
@@ -347,6 +356,7 @@ const handleIssueCompletionRoute = createIssueCompletionRoute({
   jobStore,
   cleanupMacTrae,
   osxProjectsRoot: OSX_PROJECTS_ROOT,
+  onIssueCompletionHint: verifiedMemory.enabled?verifiedMemory.completionHint:null,
 });
 
 // Route precedence remains diagnostics, Shortcuts, review, GitHub,
@@ -407,6 +417,7 @@ const server = http.createServer(async (request, response) => {
       job, route, agent, jobKey, safeJobId, credential, host,
       managedSubmission:managed ? managedSubmission : null,
       jobStore, activeTaskMemory, drainProgressWrites, retrieveMemuMemory,
+      loadVerifiedMemoryReference:verifiedMemory.enabled?verifiedMemory.loadForTask:null,
       extractDirectTask, extractPromptContext, extractAgentSessionId,
       agySessionQueue, readAgyProjectConversation, saveAgyProjectConversation,
       recordResumedConversation, startAntigravity,

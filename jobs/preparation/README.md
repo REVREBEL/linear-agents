@@ -18,3 +18,7 @@ At local admission, an independently operator-approved private Factory Brain fil
 ## Scoped checkpoint recovery (ABR-90 M1)
 
 Local admission injects bounded, non-authoritative checkpoint context only when tenant, agent, repository and issue match. Ownership changes or expired checkpoints clear prior session-derived state before fresh progress is recorded. Revision checks prevent adopting a concurrently modified checkpoint; this does not provide independent per-agent storage isolation.
+
+## ABR-59 M13 — optional verified reference injection
+
+With `BRIDGE_VERIFIED_MEMORY_ENABLED=true` and a separately approved root-owned host **client** binding, the local task-preparation coordinator calls the trusted scoped read hook after admission, using the current tenant, agent, canonical route root, issue and durable job key; the independently pinned host mapping must match the returned canonical GitHub repository ID. It injects at most five separately signed/validated memories in a visibly labeled lower-trust **reference** block, before the original task, never as execution or review authority. Missing/expired/mutated/foreign results, transport errors and timeouts omit references and preserve the original prompt, job ledger and launch. Legacy CLI recall continues to be withheld. The Bridge cannot load root keys or directly access the M12 writer. See [M13 contract](../../docs/ABR59_VERIFIED_MEMORY_LIFECYCLE.md).

@@ -59,8 +59,8 @@ start
 PGDATABASE=postgres psql_private -c 'CREATE DATABASE abr59_m12_restore;'
 "$PG/pg_restore" --exit-on-error --dbname=abr59_m12_restore "$ROOT/restore.dump"
 read -r restore_reader restore_writer restore_user restore_agent < "$ROOT/roles"
-PGDATABASE=abr59_m12_restore PGUSER="$restore_reader" psql_private -At -c 'SELECT count(*) FROM memu.recall_files; SELECT count(*) FROM memu.recall_file_segments;' | grep -qx 3
-PGDATABASE=abr59_m12_restore PGUSER="$restore_reader" psql_private -At -c 'SELECT count(*) FROM memu.recall_file_segments;' | grep -qx 2
+PGDATABASE=abr59_m12_restore PGUSER="$restore_reader" psql_private -At -c 'SELECT count(*) FROM memu.recall_files; SELECT count(*) FROM memu.recall_file_segments;' | grep -qx 4
+PGDATABASE=abr59_m12_restore PGUSER="$restore_reader" psql_private -At -c 'SELECT count(*) FROM memu.recall_file_segments;' | grep -qx 3
 if PGDATABASE=abr59_m12_restore PGUSER="$restore_reader" psql_private -c "UPDATE memu.recall_files SET content='denied'" >/dev/null 2>&1; then
   echo 'Restored reader unexpectedly writes' >&2; exit 1
 fi
@@ -70,5 +70,5 @@ read -r reader writer user agent < "$ROOT/roles"
 if PGUSER="$reader" psql_private -c 'SELECT count(*) FROM memu.recall_files' >/dev/null 2>&1; then
   echo 'Disabled role still connects' >&2; exit 1
 fi
-psql_private -At -c 'SELECT count(*) FROM memu.recall_files' | grep -qx 7
+psql_private -At -c 'SELECT count(*) FROM memu.recall_files' | grep -qx 8
 echo 'PASS: restricted native memU PostgreSQL initial/restart, fail-closed rollback and preserved rows'

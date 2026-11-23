@@ -9,6 +9,7 @@ import { readBody, sendJson } from "../server/http-helpers.mjs";
  */
 export function createIssueCompletionRoute({
   sharedSecret, jobStore, cleanupMacTrae, osxProjectsRoot,
+  onIssueCompletionHint = null,
 }) {
   return async function handleIssueCompletionRoute(request, response, { url }) {
     if (request.method !== "POST" || url.pathname !== "/issue-completed") return false;
@@ -45,6 +46,12 @@ export function createIssueCompletionRoute({
       await fs.unlink(file).catch(error => { if (error.code !== "ENOENT") throw error; });
       await jobStore.transition(record.key, record.state, { inboxClearedAt: new Date().toISOString() });
       cleaned++;
+    }
+    // Notification is advisory only; the operator must independently check
+    // the actual GitHub PR/CI/review and Linear completion evidence.
+    if (typeof onIssueCompletionHint === "function") {
+      try { await onIssueCompletionHint({issueId}); }
+      catch { /* memory failures must not block legitimate cleanup */ }
     }
     sendJson(response, 200, { ok: true, issueId, cleaned });
     return true;
