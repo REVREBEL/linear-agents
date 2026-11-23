@@ -19,7 +19,7 @@ import {
 export async function coordinateJobAdmission({
   headers, rawBody, job, host, agent,
   sharedSecret, resolveJobRoute, syncLinearCredential, checkOpenCodeReady,
-  jobStore, agentJobDirs,
+  jobStore, agentJobDirs, managedSubmission = false,
   identifyDelivery = identifyLinearJobDelivery,
   preflight = preflightLinearJob,
   duplicateResponseFor = linearJobDuplicateResponse,
@@ -33,12 +33,13 @@ export async function coordinateJobAdmission({
   // readiness have completed. Failed preflight remains safely retryable.
   const { route, credential, rejection } = await preflight({
     job, agent, sharedSecret, resolveJobRoute,
-    syncLinearCredential, checkOpenCodeReady,
+    syncLinearCredential, checkOpenCodeReady, ...(managedSubmission ? { managedSubmission } : {}),
   });
   if (rejection) return { response: rejection };
 
   const claimed = await jobStore.claim(jobKey, {
     agent, deliveryId: String(deliveryId), jobId: safeJobId,
+    ...(managedSubmission ? { submissionMode: "managed" } : {}),
   });
   // Only unlaunched "received" claims can finish an interrupted unrouted
   // task write. A launched or ambiguous agent is never replayed here.

@@ -45,3 +45,19 @@ The local `server/mcp-relay/` fixture optionally requires cryptographically vali
 ## ABR-17 — Submission lifecycle
 
 `orchestration/submission-coordinator.mjs` is an opt-in M1 source library. It binds externally verified coding admission to the canonical job store, records durable intent before each external adapter, and separates publication, Linear In Review, review queueing and session completion. No live caller is installed. See [M1 contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+## ABR-17 M2 — Submission capability and preflight
+
+The opt-in `orchestration/submission-ingress.mjs`, `handlers/submission-channel.mjs` and `orchestration/submission-git-preflight.mjs` reuse the canonical job ledger and Linux sandbox. Launcher-bound scopes and current capability liveness remain enforced across M1 effects. No additional server or production route is started. See [submission contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+## ABR-17 M3 — Provider handoff
+
+`orchestration/submission-publication.mjs` composes the existing coordinator, host-only GitHub/Linear/Worker adapters and review inbox. Before any new publication or downstream mutation it revalidates exact head/readiness and job capability. Draft PRs remain pending; review queueing is not reviewer ACK. See [submission contract](../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+## ABR-17 M4 — Managed dispatch integration
+
+The existing authenticated /jobs route may select the managed submission service for AGY, Trae or OpenCode. It bypasses legacy credential persistence and callbacks, shares the canonical submission outbox with the ABR-99 source adapter, and requires a separate approved native host launcher. Disabled by default.
+
+## ABR-17 M5 — Recovery boundary
+
+Managed runtime and offline operator recovery share an exclusive service-ledger lease. Startup requires explicit protected approval and real service-UID sandbox success. Offline recovery observes only the exact pending receipt, not a publication retry.

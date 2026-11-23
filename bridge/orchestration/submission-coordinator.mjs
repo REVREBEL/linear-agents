@@ -33,8 +33,8 @@ function summarize(value) {
   return sanitizeCheckpointText(value).replace(/[\u0000-\u001f\u007f]+/g,' ')
     .replace(/\s+/g,' ').slice(0,1500).trim();
 }
-function assertJob(job,s,{closed=false}={}) {
-  if(!job||(!ACTIVE.has(job.state)&&!(closed&&job.state==='completed'))||
+function assertJob(job,s,{closed=false,failed=false,recovering=false}={}) {
+  if(!job||(!ACTIVE.has(job.state)&&!(closed&&job.state==='completed')&&!(failed&&job.state==='failed')&&!(recovering&&['interrupted','awaiting_external'].includes(job.state)))||
      job.key!==s.jobKey||job.agentSessionId!==s.sessionId||job.issueId!==s.issueUuid||
      job.issueIdentifier!==s.issueIdentifier||job.tenantId!==s.tenantId||
      job.agent!==s.agentId||job.executionHost!==s.hostId||
@@ -104,26 +104,30 @@ function checkReceipt(step,value,s,row) {
   }
   throw Error('INVALID_SUBMISSION_STAGE');
 }
-export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,verifyRecovery=null,adapters,enabled=false,now=Date.now}) {
-  if(typeof jobStore?.get!=='function'||
-     ['claim','get','intent','advance'].some(name=>typeof outbox?.[name]!=='function')||
-     typeof verifyAdmission!=='function'||
+export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,isAdmissionLive=()=>true,verifyRecovery=null,adapters,enabled=false,operatorRecovery=null,now=Date.now}) {
+  if(typeof jobStore?.get!=="function"||
+     ["claim","get","intent","advance"].some(name=>typeof outbox?.[name]!=="function")||
+     typeof verifyAdmission!=="function"||typeof isAdmissionLive!=="function"||
      !adapters||Object.values(methods).some(name=>typeof adapters[name]!=='function'))
     throw TypeError('TRUSTED_SUBMISSION_ADAPTERS_REQUIRED');
+  if(operatorRecovery!==null && (typeof operatorRecovery.verify!=='function' ||
+    typeof operatorRecovery.assertExclusive!=='function' || typeof operatorRecovery.assertQuiescent!=='function' || typeof jobStore.transition!=='function'))
+    throw TypeError('OPERATOR_RECOVERY_BOUNDARY_REQUIRED');
   const handles=new WeakMap();
   async function bind(evidence) {
-    if(!enabled) throw Error('SUBMISSION_DISABLED');
+    if(!enabled||operatorRecovery) throw Error('SUBMISSION_DISABLED');
     const s=freezeScope(await verifyAdmission(evidence),now);
     const prior=outbox.get(key(s));
-    assertJob(await jobStore.get(s.jobKey),s,{closed:prior?.stage==='session_closed'});
-    if(s.expiresAt<=now()) throw Error('UNVERIFIED_SUBMISSION_ADMISSION');
+    assertJob(await jobStore.get(s.jobKey),s,{closed:prior?.stage==='session_closed',failed:['blocked','failed'].includes(prior?.stage)});
+    if(s.expiresAt<=now()||isAdmissionLive(evidence)!==true) throw Error('UNVERIFIED_SUBMISSION_ADMISSION');
     const handle=Object.freeze({});
-    handles.set(handle,s);
+    handles.set(handle,{scope:s,evidence});
     return handle;
   }
   function requireHandle(handle) {
-    const s=handles.get(handle);
-    if(!enabled||!s||s.expiresAt<=now()) throw Error('SUBMISSION_CAPABILITY_REQUIRED');
+    const entry=handles.get(handle),s=entry?.scope;
+    if(!enabled||!s||s.expiresAt<=now()||isAdmissionLive(entry.evidence)!==true)
+      throw Error('SUBMISSION_CAPABILITY_REQUIRED');
     return s;
   }
   function key(s) {
@@ -145,7 +149,7 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
     let row=outbox.claim({id,issueScope:digest([s.tenantId,s.issueUuid]),head:s.headSha,
       data:{summary,scopeDigest,publicationScope}}).record;
     // The claim may have been won by another process after our read.
-    if(row.summary!==summary||row.scopeDigest!==scopeDigest)
+    if(row.failureOutcome||row.summary!==summary||row.scopeDigest!==scopeDigest)
       throw Error('SUBMISSION_RECEIPT_CONFLICT');
     while(nextStep.has(row.stage)) {
       if(row.pending) return result(row);
@@ -164,7 +168,8 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
           const context=Object.freeze({scope:s,summary:row.summary,
             github:row.github?Object.freeze({...row.github}):null,
             previousPr:row.previousPr?Object.freeze({...row.previousPr}):null,
-            operationId:digest([id,next])});
+            operationId:digest([id,next]),
+            authorize:async()=>{requireHandle(handle);assertJob(await jobStore.get(s.jobKey),s);requireHandle(handle);}});
           requireHandle(handle);
           const receipt=await adapters[methods[next]](context);
           patch=checkReceipt(next,receipt,s,row);
@@ -187,7 +192,8 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
     assertJob(await jobStore.get(s.jobKey),s);
     requireHandle(handle);
     const observation=await verifyRecovery(evidence,Object.freeze({
-      scope:s,submissionId:id,stage:row.pending,operationId:digest([id,row.pending]),
+      scope:s,summary:row.summary,submissionId:id,stage:row.pending,operationId:digest([id,row.pending]),
+      authorize:async()=>{requireHandle(handle);assertJob(await jobStore.get(s.jobKey),s);requireHandle(handle);},
       github:row.github?Object.freeze({...row.github}):null,
       previousPr:row.previousPr?Object.freeze({...row.previousPr}):null,
     }));
@@ -197,8 +203,104 @@ export function createSubmissionCoordinator({jobStore,outbox,verifyAdmission,ver
     requireHandle(handle);
     assertJob(await jobStore.get(s.jobKey),s);
     requireHandle(handle);
-    const patch=row.pending==='validated'?{}:checkReceipt(row.pending,observation.receipt,s,row);
+    const patch=row.pending==='validated'?{}:
+      ['failed','blocked'].includes(row.pending)?failureReceipt(observation.receipt,s,row.pending):
+      checkReceipt(row.pending,observation.receipt,s,row);
     return result(outbox.advance(id,row.stage,row.pending,patch));
   }
-  return Object.freeze({bind,submit,reconcilePending,revoke:handle=>handles.delete(handle)});
+  function failureReceipt(value,s,outcome){
+    if(!value||value.verified!==true||value.sessionId!==s.sessionId||
+       value.agentId!==s.agentId||value.status!=='failed')throw Error('UNVERIFIED_FAILED_SESSION');
+    return {completion:{status:'failed'},outcome};
+  }
+  // Explicit failure from a trusted runner, not an interpretation of tool
+  // text or a timeout. Never publishes or moves an issue to In Review.
+  async function submitFailure(handle,{issueId,summary,outcome}={}){
+    const s=requireHandle(handle),id=key(s);
+    if(!['blocked','failed'].includes(outcome)||![s.issueUuid,s.issueIdentifier].includes(issueId)||
+      typeof adapters.closeFailedSession!=='function')throw Error('FAILED_SUBMISSION_DENIED');
+    const text=summarize(summary);
+    const existing=outbox.get(id);
+    assertJob(await jobStore.get(s.jobKey),s,{failed:['blocked','failed'].includes(existing?.stage)});
+    requireHandle(handle);
+    const row=outbox.claim({id,issueScope:digest([s.tenantId,s.issueUuid]),head:s.headSha,
+      data:{summary:text,scopeDigest:digest(scopeFields.map(k=>s[k])),
+        publicationScope:digest([s.repository,s.branch,s.base,s.installationId,s.appId]),failureOutcome:outcome}}).record;
+    if(row.failureOutcome!==outcome||row.summary!==text||row.scopeDigest!==digest(scopeFields.map(k=>s[k])))
+      throw Error('FAILURE_SUBMISSION_CONFLICT');
+    if(row.stage===outcome||row.pending===outcome)return result(row);
+    if(row.stage!=='received'||row.pending||!outbox.intent(id,'received',outcome))throw Error('FAILURE_SUBMISSION_CONFLICT');
+    try{
+      const authorize=async()=>{requireHandle(handle);assertJob(await jobStore.get(s.jobKey),s);requireHandle(handle);};
+      await authorize();
+      const receipt=await adapters.closeFailedSession(Object.freeze({scope:s,summary:text,outcome,
+        operationId:digest([id,outcome]),authorize}));
+      return result(outbox.advance(id,'received',outcome,failureReceipt(receipt,s,outcome)));
+    }catch{return result(outbox.get(id));}
+  }
+  // Operator-only restart recovery. No live runner handle is minted and
+  // no publication adapter is invoked. An exclusive offline lease and
+  // independently approved exact receipt are required for every operation.
+  async function recoverInterrupted(jobKey,evidence){
+    if(!enabled||!operatorRecovery||typeof verifyRecovery!=='function'||!valid(jobKey))
+      throw Error('OPERATOR_RECOVERY_DENIED');
+    const exclusive=()=>{if(operatorRecovery.assertExclusive()!==true)throw Error('OPERATOR_RECOVERY_DENIED');};
+    exclusive();
+    const job=await jobStore.get(jobKey);
+    if(!job||job.submissionMode!=='managed'||!['interrupted','awaiting_external'].includes(job.state)||
+      operatorRecovery.assertQuiescent(job)!==true)
+      throw Error('OPERATOR_RECOVERY_JOB_NOT_QUIESCENT');
+    const s=freezeScope({role:'coding',jobKey,sessionId:job.agentSessionId,
+      issueUuid:job.issueId,issueIdentifier:job.issueIdentifier,tenantId:job.tenantId,
+      agentId:job.agent,hostId:job.executionHost,repository:job.repositoryId,
+      repositoryRoot:job.repositoryRoot,branch:job.branch,base:job.baseBranch,
+      appId:job.githubAppId,installationId:job.githubInstallationId,
+      cycle:job.submissionCycle,headSha:job.expectedHeadSha,expiresAt:now()+60_000},now);
+    assertJob(job,s,{recovering:true});
+    const id=key(s),row=outbox.get(id);
+    if(!row||row.scopeDigest!==digest(scopeFields.map(k=>s[k]))||
+      (job.submissionId&&job.submissionId!==id))throw Error('OPERATOR_RECOVERY_JOURNAL_MISMATCH');
+    const terminal=['session_closed','failed','blocked'].includes(row.stage)&&row.pending===null;
+    const target=row.pending||(terminal?row.stage:null);
+    if(!target)throw Error('OPERATOR_RECOVERY_CONTINUATION_REQUIRED');
+    const approval=Object.freeze({jobKey,submissionId:id,stage:target,
+      operationId:digest([id,target]),headSha:s.headSha,scope:s});
+    if(await operatorRecovery.verify(evidence,approval)!==true)
+      throw Error('OPERATOR_RECOVERY_NOT_AUTHORIZED');
+    const authorize=async()=>{
+      exclusive();
+      if(s.expiresAt<=now())throw Error('OPERATOR_RECOVERY_DENIED');
+      const current=await jobStore.get(jobKey);
+      assertJob(current,s,{recovering:true});
+      if(current.submissionMode!=='managed'||operatorRecovery.assertQuiescent(current)!==true||
+        current.state!==job.state||current.updatedAt!==job.updatedAt)throw Error('OPERATOR_RECOVERY_JOB_CHANGED');
+      exclusive();
+    };
+    await authorize();
+    const observation=await verifyRecovery(evidence,Object.freeze({
+      ...approval,summary:row.summary,authorize,
+      github:row.github?Object.freeze({...row.github}):null,
+      previousPr:row.previousPr?Object.freeze({...row.previousPr}):null,
+    }));
+    if(observation?.confirmed!==true||observation.operationId!==approval.operationId||
+      observation.stage!==target)throw Error('UNVERIFIED_SUBMISSION_RECONCILIATION');
+    const patch=target==='validated'?{}:
+      ['failed','blocked'].includes(target)?failureReceipt(observation.receipt,s,target):
+      checkReceipt(target,observation.receipt,s,row);
+    await authorize();
+    // This is an observed-effect repair, never a request to perform the next
+    // effect. A crash after journal advancement is repaired by re-observing
+    // the terminal stage, not by replaying a provider mutation.
+    const saved=terminal?outbox.get(id):outbox.advance(id,row.stage,target,patch);
+    if(!saved||saved.stage!==target||saved.pending!==null)
+      throw Error('STALE_SUBMISSION_INTENT');
+    const finished=['session_closed','failed','blocked'].includes(saved.stage);
+    await jobStore.transition(jobKey,finished?(saved.stage==='session_closed'?'completed':'failed'):'awaiting_external',{
+      submissionId:id,submissionStage:saved.stage,submissionPending:null,pid:null,
+      ...(finished?{completionConfirmedAt:new Date(now()).toISOString()}:
+        {note:'Verified prior effect; further publication requires separately authorized continuation'}),
+    });
+    return Object.freeze({...result(saved),continuationRequired:!finished});
+  }
+  return Object.freeze({bind,submit,submitFailure,reconcilePending,recoverInterrupted,revoke:handle=>handles.delete(handle)});
 }

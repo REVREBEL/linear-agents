@@ -593,4 +593,22 @@ The M11 Linear provider now manages its own read-only client-credentials access-
 
 The [submission coordinator milestone](docs/ABR17_SUBMISSION_COORDINATOR.md) provides a disabled-by-default, trusted-adapter state machine and durable effect journal. Runner ingress, credential brokerage, actual publication adapters and deployment are separate gates.
 
+## ABR-17 M2 — Private submission transport and Git verification
+
+[Submission contract](docs/ABR17_SUBMISSION_COORDINATOR.md) now includes a private launcher-bound IPC command, exact job/runner and app-installation mappings, a host-only read-only GitHub App broker, and confined Git readiness preflight. It is source-only; deployed provider launchers and publication remain separately gated.
+
+## ABR-17 M3 — Provider publication and recovery
+
+[Submission contract](docs/ABR17_SUBMISSION_COORDINATOR.md) adds scoped GitHub PR publication/reuse, mapped Linear OAuth writes, Worker completion verified by actual session activity reads, durable failed/blocked receipts and canonical review inbox recovery. Provider APIs are exercised against isolated fixture responses; runtime activation still requires M4/M5.
+
+## ABR-17 M4 — Managed provider finish paths
+
+The [submission coordinator contract](docs/ABR17_SUBMISSION_COORDINATOR.md) describes the opt-in authenticated Linux managed dispatch for AGY, Trae and OpenCode, one shared IPC/MCP finish operation, and the required protected host binding. Native provider isolation and descriptor propagation remain M5 operational gates.
+
+## ABR-17 M5 — Operational acceptance
+
+See [M5 operational evidence and rollback](docs/ABR17_SUBMISSION_COORDINATOR.md#m5--operational-evidence-operator-recovery-and-rollback). Managed activation is fail-closed until the clean release is independently approved and the actual non-root service sandbox passes. Source fixtures and observed host blockers are tracked separately.
+
+## ABR-59 M12 — Database authorization and production-safe persistence
+
 The ABR-59 M12 restricted PostgreSQL persistence path and its scope identity tests are included in the Bridge and reliability suites; the native disposable database and operator rollout procedures are documented in [memory/README.md](memory/README.md) and [the M12 database authority runbook](docs/ABR59_DATABASE_AUTHORITY.md). These changes do not activate the production memory service.

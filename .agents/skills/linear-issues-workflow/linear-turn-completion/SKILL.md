@@ -5,6 +5,8 @@ description: Required at the end of EVERY Linear-bridge-dispatched agent turn, w
 
 # Linear Turn Completion
 
+**Managed coding mode:** use [submit-work](../../submit-work/SKILL.md) and stop after its outcome. The following legacy procedure applies only to an explicitly legacy or noncoding invocation. Never use a Worker callback or obtain a bridge secret for a managed coding job.
+
 **MANDATORY FOR EVERY BRIDGE-DISPATCHED TURN.** Run this as the final lifecycle step of the current invocation, irrespective of issue status or whether the issue's overall work is finished.
 
 ## When to use

@@ -13,3 +13,21 @@ PR #262 review fixes: the D5 adapter snapshots and recursively freezes the same 
 `submission-coordinator.mjs` enforces trusted coding-job binding, confirmed issue and sanitized summary, exact pre-pushed Git/CI evidence, one issue owner and one PR across revisions, and durable before-effect intents through the job-state submission outbox. It requires explicitly injected trusted publication/Linear/review/Worker adapters and refuses ambiguous retries until verified reconciliation. Disabled by default and not imported by the runtime. See [contract](../../docs/ABR17_SUBMISSION_COORDINATOR.md).
 
 PR #264 review: capability lifetime is checked after asynchronous job-ledger reads and again before external invocation; expired or revoked handles cannot begin a new effect or reconcile a pending intent. Admission also rejects expiry during its initial ledger lookup.
+
+## ABR-17 M2 — Trusted launcher ingress and confined preflight
+
+`submission-ingress.mjs` validates immutable launcher scope, current canonical job fields, mapped app/installation, expiration and independent runner evidence. Its private admission proof includes a liveness callback used by the M1 coordinator before external effects. `submissionLedgerFields` is a trusted dispatcher metadata builder, not a job writer. `submission-git-preflight.mjs` requires approved canonical workspace, actual confined Git branch/HEAD/status/origin and operation marker reads, then exact provider-confirmed remote branch, base and required checks. Git worktrees with metadata outside the approved sandbox are denied; Mac/linked-worktree support and final publication revalidation remain gated. See [M2 contract](../../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+## ABR-17 M3 — Publication and terminal outcomes
+
+`submission-publication.mjs` binds explicit repo/agent bot policy, rechecks Git and PR before every downstream mutation, reuses the original PR or rejects closed/ambiguous history, and requires a valid reviewer route. The coordinator supplies a fresh authorization callback at the side-effect boundary. The explicit trusted `submitFailure` path journals failed/blocked completion before invoking Worker error activity; it does not publish or move an issue to In Review. Recovery reads the provider and current inbox by exact operation identity without replay. See [M3 contract](../../docs/ABR17_SUBMISSION_COORDINATOR.md).
+
+## ABR-17 M4 — Shared managed provider lifecycle
+
+`managed-submission-service.mjs` composes M1–M3, `managed-provider-launch.mjs` supplies minimal native specifications to an independently approved isolated supervisor, and `managed-submission-runner.mjs` attaches a single one-shot finish operation to the live canonical job. The exact final Git head is captured independently at finish; existing outbox/adapters own all publication. Managed admission bypasses legacy credential synchronization. ABR-99 can bind its existing verified grant to this same operation through createMcpIntegration; no second queue or publishing authority. Native host security, descriptor propagation, actual MCP transport and remote execution need separate acceptance.
+
+Legacy AGY quota retry recovery remains per-record, independent of managed submission enablement. Managed waiting-quota records never resume via the legacy timer; both startup and timer execution use the same predicate.
+
+## ABR-17 M5 — Operator reconciliation
+
+The offline coordinator recovery mode forbids ordinary admission, reconstructs the exact job scope and journal identity from persisted state, verifies current quiescence/exclusive lease and operator approval, and observes one pending effect with M3 readbacks. Terminal journal/ledger mismatch can be repaired after independent terminal observation. Nonterminal progress requires separately authorized continuation; no mutation replay. Production startup additionally requires protected verifyActivation and actual service-UID sandbox success.

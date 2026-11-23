@@ -173,3 +173,32 @@ ABR-99 review regressions verify D5 caller mutation during verification and atte
 `npm run submission:test` exercises the actual canonical job ledger and SQLite submission effect journal using test-only publication adapters. Cases include concurrent connections, lost responses/restart at all six external stages, wrong admission, Git/CI refusal, same-head retries and same-PR revisions. No live providers or credentials are used.
 
 ABR-17 authorization race regression: deterministic held ledger reads exercise revocation and expiry at all eight submission lookups, both recovery lookups and initial handle minting.
+
+## ABR-17 M2 — Private submission CLI and fixtures
+
+`submit-work.mjs <issue-id> <summary>` requires trusted launcher-inherited duplex FD 3. No credentials, host URL or job ID are accepted in args/environment. `npm run submission:m2:test` checks the real child IPC path, scoped capabilities and revocation across M1, signed mocked GitHub broker exchanges, and actual Linux-confined Git reads against disposable fixtures. Provider deployment and linked worktree/Mac support remain gated.
+
+## ABR-17 M3 — Provider adapter regressions
+
+`npm run submission:m3:test` covers actual HTTP/GraphQL client request construction with signed fixture keys and simulated provider responses, durable PR reuse, draft/manual-ready recovery, lost responses at all external API stages, exact Linear actor/session/activity attribution, stale-head rejection, closed prior PR refusal, route denial and explicit failed/blocked Worker completion. The real disk-backed outbox and inbox are used. No live provider requests.
+
+## ABR-17 M4 — Managed finish tests
+
+`npm run submission:m4:test` exercises actual submit-work child IPC with mocked AGY, Trae and OpenCode launchers and M3 fixed-endpoint provider fixtures, shared real canonical ledger/outbox/inbox, explicit terminal outcomes, wrong-issue/stale submission, and ABR-99 source callback without duplicate reviewer queueing. This is not a native process isolation proof. The CLI returns nonzero for denied or pending handoff.
+
+M4 regressions also verify actual confined final-head capture, managed duplicate acceptance, checkout launch exclusion, and the AGY Python wrapper's private FD propagation and suppression of legacy Worker calls.
+
+Legacy AGY quota retry recovery remains per-record, independent of managed submission enablement. Managed waiting-quota records never resume via the legacy timer; both startup and timer execution use the same predicate.
+
+## ABR-17 M5 — Host evidence and operator recovery
+
+`submission-host-readiness.py` is a read-only host report with exact service-UID sandbox probe and native discovery; it deliberately cannot authorize activation. `recover-managed-submission.mjs JOB_KEY APPROVAL_ID` requires the installed protected operator binding, inactive service, service UID, exclusive lease and verified quiescence. It only reconciles observed pending effects. `npm run submission:m5:test` requires a disposable Linux fixture host with supported Bubblewrap; tests include cross-process lock/crash, real sandboxed private FD CLI, secret-sentinel and network isolation, lost-response and terminal receipt recovery. No live provider writes or service changes.
+
+M5 approved host remediation: install only the reviewed packaged Bubblewrap
+policy unit (see scripts/linux/README.md); readiness now resolves the real
+running Node executable or accepts an explicit installed binary via --node,
+and runs with the actual service UID and clean HOME. The M5 command canary
+mounts a pinned read-only fixture copy, not the CI checkout path. The strict
+executor REPL assertion uses a bounded 2-second prompt deadline. All 57
+executor/structure/M2/M5 tests passed as bridge UID 994, using a private
+temporary fixture directory.

@@ -1014,9 +1014,11 @@ test("P4 /jobs authenticates before coordinator, which preflights before durable
   assert.ok(identity>=0 && identity<preflight && preflight<claim && claim<duplicate && duplicate<unrouted);
   const preflightSource=await fs.readFile(new URL("../jobs/admission/job-preflight.mjs",import.meta.url),"utf8");
   const route=preflightSource.indexOf("const route = await resolveJobRoute(job)");
-  const credentials=preflightSource.indexOf("const credential = route.ok ? await syncLinearCredential(",route);
+  const credentials=preflightSource.indexOf("const credential = route.ok && !managedSubmission ? await syncLinearCredential(",route);
   const readiness=preflightSource.indexOf('if (agent === "chatgpt-cli")',credentials);
   assert.ok(route>=0 && route<credentials && credentials<readiness);
+  const managed=preflightSource.indexOf("if (managedSubmission &&",route);
+  assert.ok(route<managed && managed<credentials);
   assert.match(coordinator,/from "\.\.\/\.\.\/jobs\/admission\/job-admission\.mjs"/);
   assert.match(coordinator,/from "\.\.\/\.\.\/jobs\/admission\/job-preflight\.mjs"/);
   assert.match(src,/from "\.\.\/orchestration\/job-admission-coordinator\.mjs"/);

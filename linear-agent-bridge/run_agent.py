@@ -312,6 +312,8 @@ def post_worker_activity(
     activity_type: str,
     message: str,
 ) -> bool:
+    if os.getenv("BRIDGE_MANAGED_SUBMISSION") == "true":
+        return False  # Parent coordinator owns all provider activity.
     shared_secret = os.getenv("BRIDGE_SHARED_SECRET")
 
     if not completion_url or not shared_secret:
@@ -445,6 +447,7 @@ async def run_antigravity(
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         limit=1024 * 1024,
+        **({"pass_fds": (3,)} if os.getenv("BRIDGE_MANAGED_SUBMISSION") == "true" else {}),
     )
     assert process.stdin is not None
     assert process.stdout is not None
@@ -584,6 +587,24 @@ async def run_antigravity(
 
 
 async def main() -> int:
+    if len(sys.argv) == 2 and sys.argv[1] == "--managed":
+        if os.getenv("BRIDGE_MANAGED_SUBMISSION") != "true":
+            return 2
+        try:
+            os.fstat(3)
+            payload = sys.stdin.buffer.read(110_001)
+            if not payload or len(payload) > 110_000:
+                return 2
+            await run_antigravity(payload.decode("utf-8"))
+            # Process exit is not a submission. The private channel is the
+            # only path to the Bridge-owned publication and completion steps.
+            return 0
+        except QuotaExhausted:
+            return 75
+        except Exception:
+            return 1
+    if os.getenv("BRIDGE_MANAGED_SUBMISSION") == "true":
+        return 2
     if len(sys.argv) < 3:
         print("Usage: run_agent.py <agentSessionId> <jobPath> [conversationId]", file=sys.stderr)
         return 1
