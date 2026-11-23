@@ -3,6 +3,7 @@ import { MANAGED_PROVIDERS } from "../orchestration/managed-submission-runner.mj
 import { createHttpRouteComposer } from "./http-route-composition.mjs";
 import { coordinateRemoteExecution } from "../orchestration/remote-execution-coordinator.mjs";
 import { coordinateLocalExecution } from "../orchestration/local-execution-coordinator.mjs";
+import { resolveBridgeProjectDirectory } from "./runtime-project-root.mjs";
 import {createVerifiedMemoryBridge,loadVerifiedMemoryBridgeHost} from "../orchestration/verified-memory-bridge.mjs";
 import { coordinateJobAdmission } from "../orchestration/job-admission-coordinator.mjs";
 import { createAgyProjectConversationStore } from "../../conversations/agy-project-conversations.mjs";
@@ -67,7 +68,8 @@ const LINEAR_API_KEY = process.env.LINEAR_API_KEY || "";
 const LINEAR_ACCESS_TOKEN = process.env.LINEAR_ACCESS_TOKEN || "";
 
 // Stable runtime root for systemd and Mac LaunchAgent compatibility.
-const PROJECT_DIR = path.dirname(new URL("../../linear-agent-bridge/agent-bridge.mjs", import.meta.url).pathname);
+const SOURCE_PROJECT_DIR = path.dirname(new URL("../../linear-agent-bridge/agent-bridge.mjs", import.meta.url).pathname);
+const PROJECT_DIR = resolveBridgeProjectDirectory(SOURCE_PROJECT_DIR, process.env.BRIDGE_RUNTIME_PROJECT_DIR);
 const AGENT_ENV_FILE = process.env.AGENT_ENV_FILE || path.join(PROJECT_DIR, ".env");
 const PROJECTS_ROOT = process.env.LINUX_PROJECTS_ROOT ||
   process.env.PROJECTS_ROOT || path.join(os.homedir(), "github-revrebel");

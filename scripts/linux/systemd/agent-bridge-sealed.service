@@ -1,0 +1,26 @@
+[Unit]
+Description=Agent Bridge (immutable code, separated writable runtime)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=bridge
+Group=bridge
+WorkingDirectory=/home/bridge/agent-bridge
+Environment=HOME=/home/bridge
+Environment=VOLTA_HOME=/opt/global-tools/volta
+Environment=PATH=/opt/global-tools/volta/bin:/home/agent-bridge/.bun/bin:/home/agent-bridge/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/bash /var/lib/bridge-runtime/scripts/linux/launch-sealed-bridge.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=agent-bridge
+
+[Install]
+WantedBy=multi-user.target

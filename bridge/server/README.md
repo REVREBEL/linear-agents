@@ -25,3 +25,14 @@ The managed flag also requires successful strict non-root sandbox probe, clean r
 ## ABR-59 M14 — protected root-memory boundary
 
 The proposed root-owned client is loaded only through the existing opt-in Bridge feature after separately approved deployment. A Linux AF_UNIX service authenticates the exact systemd Bridge process rather than trusting the shared coding-agent uid. Neither the existing HTTP server nor its agent children obtain root credentials, database write roles or a generic privileged command. Source merge alone never activates the service. See [M14](../../docs/ABR59_M14_ACTIVATION.md).
+
+## ABR-59 M14 — immutable source / writable job-state split
+
+The `BRIDGE_RUNTIME_PROJECT_DIR` environment variable is reserved for the
+operator-owned systemd launcher. The Bridge imports reviewed JS from
+the immutable `/var/lib/bridge-runtime` Git release, while job-state files,
+agent workspaces, routing and CLIs continue using the previously
+existing writable `/home/bridge/agent-bridge/linear-agent-bridge` runtime.
+The override defaults to the source directory for existing development and
+legacy production launches and rejects relative, traversing and malformed
+paths. See [sealed deployment](../../docs/ABR59_M14_ACTIVATION.md).

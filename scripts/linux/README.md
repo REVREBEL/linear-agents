@@ -52,3 +52,14 @@ executable `volta` and `node` shims, and at least one installed Node binary
 that the `bridge` service account can execute. Missing or unusable runtimes
 cause installation to stop before any unit file is written or replaced.
 Print-only mode remains available without a host Volta installation.
+
+## ABR-59 M14 sealed Bridge launch
+
+`scripts/linux/launch-sealed-bridge.sh` and the reviewed
+`systemd/agent-bridge-sealed.service` provide the operator-controlled migration
+from bridge-writable source to a separately reviewed, root-owned Git release.
+The launcher reads **only** `/etc/agent-bridge/bridge.env` (root:bridge 0640),
+clears executable loader injection variables, uses `/usr/bin/node`, and binds
+the existing Bridge job-state/agent workspace with
+`BRIDGE_RUNTIME_PROJECT_DIR`. Neither source file deploys or restarts the
+service. Preserve the existing writable job state for rollback.

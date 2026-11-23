@@ -30,6 +30,7 @@ class Tests(unittest.TestCase):
     def test_missing_production_prerequisites_reported_without_changes(self):
         with patch.object(checks, "protected_dir", return_value=False), \
              patch.object(checks, "protected_file", return_value=False), \
+             patch.object(checks, "protected_executable", return_value=False), \
              patch.object(checks, "cluster_state", return_value=False), \
              patch.object(checks, "systemd_unit_exists", return_value=False):
             result = checks.audit(run=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("must not call")))
@@ -102,3 +103,16 @@ class StrictGateTests(unittest.TestCase):
                           return_value="123 (node) S "+ "0 "*19 +"999 0"):
             self.assertFalse(checks.bridge_identity(m,run=lambda *a,**k:
                 types.SimpleNamespace(returncode=0,stdout="222")))
+
+class ProductionSchemaPathTests(unittest.TestCase):
+    def test_sql_fingerprints_are_schema_independent(self):
+        source = (pathlib.Path(__file__).resolve().parent / "db-gate.sql").read_text()
+        self.assertIn("SET search_path=memu,public;",source)
+        self.assertIn("expected_policies",source)
+        self.assertIn("bridge_segment_select",source)
+
+    def test_unit_grants_only_dac_read_not_dac_override(self):
+        source = (pathlib.Path(__file__).resolve().parent / "verified-memory-authority.service").read_text()
+        self.assertIn("CapabilityBoundingSet=CAP_DAC_READ_SEARCH",source)
+        self.assertNotIn("CAP_DAC_OVERRIDE",source.split("CapabilityBoundingSet=",1)[1])
+        self.assertIn("ProtectHome=read-only",source)

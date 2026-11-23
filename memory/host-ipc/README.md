@@ -19,3 +19,12 @@ The source-only authority additionally requires fully root-owned and clean Git c
 `intent.py` persists and fsyncs completion hints before acknowledgment, blocks automatic ambiguous retries, and marks queued/running records as requiring operator reconciliation on restart. `db-gate.sql` checks the exact PostgreSQL 18 policy fingerprints, role grants and approved per-scope login mappings; `verify-db-gate-fixture.py` tests authorized and unauthorized grants against an isolated cluster. The active systemd unit uses `ProtectHome=read-only` only to inspect canonical Bridge job evidence, never to write agent files. Live service health, changed Bridge PID/release, stale sockets and incorrect unit/sandbox settings all cause readiness failure.
 
 See [M14 controlled rollout](../../docs/ABR59_M14_ACTIVATION.md) for the separate operator and production canary gates.
+
+## M14 production readiness corrections
+
+`db-gate.sql` explicitly selects `search_path=memu,public` to make five
+PostgreSQL 18 policy fingerprints invariant to the live session's default
+schema path. The native policies remain unchanged. The operator unit allows
+**only CAP_DAC_READ_SEARCH** to read the Bridge-owned mode-0600 canonical job
+ledger under `ProtectHome=read-only`; it retains `NoNewPrivileges=true` and
+does not grant CAP_DAC_OVERRIDE or any right to modify agent-owned job data.
