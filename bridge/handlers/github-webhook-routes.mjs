@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { readBody, sendJson } from "../server/http-helpers.mjs";
+import { normalizeVerifiedGithubEvent, classifyEventIntelligence,
+  recordEventIntelligenceShadow } from "../../integrations/event-intelligence.mjs";
 import { sanitizeGithubEvent, recordGithubEvent, shouldDispatchGithubReview,
   classifyGithubReviewEvent, githubReviewChangeKey } from "../../integrations/github-events.mjs";
 
@@ -80,6 +82,29 @@ export function createGithubWebhookRoutes({
       try {
         handoff = await claimGithubReviewDispatch(event, source);
         await recordGithubEvent(JOBS_DIR, event, source);
+        // ABR-18 opt-in shadow observation only. The authenticated GitHub
+        // ingress, legacy review handoff and response remain authoritative.
+        // No model inference or new dispatch occurs on the webhook path.
+        if (env.EVENT_INTELLIGENCE_MODE === "shadow") {
+          try {
+            const normalized = normalizeVerifiedGithubEvent(event, source);
+            const decision = classifyEventIntelligence(normalized, {
+              selfIds: GITHUB_CHATGPT_SELF?.ids,
+              selfLogins: GITHUB_CHATGPT_SELF?.logins,
+            });
+            const receipt = await recordEventIntelligenceShadow(JOBS_DIR, normalized, decision);
+            logger.log("ABR-18 shadow triage", {
+              decision: decision.decision, intent: decision.intent,
+              duplicate: receipt.duplicate,
+            });
+          } catch (error) {
+            // Observability is explicit, but a shadow failure cannot claim
+            // delivery, bypass routing, or fail an existing review request.
+            logger.warn?.("ABR-18 shadow triage unavailable", {
+              errorCode: typeof error?.code === "string" ? error.code : "SHADOW_FAILURE",
+            });
+          }
+        }
         const classification = classifyGithubReviewEvent(event, GITHUB_CHATGPT_SELF);
         await githubTaskMemory.update(event, {
           lastEvent: event.event + "." + event.action,

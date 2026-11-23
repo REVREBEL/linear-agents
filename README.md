@@ -631,3 +631,16 @@ M14 production hardening includes an immutable-code/writable-data Bridge
 launcher and schema-explicit PostgreSQL RLS audit. The operator-owned
 environment and reviewed releases remain separately controlled; this source
 patch does not activate production memory.
+
+## ABR-18 — EventIntelligence Phase 1
+
+The reviewed `integrations/event-intelligence.mjs` module supplies deterministic
+GitHub/Linear event normalization and advisory triage. With
+`EVENT_INTELLIGENCE_MODE=shadow`, authenticated GitHub ingress also stores
+bounded, metadata-only classifications in the existing private job directory;
+legacy review routing and execution remain unchanged. No new model,
+auto-review dispatcher, Cloudflare deployment or production activation is
+included. The signed no-prompt Linear Worker intake and trusted enrichment
+are later milestones. Run the focused regression via
+`node --test integrations/event-intelligence.test.mjs`, included in both
+`npm run bridge:test` and `npm run test:reliability`.
