@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {readFileSync} from 'node:fs';
 import {guardStagingProcessTree} from './abr103-staging-tree-guard.mjs';
+import {collectStagingChild} from './abr103-native-staging-canary.mjs';
 
 test('ABR-103 rejects invalid PID, child or unbounded lifecycle time',()=>{
   for(const child of [null,{pid:0,once(){}},{pid:process.pid,once(){}}])
@@ -49,4 +50,31 @@ test('ABR-103 explicit cancellation kills the process group exactly once',async(
   assert.equal(guard.status().terminated,true);
   assert.equal(guard.status().timedOut,false);
   assert.ok(signal==='SIGKILL'||code!==0);
+});
+
+test('ABR-103 spawn failure returns structured denial without unhandled error',async()=>{
+  const missing=spawn('/abr103/missing-bwrap-binary',[],{
+    detached:true,stdio:['ignore','pipe','pipe','pipe'],env:{PATH:'/usr/bin:/bin'}
+  });
+  const result=await collectStagingChild(missing,{timeout:1000});
+  assert.equal(result.code,null);
+  assert.equal(result.timedOut,false);
+  assert.equal(result.errorType,'Error');
+  assert.equal(result.fd3,'');
+});
+test('ABR-103 unexecutable supervisor returns structured denial',async t=>{
+  const directory=await import('node:fs/promises');
+  const os=await import('node:os');
+  const path=await import('node:path');
+  const root=await directory.mkdtemp(path.join(os.tmpdir(),'abr103-unexecutable-'));
+  t.after(()=>directory.rm(root,{force:true,recursive:true}));
+  const file=path.join(root,'bwrap');
+  await directory.writeFile(file,'not executable',{mode:0o600});
+  const missing=spawn(file,[],{
+    detached:true,stdio:['ignore','pipe','pipe','pipe'],env:{PATH:'/usr/bin:/bin'}
+  });
+  const result=await collectStagingChild(missing,{timeout:1000});
+  assert.equal(result.code,null);
+  assert.equal(result.timedOut,false);
+  assert.equal(result.errorType,'Error');
 });
