@@ -10,7 +10,7 @@ M4 permits a bounded private submission channel lifetime of up to one hour to ma
 
 ## M13 advisory issue completion hint
 
-The existing authenticated `/issue-completed` cleanup sends only `{issueId}` to the **optional** protected memory client after normal ledger/Mac cleanup, if configured. The shared-secret webhook, provider exit, local job JSON and body are *not proof* of PR merge, review, CI, Linear status or source provenance. The root operator coordinator must re-verify all evidence and reject unpinned jobs, stale approvals and incomplete commits. A missing/failed memory client never blocks the original cleanup response. No new HTTP route.
+The existing authenticated `/issue-completed` cleanup sends only `{issueId}` to the **optional** protected memory client before local task-file cleanup (Mac remote cleanup unchanged), if configured. The shared-secret webhook, provider exit, local job JSON and body are *not proof* of PR merge, review, CI, Linear status or source provenance. The root operator coordinator must re-verify all evidence and reject unpinned jobs, stale approvals and incomplete commits. A missing/failed memory client never blocks the original cleanup response. No new HTTP route.
 
 ## M14 — preserve admission evidence until verified promotion
 
@@ -41,3 +41,20 @@ temporarily disabled. A failure to persist the marker fails the request
 before any task deletion. Replaying callbacks **never** automatically repeats
 a native commit. Only the operator may explicitly clear that retention marker
 after independent receipt/reconciliation and final cleanup approval.
+
+
+### M14 exact pinned-job acknowledgments and uncertain-response retention
+
+The root server returns the exact manifest-pinned job key alongside a durable
+accepted completion acknowledgment. A duplicate for the same fsynced intent
+returns the same pinned key without re-enqueueing a native write. A changed
+manifest digest is denied.
+
+The Bridge durably marks `memoryVerificationPending: true` for only the
+matched pinned local job when the root response is confirmed. If the
+transport times out or loses its reply after a possible enqueue, the result
+is explicitly `uncertain`: the Bridge retains all local task evidence for
+that authenticated issue pending operator reconciliation. A definitive
+root denial cleans only records without earlier durable retention. Earlier
+marks survive outages, restarts and repeated completion callbacks. Neither
+a retention mark nor a webhook proves that native memory was approved.

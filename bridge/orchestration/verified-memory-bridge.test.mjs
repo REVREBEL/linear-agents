@@ -24,7 +24,7 @@ test("trusted host reference is validated and explicitly labeled as lower-trust"
   const received=[],log=[];
   const h=createVerifiedMemoryBridge({enabled:true,host:{
     getApprovedScopedRecall:async x=>{received.push(x);return envelope;},
-    notifyIssueCompleted:async x=>{received.push(x);},
+    notifyIssueCompleted:async x=>{received.push(x);return "agent:job-1";},
     repositoryIdForRoot:async root=>{assert.equal(root,request.repositoryRoot);
       return scope.repositoryId;},
   },logger:{log:x=>log.push(x)}});
@@ -34,7 +34,8 @@ test("trusted host reference is validated and explicitly labeled as lower-trust"
   assert.match(result,/Approved tested note/);
   assert.match(result,/docs\/verified-learnings\/test\.md/);
   assert.deepEqual(received[0],request);
-  assert.equal(await h.completionHint({issueId:"ABR-59"}),true);
+  assert.deepEqual(await h.completionHint({issueId:"ABR-59"}),
+    {status:"accepted",jobKey:"agent:job-1"});
   assert.deepEqual(received[1],{issueId:"ABR-59"});
   assert.deepEqual(log,["[verified memory] injected","[verified memory] completion-hint-sent"]);
 });
@@ -65,8 +66,8 @@ test("provider failures and invalid completion hints fail independently",async()
     async notifyIssueCompleted(){throw Error("secret callback details");},
   },logger:{log:x=>events.push(x)}});
   assert.equal(await h.loadForTask(request),"");
-  assert.equal(await h.completionHint({issueId:"non-id"}),false);
-  assert.equal(await h.completionHint({issueId:"ABR-59"}),false);
+  assert.deepEqual(await h.completionHint({issueId:"non-id"}),{status:"denied"});
+  assert.deepEqual(await h.completionHint({issueId:"ABR-59"}),{status:"uncertain"});
   assert.deepEqual(events,["[verified memory] unavailable","[verified memory] denied","[verified memory] completion-hint-unavailable"]);
 });
 test("host loader requires exact approved module path before import",async()=>{
@@ -85,7 +86,7 @@ test("nonresponsive protected host is bounded without blocking task or completio
   },logger:{log:e=>events.push(e)}});
   const start=Date.now();
   assert.equal(await h.loadForTask(request),"");
-  assert.equal(await h.completionHint({issueId:"ABR-59"}),false);
+  assert.deepEqual(await h.completionHint({issueId:"ABR-59"}),{status:"uncertain"});
   assert.ok(Date.now()-start<1000);
   assert.deepEqual(events,["[verified memory] timeout","[verified memory] completion-hint-timeout"]);
 });
@@ -99,4 +100,19 @@ test("independent host mapping cannot authorize foreign repository recall",async
   },logger:{log:e=>events.push(e)}});
   assert.equal(await h.loadForTask(request),"");
   assert.deepEqual(events,["[verified memory] denied"]);
+});
+
+test("explicit root denial is distinct from uncertain lost completion acknowledgment",async()=>{
+ const denied=createVerifiedMemoryBridge({enabled:true,host:{
+   async notifyIssueCompleted(){const err=Error("denied");err.code="EHOST_MEMORY_DENIED";throw err},
+   async repositoryIdForRoot(){return scope.repositoryId},
+   async getApprovedScopedRecall(){return envelope}
+ },logger:{log(){}}});
+ assert.deepEqual(await denied.completionHint({issueId:"ABR-59"}),{status:"denied"});
+ const ambiguous=createVerifiedMemoryBridge({enabled:true,host:{
+   async notifyIssueCompleted(){return undefined},
+   async repositoryIdForRoot(){return scope.repositoryId},
+   async getApprovedScopedRecall(){return envelope}
+ },logger:{log(){}}});
+ assert.deepEqual(await ambiguous.completionHint({issueId:"ABR-59"}),{status:"uncertain"});
 });

@@ -48,3 +48,12 @@ canonical job. This is a queue/retention acknowledgment, not evidence of
 approval or a successful native write. The `/issue-completed` handler uses
 that return to preserve the original admission task file; denied or
 unavailable root calls return `false` so ordinary issue cleanup is unchanged.
+
+
+The protected completion client distinguishes
+`{status:"accepted",jobKey}` (a root-pinned durable intent),
+`{status:"denied"}` (explicit root rejection) and
+`{status:"uncertain"}` (possible lost acknowledgment or timeout).
+Only exact accepted job keys grant scoped retention; uncertain results
+conservatively retain authenticated-issue evidence for operator review.
+Previous durable ledger retention persists across later responses.

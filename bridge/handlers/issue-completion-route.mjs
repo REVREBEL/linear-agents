@@ -28,11 +28,21 @@ export function createIssueCompletionRoute({
     // durable operator intent is queued, NEVER that memory was approved.
     // Ordinary cleanup remains unchanged when no exact protected job is
     // pinned, the optional memory feature is off, or the root host refuses.
-    let preserveOriginalTask = false;
+    let completionOutcome = {status:"denied"};
     if (typeof onIssueCompletionHint === "function") {
-      try { preserveOriginalTask = (await onIssueCompletionHint({issueId})) === true; }
-      catch { /* failure must not block ordinary issue cleanup */ }
+      try { completionOutcome = await onIssueCompletionHint({issueId}); }
+      catch { completionOutcome = {status:"uncertain"}; }
     }
+    // Only the protected root host knows the exact pinned job. An accepted
+    // response retains that job alone. A lost reply MAY follow a successful
+    // durable enqueue, so uncertainty conservatively retains local tasks
+    // until reconciliation; explicit denial retains only prior durable marks.
+    const approvedJobKey=completionOutcome?.status==="accepted" &&
+      typeof completionOutcome.jobKey==="string" &&
+      /^[A-Za-z0-9._:-]{1,256}$/.test(completionOutcome.jobKey)
+      ? completionOutcome.jobKey : null;
+    const uncertain=typeof onIssueCompletionHint==="function" &&
+      completionOutcome?.status!=="denied" && approvedJobKey===null;
     const records = await jobStore.findByIssueId(issueId);
     let cleaned = 0;
     let retained = 0;
@@ -57,12 +67,14 @@ export function createIssueCompletionRoute({
       // Persist a root-accepted retention decision BEFORE acknowledging it.
       // Replayed callbacks may see denied/timeout root hints while a durable
       // native commit is pending; they must never erase the original task.
+      const preserveOriginalTask=record.memoryVerificationPending===true ||
+        record.key===approvedJobKey || uncertain;
       if (preserveOriginalTask && record.memoryVerificationPending !== true) {
         await jobStore.transition(record.key, record.state, {
           memoryVerificationPending: true,
         });
       }
-      if (preserveOriginalTask || record.memoryVerificationPending === true) {
+      if (preserveOriginalTask) {
         retained++;
         continue;
       }

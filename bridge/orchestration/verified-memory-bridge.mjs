@@ -101,19 +101,23 @@ export function createVerifiedMemoryBridge({host,enabled=false,logger=console,ti
     },
     async completionHint({issueId}={}){
       if(typeof issueId!=="string"||!/^([0-9a-f]{8}-[0-9a-f-]{27,36}|[A-Za-z]+-[0-9]+)$/i.test(issueId)){
-        metric("denied");return false;
+        metric("denied");return Object.freeze({status:"denied"});
       }
       try{
         // An authenticated cleanup webhook is STILL NOT proof of merge,
         // CI, reviewer permissions or issue completion. Operator service
         // independently verifies every prerequisite before any commit.
-        await bounded(()=>host.notifyIssueCompleted(Object.freeze({issueId})),
+        const jobKey=await bounded(()=>host.notifyIssueCompleted(Object.freeze({issueId})),
           Math.min(timeoutMs,1500));
+        if(typeof jobKey!=="string"||!/^[A-Za-z0-9._:-]{1,256}$/.test(jobKey)){
+          metric("completion-hint-unavailable");
+          return Object.freeze({status:"uncertain"});
+        }
         metric("completion-hint-sent");
-        return true;
+        return Object.freeze({status:"accepted",jobKey});
       }catch(e){
         metric(e?.code==="EVERIFIED_MEMORY_TIMEOUT"?"completion-hint-timeout":"completion-hint-unavailable");
-        return false;
+        return Object.freeze({status:e?.code==="EHOST_MEMORY_DENIED"?"denied":"uncertain"});
       }
     },
   });

@@ -242,7 +242,7 @@ def dispatch(message, manifest, worker=_worker, scheduler=None, manifest_digest=
         need(len(matching) == 1 and admitted_job(manifest, matching[0]) and scheduler is not None)
         need(isinstance(manifest_digest, str) and len(manifest_digest) == 64)
         scheduler(matching[0]["jobKey"], message["issueId"], manifest_digest)
-        return {"ok": True, "accepted": True}
+        return {"ok": True, "accepted": True, "jobKey": matching[0]["jobKey"]}
     raise Refused("authority denied")
 
 
@@ -254,6 +254,15 @@ def serve_one(conn, executor, pending, main_pid_reader=current_main_pid):
 
         def schedule(key, issue, digest):
             with pending["lock"]:
+                # A repeated completion callback while an earlier root
+                # intent is queued/running/reconciling must ACK the same
+                # original job without scheduling a second native write.
+                # Denial here would let the Bridge erase the task evidence.
+                existing = intent.read(key)
+                if existing is not None:
+                    need(existing["digest"] == digest)
+                    return
+                # In-memory pending without a fsynced root intent is corrupt.
                 need(key not in pending["keys"])
                 created = intent.enqueue(key, digest)
                 if not created:

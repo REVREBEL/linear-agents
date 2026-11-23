@@ -166,3 +166,21 @@ marker does not trigger normal task deletion. The root operator alone
 may clear the marker after receipt verification, new-session recall and
 manual reconciliation, never merely because the Worker sent a repeated
 cleanup request.
+
+
+### Exact-job retention and uncertain completion replies
+
+Root completion IPC now returns the **exact job key** for its one approved
+issue. A successful response only protects the matching local task.
+The root service acknowledges duplicate requests for a previously durable
+queued/running/reconcile/completed intent without re-enqueueing the native
+write. The exact manifest digest must still match.
+
+A notification timeout or lost response after possible root enqueue is
+not a definitive denial. The Bridge durably preserves local task evidence
+for the authenticated issue until an operator can reconcile the uncertain
+outcome. Explicit root rejection still permits normal cleanup of unrelated,
+unmarked tasks. Previously durably retained records remain protected even
+during root outages or when the optional feature is disabled. No
+acknowledgment, retention marker or original task file is itself evidence
+that signed native promotion or a fresh-session recall succeeded.
