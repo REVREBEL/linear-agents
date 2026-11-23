@@ -17,10 +17,10 @@ BRIDGE_HOME="${BRIDGE_USER_HOME:-$(getent passwd "${USER_NAME}" 2>/dev/null | cu
 BRIDGE_HOME="${BRIDGE_HOME:-/home/agent-bridge}"
 ROOT_Q="$(quote_unit "${ROOT}")"
 HOME_Q="$(quote_unit "HOME=${BRIDGE_HOME}")"
-VOLTA_Q="$(quote_unit "VOLTA_HOME=${BRIDGE_HOME}/.volta")"
+VOLTA_Q="$(quote_unit "VOLTA_HOME=/opt/global-tools/volta")"
 SERVICE=/etc/systemd/system/agent-bridge-github-events.service
 TIMER=/etc/systemd/system/agent-bridge-github-events.timer
-PATH_Q="$(quote_unit "PATH=${BRIDGE_HOME}/.volta/bin:${BRIDGE_HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin")"
+PATH_Q="$(quote_unit "PATH=/opt/global-tools/volta/bin:${BRIDGE_HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin")"
 SCRIPT_Q="$(quote_unit "${ROOT}/scripts/linux/run-github-event-publisher.sh")"
 SERVICE_TEXT="[Unit]
 Description=Publish sanitized Agent Bridge GitHub event journal
