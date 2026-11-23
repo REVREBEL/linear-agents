@@ -73,23 +73,37 @@ class StrictGateTests(unittest.TestCase):
 
     def test_stopped_or_unreviewed_service_unit_denied(self):
         import types
-        def unit_stub(state="active",group="bridge",dropin=""):
+        def unit_stub(state="active",group="bridge",dropin="",execstart=None):
             values={
               "FragmentPath":"/etc/systemd/system/verified-memory-authority.service",
               "DropInPaths":dropin,"User":"root","Group":group,
               "NoNewPrivileges":"yes","ProtectSystem":"strict",
               "ProtectHome":"read-only","PrivateTmp":"yes","ActiveState":state,
-              "MainPID":"123","ExecStart":"/usr/bin/python3 /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py"}
+               "MainPID":"123","ExecStart":execstart or
+                "/usr/bin/python3 -B /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py"}
             return types.SimpleNamespace(returncode=0,
                 stdout="\n".join(k+"="+v for k,v in values.items()))
         with patch.object(checks,"protected_file",return_value=True), \
              patch.object(checks.pathlib.Path,"read_bytes",return_value=b"reviewed"), \
-             patch.object(checks,"authority_effective_capabilities",return_value=True):
+             patch.object(checks,"authority_effective_capabilities",return_value=True), \
+             patch.object(checks,"authority_process_no_bytecode",return_value=True):
             self.assertTrue(checks.systemd_unit_exists(run=lambda *a,**k:unit_stub()))
             for kwargs in [{"state":"inactive"},{"group":"rebel"},
                            {"dropin":"/etc/systemd/system/override.conf"}]:
                 self.assertFalse(checks.systemd_unit_exists(
                     run=lambda *a,**k:unit_stub(**kwargs)))
+            # A correct Python interpreter and -B prefix do not authorize
+            # another script, a suffix argument or the wrong executable.
+            for wrong in [
+                "/usr/bin/python3 -B /tmp/other-authority.py",
+                "/usr/bin/python3 -B /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py --unsafe",
+                "/usr/bin/python3 /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py",
+            ]:
+                self.assertFalse(checks.systemd_unit_exists(
+                    run=lambda *a, candidate=wrong, **k:unit_stub(execstart=candidate)))
+            # A daemon-reload without restarting the old MainPID cannot pass.
+            with patch.object(checks,"authority_process_no_bytecode",return_value=False):
+                self.assertFalse(checks.systemd_unit_exists(run=lambda *a,**k:unit_stub()))
 
     def test_readiness_requires_private_root_and_live_bridge_identity(self):
         import types
@@ -144,10 +158,75 @@ class ActiveAuthorityCapabilitiesTests(unittest.TestCase):
             "NoNewPrivileges":"yes","ProtectSystem":"strict",
             "ProtectHome":"read-only","PrivateTmp":"yes",
             "ActiveState":"active","MainPID":"123",
-            "ExecStart":"/usr/bin/python3 /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py"}
+            "ExecStart":"/usr/bin/python3 -B /var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py"}
         output="\n".join(k+"="+v for k,v in values.items())
         result=types.SimpleNamespace(returncode=0,stdout=output)
         with patch.object(checks,"protected_file",return_value=True), \
              patch.object(checks.pathlib.Path,"read_bytes",return_value=b"reviewed"), \
              patch.object(checks,"authority_effective_capabilities",return_value=False):
             self.assertFalse(checks.systemd_unit_exists(run=lambda *a,**k:result))
+
+class ImmutableOperatorBytecodeTests(unittest.TestCase):
+    EXPECTED_EXEC = ("/usr/bin/python3 -B " +
+        "/var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py")
+
+    @staticmethod
+    def active_directives(source, key):
+        # systemd comments are never active directives.
+        return [line.split("=", 1)[1].strip() for line in source.splitlines()
+                if line.startswith(key + "=")]
+
+    def test_reviewed_authority_unit_disables_python_bytecode_writes(self):
+        source=(pathlib.Path(__file__).resolve().parent /
+                "verified-memory-authority.service").read_text()
+        self.assertEqual(self.active_directives(source,"Environment"),
+                         ["PYTHONDONTWRITEBYTECODE=1"])
+        self.assertEqual(self.active_directives(source,"ExecStart"),
+                         [self.EXPECTED_EXEC])
+
+    def test_commented_settings_cannot_satisfy_active_unit_checks(self):
+        deceptive=("# Environment=PYTHONDONTWRITEBYTECODE=1\\n"
+                   "# ExecStart=" + self.EXPECTED_EXEC + "\\n"
+                   "Environment=PYTHONDONTWRITEBYTECODE=0\\n"
+                   "ExecStart=/usr/bin/python3 " +
+                   "/var/lib/bridge-memory-authority-code/memory/host-ipc/authority-server.py\\n")
+        self.assertNotEqual(self.active_directives(deceptive,"Environment"),
+                            ["PYTHONDONTWRITEBYTECODE=1"])
+        self.assertNotEqual(self.active_directives(deceptive,"ExecStart"),
+                            [self.EXPECTED_EXEC])
+
+    def test_current_main_pid_must_have_no_bytecode_argv_and_environment(self):
+        pid=123
+        expected=b"/usr/bin/python3\x00-B\x00" + (
+            checks.CODE+"/memory/host-ipc/authority-server.py").encode() + b"\x00"
+        env=b"HOME=/nonexistent\x00PYTHONDONTWRITEBYTECODE=1\x00"
+        def observe(cmd,environment):
+            def reader(filename):
+                return cmd if filename.endswith("/cmdline") else environment
+            return checks.authority_process_no_bytecode(pid,read_bytes=reader)
+        self.assertTrue(observe(expected,env))
+        for incorrect in [
+            (expected.replace(b"-B\x00",b""),env),
+            (expected.replace(b"authority-server.py",b"other.py"),env),
+            (expected+b"--extra\x00",env),
+            (expected,b"HOME=/root\x00"),
+            (expected,env.replace(b"=1",b"=0")),
+            (expected,env+b"PYTHONDONTWRITEBYTECODE=1\x00"),
+        ]:
+            with self.subTest(incorrect=incorrect):
+                self.assertFalse(observe(*incorrect))
+        self.assertFalse(checks.authority_process_no_bytecode(0, read_bytes=lambda _: expected))
+        self.assertFalse(checks.authority_process_no_bytecode(pid, read_bytes=lambda _: (_ for _ in ()).throw(OSError())))
+
+    def test_structured_systemd_execstart_matches_exact_reviewed_script(self):
+        good=("{ path=/usr/bin/python3 ; argv[]=" + self.EXPECTED_EXEC +
+              " ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] }")
+        self.assertTrue(checks.reviewed_authority_execstart(good))
+        for wrong in [
+            good.replace("authority-server.py", "other.py"),
+            good.replace(" -B ", " "),
+            good.replace(" ; ignore_errors=no", " --unsafe ; ignore_errors=no"),
+            good.replace("path=/usr/bin/python3", "path=/tmp/python3"),
+            self.EXPECTED_EXEC + " --unsafe",
+        ]:
+            self.assertFalse(checks.reviewed_authority_execstart(wrong))

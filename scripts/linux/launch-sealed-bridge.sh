@@ -7,7 +7,7 @@ readonly CODE_FILE=/var/lib/bridge-runtime/linear-agent-bridge/agent-bridge.mjs
 readonly DATA_DIR=/home/bridge/agent-bridge/linear-agent-bridge
 # The long-lived job-state lives behind a host symlink. Pin the underlying
 # real directory so a replaced link or an empty checkout cannot re-admit jobs.
-readonly EXPECTED_DATA_REAL=/opt/workspaces/bridge/agent-bridge/linear-agent-bridge
+readonly EXPECTED_DATA_REAL=/opt/workspaces/linear-agents/linear-agent-bridge
 
 [[ -f "$ENV_FILE" && ! -L "$ENV_FILE" && -r "$ENV_FILE" ]] || exit 1
 read -r uid gid perms < <(/usr/bin/stat -c '%u %g %a' "$ENV_FILE")

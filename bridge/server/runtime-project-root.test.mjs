@@ -40,7 +40,7 @@ test("sealed unit retains canonical identity and strips Bash startup hooks",()=>
   const launcher=readFileSync(fileURLToPath(new URL("../../scripts/linux/launch-sealed-bridge.sh",import.meta.url)),"utf8");
   assert.match(unit,/^ExecStart=\/usr\/bin\/env -u BASH_ENV -u ENV -u SHELLOPTS -u BASHOPTS/m);
   assert.match(unit,/\/usr\/bin\/bash \/var\/lib\/bridge-runtime\/scripts\/linux\/launch-sealed-bridge\.sh/);
-  assert.match(launcher,/EXPECTED_DATA_REAL=\/opt\/workspaces\/bridge\/agent-bridge\/linear-agent-bridge/);
+  assert.match(launcher,/EXPECTED_DATA_REAL=\/opt\/workspaces\/linear-agents\/linear-agent-bridge/);
   assert.match(launcher,/\/usr\/bin\/realpath -e -- "\$DATA_DIR"/);
   assert.match(launcher,/\/usr\/bin\/find "\$DATA_DIR\/linear-jobs\/job-state"/);
   assert.match(launcher,/-name state\.json -type f -print -quit/);

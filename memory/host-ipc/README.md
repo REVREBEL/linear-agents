@@ -35,3 +35,27 @@ contain only `CAP_DAC_READ_SEARCH` (bit 2). Updating the unit file without
 restarting the active authority cannot satisfy this gate. The sealed Bridge
 unit must retain the canonical name `agent-bridge.service` for peer
 authentication and PID/start-time validation.
+
+### Live-host Python bytecode protection
+
+The root-owned Git checkout must contain **no ignored Python cache artifacts**:
+`reviewed_checkout` rejects any such files. The reviewed authority service
+runs `/usr/bin/python3 -B` with `PYTHONDONTWRITEBYTECODE=1`, preventing local
+imports from introducing `__pycache__` into the sealed source checkout.
+Readiness checks the exact reviewed `ExecStart`. For operator diagnostics,
+use `python3 -B` against the protected source tree.
+
+### PR #280 active-process and unit-directive review
+
+M14 readiness now verifies **both the reviewed systemd unit and the actual
+authority MainPID**. The active process must expose the exact three
+`/proc/<pid>/cmdline` arguments (`/usr/bin/python3`, `-B`, and the approved
+absolute `authority-server.py` path) and must actually carry precisely one
+`PYTHONDONTWRITEBYTECODE=1` entry in `/proc/<pid>/environ`. Reloading a new
+unit without restarting the old process cannot establish this invariant.
+The effective `ExecStart` must match the full reviewed executable argv,
+not merely the interpreter or `-B` prefix. Tests verify the correct script,
+wrong script and extra-argument refusals, a stale process, and environment
+mismatches. Service-file tests inspect active `Environment=` and
+`ExecStart=` directives by line, so comments containing correct-looking
+settings cannot satisfy the security test.
