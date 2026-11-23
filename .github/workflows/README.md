@@ -38,3 +38,12 @@ The M14 isolation workflow listens to changes in the canonical
 `bridge/server/agent-bridge-runtime.mjs` for both pull requests and main
 pushes, and validates the reviewed canonical `agent-bridge.service`
 deployment template (rather than a separately named sealed service).
+
+## ABR-17 M5 sealed-release readiness verification
+
+The Submission Coordinator CI runs `scripts/test-submission-host-readiness.py`
+before the isolated M2/M5 tests. This regression checks that the read-only
+host report resolves the active systemd service's exact sealed Node release
+rather than a writable development checkout and rejects malformed PATH/IDs.
+The tracked workflow also includes the narrowly scoped sealed Git ACL
+operator script in its change filters.

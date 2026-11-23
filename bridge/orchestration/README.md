@@ -66,3 +66,13 @@ An explicit root completion denial emits the redacted
 `[verified memory] completion-hint-denied` metric, distinct from
 `completion-hint-timeout` and `completion-hint-unavailable`.
 No root error message or credential material is logged.
+
+## ABR-17 M5 sealed release ownership boundary
+
+`managed-submission-service.mjs` checks the exact clean Git release from the
+non-root service identity. Because the installed executable checkout is
+root-owned, the read-only Git commands apply a **single-command** Git
+`safe.directory=<that exact release>` exception. The operator separately
+grants read-only access to the root-owned Git index; no global trust,
+write permission, live activation or operator release approval is inferred.
+The protected host binding and verified sandbox are still mandatory gates.
