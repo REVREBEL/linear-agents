@@ -42,4 +42,17 @@ config = config.replace(routePlaceholder, `linear-${prefix}.${domain}`);
 const githubRoutePlaceholder = 'github-${' + key + '_PREFIX}.${DOMAIN}';
 config = config.replaceAll(githubRoutePlaceholder, `github-${prefix}.${domain}`);
 if (config.includes('${')) throw new Error('Unresolved environment template variable in generated Wrangler config');
+if (agent === "chatgpt") {
+  const mode = process.env.CHATGPT_EVENT_INTELLIGENCE_MODE || "off";
+  if (!["off", "shadow"].includes(mode)) {
+    throw Error("CHATGPT_EVENT_INTELLIGENCE_MODE must be off or shadow");
+  }
+  const secret = process.env.CHATGPT_EVENT_INTELLIGENCE_INTAKE_TOKEN;
+  if (mode === "shadow" && (typeof secret !== "string" || secret.length < 32)) {
+    throw Error("CHATGPT_EVENT_INTELLIGENCE_INTAKE_TOKEN is required for shadow mode");
+  }
+  const field = /"EVENT_INTELLIGENCE_MODE"\s*:\s*"off"/;
+  if (!field.test(config)) throw Error("Missing ChatGPT EventIntelligence flag");
+  config = config.replace(field, `"EVENT_INTELLIGENCE_MODE": "${mode}"`);
+}
 writeFileSync(output,config,{mode:0o600,flag:"wx"});

@@ -644,3 +644,21 @@ included. The signed no-prompt Linear Worker intake and trusted enrichment
 are later milestones. Run the focused regression via
 `node --test integrations/event-intelligence.test.mjs`, included in both
 `npm run bridge:test` and `npm run test:reliability`.
+
+
+## ABR-18 Phase 2A — private Linear notification intake
+
+[Phase 2A](integrations/README.md) connects authentic ChatGPT reviewer
+Worker `AppUserNotification` events without explicit promptContext to a
+fsynced metadata-only Bridge intake. The isolated reviewer identity,
+signed Linear freshness, OAuth-enriched issue provenance, separate
+Bridge bearer, durable delivery deduplication, retryable failures,
+non-verified GitHub PR candidates and no-review-launch acknowledgments
+are enforced and regression-tested. This is a **review-only, disabled
+by default** extension; the pending GitHub App source/check/review
+enrichment and enforcement are separate approval-gated milestones.
+
+
+Phase 2A requires a separate reviewer-only `EVENT_INTELLIGENCE_INTAKE_TOKEN`
+configured on both Worker and Bridge before shadow activation. The
+existing coding-job bearer is deliberately insufficient for this route.

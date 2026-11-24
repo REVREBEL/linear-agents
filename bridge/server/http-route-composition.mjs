@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { createEventIntelligenceIntakeRoute } from "../handlers/event-intelligence-intake-route.mjs";
 
 /**
  * Compose the non-/jobs routes in their established priority order.
@@ -11,7 +12,11 @@ export function createHttpRouteComposer({
   handleDiagnosticRoute, handleReviewRoute, handleGithubWebhookRoute,
   handleTraeCallbackRoute, handleIssueCompletionRoute,
   jobsDir, readBody, sendJson, env = process.env, logger = console,
+  intakeToken = env.EVENT_INTELLIGENCE_INTAKE_TOKEN,
 }) {
+  const handleEventIntelligenceIntake = createEventIntelligenceIntakeRoute({
+    jobsDir, intakeToken, env, logger, bodyReader: readBody,
+  });
   const send = (response, status, body) => {
     sendJson(response, status, body);
     return true;
@@ -79,6 +84,8 @@ export function createHttpRouteComposer({
       return send(response, 202, { ok: true, accepted: true, handoffId, status });
     }
 
+    // Protected shadow inbox is not /jobs and is never an agent dispatcher.
+    if (await handleEventIntelligenceIntake(request, response, { url })) return true;
     if (await handleReviewRoute(request, response, { url })) return true;
     if (await handleGithubWebhookRoute(request, response, { url })) return true;
     if (await handleTraeCallbackRoute(request, response, { url })) return true;

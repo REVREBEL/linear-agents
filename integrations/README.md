@@ -75,3 +75,50 @@ The reference-only TypeScript prototype in `agents/bridge/event-intelligence/`
 is **not** a runnable production dispatcher. Semantic model inference,
 approval, launch acknowledgment and enforcement require separately reviewed
 work; a shadow `dispatch` recommendation never launches an agent.
+
+
+## ABR-18 Phase 2A — intake and trusted context provenance
+
+`event-intelligence-intake.mjs` validates the Worker-to-Bridge
+no-prompt notification contract. The HMAC verification and OAuth
+verification are performed in the signed incoming reviewer Worker,
+where the Linear installation token resides. The Bridge still checks
+its private shared bearer and literal reviewer identity; it does
+not trust anonymous claims of signature verification.
+
+The initial enrichment is **Linear-only**: current issue organization,
+identifier, state and project are fetched with the installed app token.
+The GitHub PR link extracted from the signed notification is **not**
+verification of head SHA, CI state, review threads or permissions.
+Unverified candidates remain `awaiting_verified_github_evidence`.
+Unlinked records remain `awaiting_issue_link`. No classification
+result can authorize review dispatch, and `/jobs` remains untouched.
+A separate reviewed GitHub App evidence-gate and actual launch
+acknowledgment are required before Phase 2 can make review dispatch
+decisions.
+
+
+Production activation needs a reviewer-only, 32+ character secret
+`EVENT_INTELLIGENCE_INTAKE_TOKEN` configured consistently in the
+ChatGPT reviewer Cloudflare Worker and protected Bridge environment.
+Do not reuse generic `BRIDGE_SHARED_SECRET`. Keep shadow mode disabled
+until both ends have the secret and operator acceptance is complete.
+
+### ABR-18 PR #291 review hardening — crash-safe signed delivery receipts
+
+The private `linear-intake` receipt is published only **after** a complete
+temporary inode has been written and fsynced. An exclusive same-directory
+hard-link to its final JSON name makes publication atomic without
+overwriting an existing receipt; the directory is fsynced before 202.
+An interrupted write cannot leave a partial final JSON, and a competing
+delivery or retry can never replace an existing receipt.
+
+Deduplication compares a stable signed-event fingerprint (provider,
+organization, delivery ID/body SHA, worker identity, issue/session identity
+and signed PR candidate). OAuth-fetched issue state, project and other
+mutable enrichment facts are retained as the **first accepted snapshot**
+but excluded from that fingerprint. Thus a lost ACK can be retried safely
+even after a Linear state or project change, while mismatched signed
+event fields are still refused. Incomplete writes, link failures,
+lost-ACK recovery, concurrent duplicates and changed provider facts
+have focused regressions.

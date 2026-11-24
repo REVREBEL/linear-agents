@@ -19,6 +19,8 @@ interface Env {
   BRIDGE_SHARED_SECRET: string;
   SERVICE_NAME: string;
   GITHUB_WEBHOOK_SECRET?: string;
+  EVENT_INTELLIGENCE_MODE?: string;
+  EVENT_INTELLIGENCE_INTAKE_TOKEN?: string;
 }
 
 interface LinearTokenResponse {
@@ -374,9 +376,24 @@ async function handleLinearWebhook(
   // Use Linear's unique delivery ID for deduplication.
   // payload.webhookId identifies the webhook configuration itself and is reused
   // across different events, which can incorrectly suppress AgentSessionEvent.
-  const webhookId =
-    request.headers.get("linear-delivery") ||
-    `event:${Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawBody)))).map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
+  const notificationIsAppUser = payload.type === "AppUserNotification" ||
+    payload.type === "Linear.AppUserNotification";
+  const notificationHasExplicitPrompt = [
+    getNested(payload, "promptContext"), getNested(payload, "data", "promptContext"),
+    getNested(payload, "notification", "promptContext"),
+    getNested(payload, "data", "notification", "promptContext"),
+  ].some(value => typeof value === "string" && value.trim());
+  // The coordinator already canonicalizes the delivery header to a signed
+  // body hash. Apply the same rule here before the early KV duplicate check,
+  // including when this handler is invoked without the coordinator.
+  const isShadowNoPrompt = notificationIsAppUser &&
+    !notificationHasExplicitPrompt && env.EVENT_INTELLIGENCE_MODE === "shadow";
+  const signedPayloadSha256 = Array.from(new Uint8Array(await crypto.subtle.digest(
+    "SHA-256", new TextEncoder().encode(rawBody),
+  ))).map(byte => byte.toString(16).padStart(2, "0")).join("");
+  const webhookId = isShadowNoPrompt
+    ? `event:${signedPayloadSha256}`
+    : request.headers.get("linear-delivery") || `event:${signedPayloadSha256}`;
 
   const linearEvent =
     request.headers.get("linear-event") ||
@@ -511,6 +528,104 @@ async function handleLinearWebhook(
 
   // Inbox and permission notifications may not contain an agent prompt.
   // Acknowledge them without sending malformed jobs to the local daemon.
+  if (isShadowNoPrompt) {
+    // The HMAC and app installation were verified above. A mutable delivery
+    // header must never define this event's durable identity.
+    if (env.SERVICE_NAME !== "linear-chatgpt-agent") {
+      return jsonResponse({ ok: false, accepted: false, error: "Untrusted reviewer worker identity" }, 503);
+    }
+    // Fail before any OAuth enrichment if reviewer-only credentials are
+    // missing; other coding agents' shared /jobs secret cannot substitute.
+    if (!env.EVENT_INTELLIGENCE_INTAKE_TOKEN ||
+        env.EVENT_INTELLIGENCE_INTAKE_TOKEN.length < 32) {
+      return jsonResponse({ ok: false, accepted: false,
+        error: "Reviewer intake credential is not configured" }, 503);
+    }
+    const issueId = extractNoPromptIssueId(payload);
+    let verifiedIssue: {
+      id: string; identifier: string; organizationId: string;
+      projectId: string | null; stateType: string;
+    } | null = null;
+    if (issueId) {
+      // Only the installed Linear OAuth app can attest these issue facts.
+      // Do not treat the webhook's claimed issue/project/state as verified.
+      try {
+        const facts = await linearGraphql<{
+          issue: null | {
+            id: string; identifier: string;
+            team: { organization: { id: string } };
+            project: null | { id: string };
+            state: null | { type: string };
+          };
+        }>(installation.accessToken,
+          `query EventIntelligenceVerifiedIssue($id:String!) {
+            issue(id:$id) { id identifier team { organization { id } }
+              project { id } state { type } }
+          }`, { id: issueId });
+        if (!facts.issue || facts.issue.id !== issueId ||
+            facts.issue.team?.organization?.id !== installation.organizationId ||
+            !facts.issue.state?.type) {
+          return jsonResponse({ ok: false, accepted: false,
+            error: "Linear issue does not match installed workspace" }, 422);
+        }
+        verifiedIssue = {
+          id: facts.issue.id, identifier: facts.issue.identifier,
+          organizationId: installation.organizationId,
+          projectId: facts.issue.project?.id || null,
+          stateType: facts.issue.state.type,
+        };
+      } catch {
+        return jsonResponse({ ok: false, accepted: false,
+          error: "Trusted issue enrichment unavailable; retry required" }, 503);
+      }
+    }
+    const event = {
+      schemaVersion: 2, provider: "linear", eventType: "Linear.AppUserNotification",
+      deliveryId: "event:" + signedPayloadSha256, signedPayloadSha256,
+      workerIdentity: env.SERVICE_NAME, organizationId: installation.organizationId,
+      issueId: issueId ?? null, agentSessionId: extractNoPromptAgentSessionId(payload) ?? null,
+      prCandidate: parseSignedNotificationPrCandidate(payload),
+      verifiedIssue, hasPromptContext: false,
+    };
+    const intakeUrl = new URL(env.BRIDGE_URL);
+    intakeUrl.pathname = "/event-intelligence/intake";
+    intakeUrl.search = "";
+    let receipt: Record<string, unknown>;
+    try {
+      const upstream = await fetch(intakeUrl.toString(), {
+        method: "POST",
+        headers: { authorization: `Bearer ${env.EVENT_INTELLIGENCE_INTAKE_TOKEN}`,
+          "content-type": "application/json",
+          "x-bridge-worker": env.SERVICE_NAME },
+        body: JSON.stringify(event), signal: AbortSignal.timeout(9000),
+      });
+      receipt = await upstream.json() as Record<string, unknown>;
+      if (upstream.status !== 202 || receipt.ok !== true ||
+          receipt.accepted !== true || receipt.durable !== true ||
+          receipt.dispatchStatus !== "not_started" ||
+          receipt.reviewLaunchStatus !== "not_started" ||
+          typeof receipt.deliveryHash !== "string" ||
+          !/^[0-9a-f]{64}$/.test(receipt.deliveryHash) ||
+          !["awaiting_issue_link", "awaiting_verified_linear_issue",
+            "awaiting_verified_pr_link",
+            "awaiting_verified_github_evidence"].includes(String(receipt.stage))) {
+        throw Error("Bridge did not confirm durable shadow intake");
+      }
+    } catch {
+      return jsonResponse({ ok: false, accepted: false,
+        error: "Durable notification intake failed; retry required" }, 503);
+    }
+    // KV dedupe is set only after disk fsync and verified Bridge ACK;
+    // durable intake is never reported as a native review launch.
+    await env.LINEAR_DATA.put(dedupeKey, "durable_intake", { expirationTtl: 86400 });
+    return jsonResponse({
+      ok: true, accepted: true, durable: true, forwarded: false, dispatched: false,
+      intakeStage: receipt.stage, deliveryHash: receipt.deliveryHash,
+      dispatchStatus: "not_started", reviewLaunchStatus: "not_started",
+      webhookId, linearEvent,
+    }, 202);
+  }
+
   if (!promptContext) {
     console.log("Webhook acknowledged without forwarding", {
       webhookId,
@@ -818,6 +933,51 @@ function extractAgentSessionId(
   }
 
   return undefined;
+}
+
+function extractNoPromptIssueId(payload: Record<string, unknown>): string | undefined {
+  const possible = [
+    getNested(payload, "issueId"), getNested(payload, "issue", "id"),
+    getNested(payload, "notification", "issueId"),
+    getNested(payload, "notification", "issue", "id"),
+    getNested(payload, "data", "issueId"), getNested(payload, "data", "issue", "id"),
+    getNested(payload, "data", "notification", "issueId"),
+    getNested(payload, "data", "notification", "issue", "id"),
+  ];
+  return possible.find(value => typeof value === "string" &&
+    /^[a-zA-Z0-9_-]{8,128}$/.test(value)) as string | undefined;
+}
+function extractNoPromptAgentSessionId(payload: Record<string, unknown>): string | undefined {
+  const possible = [
+    getNested(payload, "agentSession", "id"), getNested(payload, "agentSessionId"),
+    getNested(payload, "data", "agentSession", "id"),
+    getNested(payload, "data", "agentSessionId"),
+  ];
+  return possible.find(value => typeof value === "string" &&
+    /^[a-zA-Z0-9_-]{8,128}$/.test(value)) as string | undefined;
+}
+function parseSignedNotificationPrCandidate(payload: Record<string, unknown>):
+  { repository: string; number: number } | null {
+  const urls = [
+    getNested(payload, "notification", "url"),
+    getNested(payload, "data", "notification", "url"),
+    getNested(payload, "url"), getNested(payload, "data", "url"),
+  ];
+  for (const raw of urls) {
+    if (typeof raw !== "string" || raw.length > 280) continue;
+    try {
+      const url = new URL(raw);
+      const parts = url.pathname.split("/").filter(Boolean);
+      const name = /^[a-zA-Z0-9_.-]+$/;
+      if (url.protocol !== "https:" || url.hostname !== "github.com" ||
+          url.username || url.password || url.search || url.hash ||
+          parts.length !== 4 || !name.test(parts[0]) || !name.test(parts[1]) ||
+          parts[0] === ".." || parts[1] === ".." || parts[2] !== "pull" ||
+          !/^[1-9][0-9]{0,8}$/.test(parts[3])) continue;
+      return { repository: parts[0] + "/" + parts[1], number: Number(parts[3]) };
+    } catch { /* Opaque notification URLs are not GitHub proof. */ }
+  }
+  return null;
 }
 
 function extractPromptContext(payload: Record<string, unknown>): string | undefined {
