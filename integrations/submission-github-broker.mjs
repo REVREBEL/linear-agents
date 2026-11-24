@@ -29,7 +29,7 @@ export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=
           'X-GitHub-Api-Version':'2022-11-28','User-Agent':'REVREBEL-Submission-Broker',
           ...(payload?{'Content-Type':'application/json'}:{})},
         ...(payload?{body:JSON.stringify(payload)}:{}),signal:AbortSignal.timeout(8000)});
-      if(response.status!==(method==='POST'?201:200)||!response.body?.getReader)throw fail();
+      if(response.status!==(method==='POST'&&urlPath!=='/graphql'?201:200)||!response.body?.getReader)throw fail();
       const reader=response.body.getReader();const chunks=[];let size=0;
       try{while(true){const {done,value}=await reader.read();if(done)break;
         size+=value.byteLength;if(size>256*1024){await reader.cancel();throw fail();}
@@ -129,5 +129,120 @@ export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=
       mapping:Object.freeze({appId:m.appId,installationId:m.installationId,repository:m.repository}),
     });
   }
-  return Object.freeze({forScope});
+  // ABR-18: separate reviewer-only read facade; no coding scope, publication,
+  // tokens, mutations or general-purpose GitHub URL access. Caller must supply
+  // an operator-pinned reviewer App/installation/repository mapping.
+  async function forReviewScope(s){
+    if(!allowObservation||allowPublication||s?.agentId!=='chatgpt-review')throw fail();
+    const m=map.get(s.agentId+'\0'+s.repository);
+    if(!m||m.appId!==s.appId||m.installationId!==s.installationId)throw fail();
+    const prefix='/repos/'+m.repository;
+    const read=async suffix=>request(prefix+suffix,await token(m));
+    const {data:repo}=await read('');
+    if(String(repo.id)!==m.repositoryNumericId||repo.full_name!==m.repository||
+       repo.archived||repo.disabled)throw fail();
+    return Object.freeze({
+      mapping:Object.freeze({repository:m.repository,appId:m.appId,installationId:m.installationId}),
+      async observeReview(number,requiredChecks){
+        if(!Number.isSafeInteger(number)||number<1||number>999999999||
+           !Array.isArray(requiredChecks)||requiredChecks.length<1||requiredChecks.length>50||
+           requiredChecks.some(r=>!r||typeof r.name!=='string'||r.name.length<1||
+             r.name.length>128||!ID.test(r.appId)))throw fail();
+        if(new Set(requiredChecks.map(r=>r.name+'\0'+r.appId)).size!==requiredChecks.length)throw fail();
+        const fetchPr=async()=>{
+          const {data:pr}=await read('/pulls/'+number);
+          if(pr?.number!==number||
+             pr.html_url!==`https://github.com/${m.repository}/pull/${number}`||
+             !['open','closed'].includes(pr.state)||typeof pr.draft!=='boolean'||
+             !SHA.test(pr.head?.sha)||!SHA.test(pr.base?.sha)||
+             pr.head?.repo?.full_name!==m.repository||
+             pr.base?.repo?.full_name!==m.repository||
+             !validRef(pr.head?.ref)||!validRef(pr.base?.ref)||
+             !/^[A-Za-z0-9-]{1,39}$/.test(pr.user?.login||''))throw fail();
+          return pr;
+        };
+        const pr=await fetchPr();
+        const head=pr.head.sha;
+        const [{data:checks,link:checkLink},{data:reviews,link:reviewLink},{data:threadResult}]=await Promise.all([
+          read('/commits/'+head+'/check-runs?filter=latest&per_page=100'),
+          read('/pulls/'+number+'/reviews?per_page=100'),
+          request('/graphql',await token(m),'POST',{query:`query ABR18VerifiedReviewThreads($owner:String!,$name:String!,$number:Int!) {
+            repository(owner:$owner,name:$name) {
+              nameWithOwner pullRequest(number:$number) {
+                number headRefOid reviewThreads(first:100) {
+                  pageInfo { hasNextPage }
+                  nodes { isResolved isOutdated }
+                }
+              }
+            }
+          }`,variables:{owner:m.repository.split('/')[0],name:m.repository.split('/')[1],number}})
+        ]);
+        if(checkLink.includes('rel="next"')||reviewLink.includes('rel="next"')||
+           !Array.isArray(checks?.check_runs)||checks.total_count!==checks.check_runs.length||
+           checks.check_runs.length>100||!Array.isArray(reviews)||reviews.length>100||
+           threadResult?.errors?.length||threadResult?.data?.repository?.nameWithOwner!==m.repository||
+           threadResult.data.repository.pullRequest?.number!==number||
+           threadResult.data.repository.pullRequest?.headRefOid!==head||
+           threadResult.data.repository.pullRequest.reviewThreads?.pageInfo?.hasNextPage!==false||
+           !Array.isArray(threadResult.data.repository.pullRequest.reviewThreads.nodes)||
+           threadResult.data.repository.pullRequest.reviewThreads.nodes.length>100)throw fail();
+        const nodes=threadResult.data.repository.pullRequest.reviewThreads.nodes;
+        if(nodes.some(n=>typeof n?.isResolved!=='boolean'||typeof n?.isOutdated!=='boolean'))throw fail();
+        const checked=requiredChecks.map(r=>{
+          const hits=checks.check_runs.filter(c=>c.name===r.name&&String(c.app?.id)===r.appId);
+          if(hits.length!==1||hits[0].head_sha!==head) return 'unknown';
+          const c=hits[0];
+          if(c.status!=='completed')return 'pending';
+          return c.conclusion==='success'?'success':'failed';
+        });
+        const ci=checked.includes('failed')?'failed':
+          checked.includes('unknown')?'unknown':
+          checked.includes('pending')?'pending':'success';
+        if(reviews.some(r=>!Number.isSafeInteger(r?.id)||r.id<1||
+           !['APPROVED','CHANGES_REQUESTED','COMMENTED','DISMISSED','PENDING'].includes(r.state)||
+           (r.commit_id!==null&&!SHA.test(r.commit_id))))throw fail();
+        const currentReviews=reviews.filter(r=>r.commit_id===head&&r.submitted_at&&
+          ['APPROVED','CHANGES_REQUESTED','COMMENTED','DISMISSED'].includes(r.state));
+        // Comments do not resolve a requested change; a request can remain active
+        // across pushes until the reviewer approves or the review is dismissed.
+        const decisionReviews=reviews.filter(r=>r.submitted_at&&
+          ['APPROVED','CHANGES_REQUESTED','DISMISSED'].includes(r.state));
+        const latestByActor=new Map();
+        for(const r of decisionReviews){
+          if(!/^[A-Za-z0-9-]{1,39}$/.test(r.user?.login||'')||
+             !Number.isFinite(Date.parse(r.submitted_at)))throw fail();
+          const actor=r.user.login.toLowerCase(),previous=latestByActor.get(actor);
+          if(!previous||Date.parse(r.submitted_at)>Date.parse(previous.submitted_at)||
+             (r.submitted_at===previous.submitted_at&&r.id>previous.id)){
+            latestByActor.set(actor,r);
+          }
+        }
+        const changesRequested=[...latestByActor.values()].filter(r=>r.state==='CHANGES_REQUESTED').length;
+        const unresolved=nodes.filter(n=>!n.isResolved).length;
+        // Re-check the PR after independent requests; a push or closure in
+        // flight cannot yield a review-ready snapshot for the old head.
+        const again=await fetchPr();
+        if(again.head.sha!==head||again.base.sha!==pr.base.sha||
+           again.state!==pr.state||again.draft!==pr.draft)throw fail();
+        return Object.freeze({
+          schemaVersion:1,source:'github-app-readonly',repository:m.repository,
+          repositoryNumericId:m.repositoryNumericId,installationId:m.installationId,
+          pullNumber:number,headSha:head,baseSha:pr.base.sha,
+          baseBranch:pr.base.ref,headBranch:pr.head.ref,authorLogin:pr.user.login,
+          state:pr.state,draft:pr.draft,ciStatus:ci,
+          requiredCheckCount:requiredChecks.length,
+          reviewCount:currentReviews.length,changesRequestedReviews:changesRequested,
+          unresolvedThreads:unresolved,outdatedThreads:nodes.filter(n=>n.isOutdated).length,
+          totalThreads:nodes.length,observedAt:new Date(now()).toISOString(),
+          // GitHub context readiness is NOT permission to dispatch. Linear
+          // issue/PR linkage, reviewer identity, and a separate launch
+          // acknowledgment are all independent trusted gates.
+          githubContextReady:pr.state==='open'&&!pr.draft&&ci==='success'&&
+            unresolved===0&&changesRequested===0,
+          dispatchAuthorized:false,reviewLaunchStatus:'not_started',dispatched:false,
+        });
+      },
+    });
+  }
+  return Object.freeze({forScope,forReviewScope});
 }

@@ -19,6 +19,7 @@ This directory owns **source-controlled adapters and normalization utilities** u
 | --- | --- |
 | `github-events.mjs` | Sanitize and classify GitHub PR/comment events, keep a metadata-only event journal and derive review routing/alerts |
 | `event-intelligence.mjs` | ABR-18 Phase 1 trusted GitHub/Linear event normalization, deterministic shadow classification, versioned semantic-work identity, and metadata-only deduplicated shadow journal; no model call, public ingress or new review dispatch |
+| `event-intelligence-enrichment.mjs` | ABR-18 Phase 2B1 restricted, operator-pinned GitHub review metadata enrichment and independent review-handoff/review-publication status reconciliation; no dispatch |
 | `linear-credentials.mjs` | Fetch agent-specific Linear app credentials through the pinned Worker flow and write local ignored `.env.linear-bridge` with restricted permissions |
 | `review-linear-notifier.mjs` | Create/update deterministically identified Linear **review** issues; distinguishes the ChatGPT review harness from ChatGPT CLI coding assignments |
 | [`litellm/`](litellm/README.md) | Loopback LiteLLM OpenAI-compatible Chat Completions adapter and bounded tool execution |
@@ -122,3 +123,46 @@ even after a Linear state or project change, while mismatched signed
 event fields are still refused. Incomplete writes, link failures,
 lost-ACK recovery, concurrent duplicates and changed provider facts
 have focused regressions.
+
+
+## ABR-18 Phase 2B1 — independently verified GitHub review context
+
+`submission-github-broker.mjs` supports a distinct reviewer-only
+`forReviewScope` facade when its protected host-only
+`allowObservation:true` boundary is enabled without publication.
+The caller must supply an operator-pinned mapping for agent identity
+`chatgpt-review`, exact repository, App ID, and installation ID. The
+broker verifies GitHub App JWT, installation, numeric repository ID,
+single-repository token scope, and read-only permissions. It never
+returns private keys, access tokens or arbitrary fetch methods.
+
+`observeReview(number, requiredChecks)` obtains fresh GitHub PR
+head/base SHA, state/draft, required CI runs identified by exact
+check name AND GitHub App ID, submitted reviews on that head, and
+unresolved threads via bounded GitHub GraphQL. It rejects foreign
+forks, invalid SHA/refs, missing/ambiguous required checks as ready,
+pagination, stale heads mid-request, and provider errors.
+`githubContextReady` represents GitHub evidence only, never dispatch
+authorization; `dispatchAuthorized:false` and
+`reviewLaunchStatus:not_started` remain explicit. Current-head
+`CHANGES_REQUESTED` reviews block readiness.
+
+`event-intelligence-enrichment.mjs` consumes an existing private,
+fsynced Phase 2A intake receipt and operator-owned organization/repo
+scope. The notification PR is only a candidate. Even with GitHub CI
+and reviews clean, evaluation defers until exact Linear issue-to-PR
+association and reviewer routing are independently verified.
+It cannot mutate intake, start jobs or publish GitHub reviews.
+
+`reconcileReviewProgress` distinguishes pending, claimed, attempted
+but unverified Shortcuts/SSH handoffs, uncertain handoffs and blocked
+work. It accepts a published review only after an injected existing
+trusted GitHub reviewer verifier freshly validates review ID, actor
+and head SHA. No `HANDOFF_ATTEMPTED` means actual launch. True
+ChatGPT launch/start proof needs separately approved runtime integration.
+
+This is non-wired source: no production Bridge/Worker deployment,
+permissions, credentials or dispatch mode are changed. The next
+integration milestone connects root-approved reviewer GitHub App
+key loading, durable intake scanning, and verified Linear issue-to-PR
+linkage before any live shadow scoring.
