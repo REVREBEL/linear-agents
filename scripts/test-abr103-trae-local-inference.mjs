@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {verifyTraeTrajectory,assertTraeStagingIdentity,runTraeLocalCanary} from './abr103-trae-local-inference.mjs';
+import {mkdtempSync,writeFileSync,chmodSync,rmSync} from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {verifyTraeTrajectory,assertTraeStagingIdentity,assertTraeExecutable,resolveTraePaths,runTraeLocalCanary} from './abr103-trae-local-inference.mjs';
 
 const model='qwen3.5:9b-opencode';
 const response={content:'Task completed',model,tool_calls:null};
@@ -49,4 +52,30 @@ test('ABR-103 non-root gate verifies both accepted and denied identities',async(
   else
     assert.equal(assertTraeStagingIdentity({
       uid:process.getuid?.(),platform:process.platform}),true);
+});
+test('ABR-103 resolves current Trae paths and permits explicit absolute operator overrides',()=>{
+  assert.deepEqual(resolveTraePaths({}),{
+    base:'/opt/state/agent-bridge/m5-provider-homes/trae',
+    exec:'/opt/agents/trae/trae-agent/.venv/bin/trae-cli'
+  });
+  assert.deepEqual(resolveTraePaths({
+    ABR103_TRAE_BASE:'/var/tmp/private-trae',
+    ABR103_TRAE_EXEC:'/opt/agents/trae/trae-agent/.venv/bin/trae-cli'
+  }),{base:'/var/tmp/private-trae',exec:'/opt/agents/trae/trae-agent/.venv/bin/trae-cli'});
+  assert.throws(()=>resolveTraePaths({ABR103_TRAE_BASE:'relative'}),/ABR103_TRAE_PATHS_MUST_BE_ABSOLUTE/);
+  assert.throws(()=>resolveTraePaths({ABR103_TRAE_EXEC:'relative'}),/ABR103_TRAE_PATHS_MUST_BE_ABSOLUTE/);
+});
+test('ABR-103 rejects a missing Trae executable or broken shebang interpreter',()=>{
+  const root=mkdtempSync(path.join(os.tmpdir(),'abr103-trae-exec-'));
+  try{
+    const good=path.join(root,'good');
+    writeFileSync(good,'#!/bin/sh\nexit 0\n',{mode:0o700});
+    chmodSync(good,0o700);
+    assert.doesNotThrow(()=>assertTraeExecutable(good));
+    const broken=path.join(root,'broken');
+    writeFileSync(broken,'#!/definitely/missing/python\n',{mode:0o700});
+    chmodSync(broken,0o700);
+    assert.throws(()=>assertTraeExecutable(broken),/ABR103_TRAE_EXEC_UNAVAILABLE/);
+    assert.throws(()=>assertTraeExecutable(path.join(root,'absent')),/ABR103_TRAE_EXEC_UNAVAILABLE/);
+  }finally{rmSync(root,{recursive:true,force:true});}
 });

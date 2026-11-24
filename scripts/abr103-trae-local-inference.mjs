@@ -4,12 +4,19 @@
 // egress approval. No GitHub, Linear, external credentials or editing tools.
 import {spawn} from 'node:child_process';
 import {mkdtemp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
-import {realpathSync,statSync} from 'node:fs';
+import {accessSync,closeSync,constants,openSync,readSync,realpathSync,statSync} from 'node:fs';
 import path from 'node:path';
 import {guardStagingProcessTree} from './abr103-staging-tree-guard.mjs';
 
-const BASE='/opt/state/agent-bridge/m5-provider-homes/trae';
-const EXEC='/opt/agent-tools/trae-agent/.venv/bin/trae-cli';
+const DEFAULT_BASE='/opt/state/agent-bridge/m5-provider-homes/trae';
+const DEFAULT_EXEC='/opt/agents/trae/trae-agent/.venv/bin/trae-cli';
+export function resolveTraePaths(env=process.env){
+  const base=env.ABR103_TRAE_BASE?.trim()||DEFAULT_BASE;
+  const exec=env.ABR103_TRAE_EXEC?.trim()||DEFAULT_EXEC;
+  if(!path.isAbsolute(base)||!path.isAbsolute(exec))
+    throw Error('ABR103_TRAE_PATHS_MUST_BE_ABSOLUTE');
+  return {base,exec};
+}
 const MODEL='qwen3.5:9b-opencode';
 const PROVIDER='ollama';
 const CONFIG=[
@@ -65,8 +72,26 @@ export function assertTraeStagingIdentity({uid,platform}){
     throw Error('ABR103_NONROOT_REQUIRED');
   return true;
 }
+export function assertTraeExecutable(exec){
+  try{
+    accessSync(exec,constants.X_OK);
+    if(!statSync(exec).isFile())throw Error('not a regular file');
+    const fd=openSync(exec,'r');
+    let header='';
+    try{
+      const buffer=Buffer.alloc(256);
+      header=buffer.toString('utf8',0,readSync(fd,buffer,0,buffer.length,0)).split('\n',1)[0];
+    }finally{closeSync(fd);}
+    if(header.startsWith('#!')){
+      const interpreter=header.slice(2).trim().split(/\s+/)[0];
+      if(interpreter)accessSync(interpreter,constants.X_OK);
+    }
+  }catch{throw Error('ABR103_TRAE_EXEC_UNAVAILABLE');}
+}
 export async function runTraeLocalCanary(){
   assertTraeStagingIdentity({uid:process.getuid?.(),platform:process.platform});
+  const {base:BASE,exec:EXEC}=resolveTraePaths();
+  assertTraeExecutable(EXEC);
   if(realpathSync(BASE)!==BASE||!statSync(BASE).isDirectory()||
      statSync(BASE).uid!==process.getuid()||(statSync(BASE).mode&0o077))
     throw Error('ABR103_PRIVATE_STAGING_REQUIRED');
@@ -78,7 +103,7 @@ export async function runTraeLocalCanary(){
   const config=path.join(root,'trae-staging.yaml');
   const workspace=path.join(root,'workspace');
   const trajectory=path.join(root,'trajectory.json');
-  const result={schemaVersion:1,provider:PROVIDER,model:MODEL,
+  const result={schemaVersion:1,provider:PROVIDER,model:MODEL,executable:EXEC,
     nativeLaunch:false,validatedTrajectory:false,pass:false};
   try{
     await mkdir(workspace,{mode:0o700});
@@ -90,7 +115,7 @@ export async function runTraeLocalCanary(){
         'Do not run shell tools. Complete this task without external side effects.'];
     const child=spawn(EXEC,args,{cwd:workspace,detached:true,
       stdio:['ignore','ignore','ignore'],env:{
-        HOME:root,PATH:'/opt/agent-tools/trae-agent/.venv/bin:/usr/bin:/bin',
+        HOME:root,PATH:[path.dirname(EXEC),'/usr/local/bin','/usr/bin','/bin'].join(':'),
         OLLAMA_HOST:'http://127.0.0.1:11434',LANG:'C.UTF-8'
       }});
     let guard,spawned=false,spawnError=null;
