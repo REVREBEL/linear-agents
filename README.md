@@ -662,3 +662,12 @@ enrichment and enforcement are separate approval-gated milestones.
 Phase 2A requires a separate reviewer-only `EVENT_INTELLIGENCE_INTAKE_TOKEN`
 configured on both Worker and Bridge before shadow activation. The
 existing coding-job bearer is deliberately insufficient for this route.
+
+## ABR-104 — read-only reviewer GitHub evidence (ABR-18 follow-up)
+
+ABR-104 adds a host-only reviewer GitHub App read facade, policy-pinned
+CI/review-thread inspection, and advisory reconciliation of durable Linear
+notifications and attempted/published review states. It cannot launch
+reviews or change production permissions; reviewer-start acknowledgment
+and verified Linear issue-to-PR linkage remain separate acceptance work.
+See [integration ownership](integrations/README.md).
