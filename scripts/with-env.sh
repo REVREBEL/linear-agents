@@ -121,6 +121,15 @@ case "${1:-}" in
       else
         echo "No GitHub webhook secret configured for ${agent}; existing Cloudflare secrets are unchanged."
       fi
+      if [[ "${agent}" == chatgpt && -n "${CHATGPT_EVENT_INTELLIGENCE_INTAKE_TOKEN:-}" ]]; then
+        if [[ "${#CHATGPT_EVENT_INTELLIGENCE_INTAKE_TOKEN}" -lt 32 ]]; then
+          echo "CHATGPT_EVENT_INTELLIGENCE_INTAKE_TOKEN must have at least 32 characters" >&2
+          exit 1
+        fi
+        printf '%s' "${CHATGPT_EVENT_INTELLIGENCE_INTAKE_TOKEN}" |
+          "${wrangler_bin}" secret put EVENT_INTELLIGENCE_INTAKE_TOKEN --config "${temp_config}"
+        echo "Synced isolated ChatGPT reviewer intake credential."
+      fi
       echo "Synced Linear and bridge secrets for ${agent}."
     }
     case "${action}" in
@@ -128,12 +137,26 @@ case "${1:-}" in
       sync-secrets) sync_worker_secrets ;;
       deploy)
         # Fail before deployment if secret values are missing, to avoid a partial setup.
+        if [[ "${agent}" == chatgpt && "${CHATGPT_EVENT_INTELLIGENCE_MODE:-off}" == shadow ]]; then
+          intake_token="${CHATGPT_EVENT_INTELLIGENCE_INTAKE_TOKEN:-}"
+          if [[ "${#intake_token}" -lt 32 ]]; then
+            echo "Reviewer shadow deployment requires a dedicated 32+ character intake token" >&2
+            exit 1
+          fi
+        fi
         require BRIDGE_SHARED_SECRET
         require "${credential_prefix}_LINEAR_CLIENT_ID"
         require "${credential_prefix}_LINEAR_CLIENT_SECRET"
         require "${credential_prefix}_LINEAR_WEBHOOK_SECRET"
-        "${wrangler_bin}" deploy --config "${temp_config}" "$@"
-        sync_worker_secrets
+        if [[ "${agent}" == chatgpt && "${CHATGPT_EVENT_INTELLIGENCE_MODE:-off}" == shadow ]]; then
+          # Provision isolated reviewer credentials before enabling a new shadow
+          # route; missing credentials must fail closed throughout rollout.
+          sync_worker_secrets
+          "${wrangler_bin}" deploy --config "${temp_config}" "$@"
+        else
+          "${wrangler_bin}" deploy --config "${temp_config}" "$@"
+          sync_worker_secrets
+        fi
         ;;
       dev)
         if [[ -e .dev.vars ]]; then
@@ -154,6 +177,9 @@ case "${1:-}" in
         sourced_key="${prefix}_GITHUB_SECRET"
         if [[ -n "${!sourced_key:-}" ]]; then
           KEY=GITHUB_WEBHOOK_SECRET VALUE="${!sourced_key}" python3 -c 'import json,os; print(os.environ["KEY"]+"="+json.dumps(os.environ["VALUE"]))' >> .dev.vars
+        fi
+        if [[ "${agent}" == chatgpt && -n "${CHATGPT_EVENT_INTELLIGENCE_INTAKE_TOKEN:-}" ]]; then
+          KEY=EVENT_INTELLIGENCE_INTAKE_TOKEN VALUE="${CHATGPT_EVENT_INTELLIGENCE_INTAKE_TOKEN}" python3 -c 'import json,os; print(os.environ["KEY"]+"="+json.dumps(os.environ["VALUE"]))' >> .dev.vars
         fi
         "${wrangler_bin}" dev --config "${temp_config}" "$@"
         ;;

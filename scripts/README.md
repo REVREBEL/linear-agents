@@ -257,3 +257,23 @@ support controlled model egress, daemonized processes that escape the
 approved namespace, a service-wide task ledger, or authenticated
 publication. The production operator binding remains separately
 controlled and fail-closed.
+
+
+## ABR-18 Phase 2A — reviewer-only shadow rollout configuration
+
+`scripts/render-wrangler.mjs` renders `EVENT_INTELLIGENCE_MODE=off` by
+default for the ChatGPT reviewer Worker. The operator may explicitly set
+`CHATGPT_EVENT_INTELLIGENCE_MODE=shadow` only with a distinct
+`CHATGPT_EVENT_INTELLIGENCE_INTAKE_TOKEN` of at least 32 characters.
+`scripts/with-env.sh` provisions this token to **only** the reviewer
+Worker as `EVENT_INTELLIGENCE_INTAKE_TOKEN` using Wrangler secret
+bindings, never as a tracked config variable or shared coding-job bearer.
+For explicit shadow-mode deployment the secret is synced **before**
+the revised Worker is deployed. Other agent Workers do not receive it.
+
+Configure the same token separately in the protected Ubuntu Bridge
+environment as `EVENT_INTELLIGENCE_INTAKE_TOKEN`, with
+`EVENT_INTELLIGENCE_MODE=shadow`; start the Bridge only after its
+approved release is deployed and operator checks pass. Default `off`
+does not activate the private intake route. This source change does
+not modify either live environment or deploy the Worker.

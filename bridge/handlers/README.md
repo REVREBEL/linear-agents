@@ -70,3 +70,30 @@ unchanged. A shadow `dispatch` classification is **advisory only**, never
 a second handoff. Failed shadow storage emits a redacted error code and
 does not claim new review progress. No new public endpoint, model call,
 Worker deployment, or production activation occurs in this phase.
+
+
+## ABR-18 Phase 2A — private durable Linear intake
+
+`event-intelligence-intake-route.mjs` accepts authenticated, already
+HMAC-verified/OAuth-verified metadata from the ChatGPT reviewer Worker
+on `POST /event-intelligence/intake`, only in explicit
+`EVENT_INTELLIGENCE_MODE=shadow`. Bearer and known reviewer identity
+are mandatory, and malformed/unlinked scope records are rejected.
+This is not a public Linear webhook, not a general agent route and
+not a reviewer authorization. Normal `/jobs` routing remains separate.
+
+`persistNoPromptIntake` writes 0600 records under
+`linear-jobs/event-intelligence/linear-intake` using atomic exclusive
+creation, file fsync and directory fsync before the 202 ACK.
+Deduplication binds workspace and the SHA-256 of the signed Linear body;
+a conflicting same-key payload fails instead of being silently
+overwritten. Receipts store verified Linear issue facts, unverified
+candidate repository/PR number, provider-enrichment state and
+explicitly `dispatched:false`. No OAuth token, user prompt, raw webhook
+body or GitHub review text is persisted.
+
+
+The `EVENT_INTELLIGENCE_INTAKE_TOKEN` on the Bridge is distinct from
+`BRIDGE_SHARED_SECRET` used by coding agents and must be provisioned
+only to the ChatGPT reviewer Worker. Missing or undersized tokens
+fail closed, and a generic `/jobs` bearer cannot authorize this route.

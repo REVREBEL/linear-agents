@@ -27,6 +27,7 @@
   ],
   "vars": {
     "SERVICE_NAME": "linear-${CHATGPT_PREFIX}-agent",
+    "EVENT_INTELLIGENCE_MODE": "off",
     "LINEAR_REDIRECT_URI": "https://linear-${CHATGPT_PREFIX}.${DOMAIN}/oauth/callback",
     "LINEAR_SCOPES": "read,write,app:assignable,app:mentionable",
     "BRIDGE_URL": "https://${CHATGPT_PREFIX}-agent.${DOMAIN}/jobs"
