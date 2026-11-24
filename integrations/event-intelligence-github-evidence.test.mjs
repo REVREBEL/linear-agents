@@ -15,7 +15,7 @@ const pinnedChecks=[{name:'CI',appId:'42'}];
 
 function fixture({state='open',draft=false,ci='success',unresolved=0,
   outdated=0,paginated=false,wrongRepo=false,changeHead=false,reviewCount=1,
-  badGraphql=false,fetchStatus=200,changesRequested=false}={}){
+  badGraphql=false,fetchStatus=200,changesRequested=false,reviewEntries=null}={}){
   let prReads=0;
   const calls=[];
   const fetchImpl=async(input,options)=>{
@@ -64,7 +64,7 @@ function fixture({state='open',draft=false,ci='success',unresolved=0,
       }]};
     }
     else if(path==='/repos/'+repository+'/pulls/289/reviews'){
-      data=Array.from({length:reviewCount},(_,i)=>({
+      data=reviewEntries ?? Array.from({length:reviewCount},(_,i)=>({
         id:1+i,commit_id:head,state:changesRequested?'CHANGES_REQUESTED':'COMMENTED',
         submitted_at:'2026-11-24T13:00:00Z',user:{login:'reviewer'},
       }));
@@ -175,4 +175,21 @@ test('existing coding scope facade keeps its read operations unchanged',async()=
     'branchHead','checks','findOpenPull','getPull','mapping',
   ]);
   assert.equal(facade.observeReview,undefined);
+});
+
+
+test('an active change request survives later comments and new commits',async()=>{
+  const request={id:1,commit_id:base,state:'CHANGES_REQUESTED',submitted_at:'2026-11-24T13:00:00Z',user:{login:'reviewer'}};
+  const comment={id:2,commit_id:head,state:'COMMENTED',submitted_at:'2026-11-24T14:00:00Z',user:{login:'reviewer'}};
+  for(const entries of [[request],[request,comment]]) {
+    const x=fixture({reviewEntries:entries});
+    const result=await (await x.broker.forReviewScope(scope)).observeReview(289,pinnedChecks);
+    assert.equal(result.changesRequestedReviews,1);
+    assert.equal(result.githubContextReady,false);
+  }
+  const approval={...comment,id:3,state:'APPROVED',submitted_at:'2026-11-24T15:00:00Z'};
+  const x=fixture({reviewEntries:[request,comment,approval]});
+  const result=await (await x.broker.forReviewScope(scope)).observeReview(289,pinnedChecks);
+  assert.equal(result.changesRequestedReviews,0);
+  assert.equal(result.githubContextReady,true);
 });
