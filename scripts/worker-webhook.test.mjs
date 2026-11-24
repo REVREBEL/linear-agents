@@ -831,6 +831,52 @@ test("chatgpt Phase 2: signed no-prompt notification reaches durable Bridge inta
   } finally {globalThis.fetch=previousFetch;}
 });
 
+test("chatgpt Phase 2: distinct signed bodies sharing unsigned delivery header are both durable", {concurrency:false}, async()=>{
+  const worker=await loadWorker("chatgpt");
+  const store=kv({["installation:"+noPromptOrgId]:installedNoPrompt()});
+  const config=noPromptWorkerConfig(worker,store);
+  const first=signedNoPromptNotification({description:"first separately signed event"});
+  const second=signedNoPromptNotification({description:"second separately signed event"});
+  assert.notEqual(first.digest,second.digest);
+  const priorFetch=globalThis.fetch;
+  const forwarded=[];
+  try {
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).includes("api.linear.app/graphql")) {
+        return Response.json({data:{issue:{id:noPromptIssueId,identifier:"ABR-18",
+          team:{organization:{id:noPromptOrgId}},project:{id:noPromptProjectId},
+          state:{type:"started"}}}});
+      }
+      if(String(url).endsWith("/event-intelligence/intake")) {
+        const event=JSON.parse(String(options.body));
+        forwarded.push(event);
+        assert.equal(event.deliveryId,"event:"+event.signedPayloadSha256);
+        return Response.json({ok:true,accepted:true,durable:true,duplicate:false,
+          deliveryHash:crypto.createHash("sha256").update(event.deliveryId).digest("hex"),
+          stage:"awaiting_verified_github_evidence",
+          dispatchStatus:"not_started",reviewLaunchStatus:"not_started"},{status:202});
+      }
+      throw Error("Unexpected outbound request "+url);
+    };
+    const firstResponse=await worker.default.fetch(first.request(),config,{});
+    const secondResponse=await worker.default.fetch(second.request(),config,{});
+    assert.equal(firstResponse.status,202);
+    assert.equal(secondResponse.status,202);
+    assert.equal((await firstResponse.json()).duplicate,undefined);
+    assert.equal((await secondResponse.json()).duplicate,undefined);
+    assert.equal(forwarded.length,2);
+    assert.deepEqual(forwarded.map(event=>event.signedPayloadSha256).sort(),
+      [first.digest,second.digest].sort());
+    const acceptedKeys=[...store.map.keys()].filter(key=>key.startsWith("webhook:"));
+    assert.equal(acceptedKeys.length,2);
+    assert.ok(acceptedKeys.some(key=>key.endsWith("event:"+first.digest)));
+    assert.ok(acceptedKeys.some(key=>key.endsWith("event:"+second.digest)));
+    const retry=await worker.default.fetch(first.request(),config,{});
+    assert.equal((await retry.json()).duplicate,true);
+    assert.equal(forwarded.length,2);
+  } finally {globalThis.fetch=priorFetch;}
+});
+
 test("chatgpt Phase 2: failed durable intake stays retryable, no KV claim or fake review ACK", {concurrency:false}, async()=>{
   const worker=await loadWorker("chatgpt");
   const store=kv({["installation:"+noPromptOrgId]:installedNoPrompt()});

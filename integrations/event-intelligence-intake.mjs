@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { normalizeVerifiedLinearEvent, classifyEventIntelligence } from "./event-intelligence.mjs";
 
 const ID = /^[a-zA-Z0-9._:-]{8,160}$/;
@@ -79,39 +79,84 @@ export function validateNoPromptIntake(value) {
   });
 }
 
-/** Persist before acknowledging; duplicate claims never enqueue dispatch. */
-export async function persistNoPromptIntake(jobsDir, value) {
+/**
+ * A signed delivery is immutable; current OAuth issue state and project are
+ * not. Snapshot enrichment on first acceptance, but deduplicate/replay-check
+ * using only stable signed-event identity and the candidate from that body.
+ *
+ * A receipt is made visible only via a no-clobber hard link to an already
+ * fsynced temporary inode. A crash mid-write leaves no final .json file;
+ * a lost ACK leaves a complete receipt that survives an OAuth issue update.
+ */
+export async function persistNoPromptIntake(jobsDir, value, { files = fs } = {}) {
   const validated = validateNoPromptIntake(value);
   const directory = path.join(jobsDir, "event-intelligence", "linear-intake");
   const deliveryHash = hash(JSON.stringify([
     validated.provider, validated.organizationId, validated.deliveryId,
   ]));
   const receipt = path.join(directory, deliveryHash + ".json");
+  const eventHash = hash(JSON.stringify([
+    validated.provider, validated.eventType, validated.deliveryId,
+    validated.signedPayloadSha256, validated.organizationId,
+    validated.workerIdentity, validated.issueId, validated.agentSessionId,
+    validated.prCandidate,
+  ]));
+  // Full snapshot hash is retained for audit only, not for replay comparison.
   const payloadHash = hash(JSON.stringify(validated));
-  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  await files.mkdir(directory, { recursive: true, mode: 0o700 });
   const body = {
-    ...validated, deliveryHash, payloadHash, recordedAt: new Date().toISOString(),
+    ...validated, deliveryHash, eventHash, payloadHash,
+    recordedAt: new Date().toISOString(),
     state: "durable_intake", durable: true, dispatched: false,
     providerFactsVerifiedBy: validated.verifiedIssue ? "linear-oauth-app" : "none",
     githubEvidence: "not_verified",
   };
+  const temp = path.join(directory, "." + deliveryHash + "." + randomUUID() + ".tmp");
   let file;
-  try { file = await fs.open(receipt, "wx", 0o600); }
-  catch (error) {
-    if (error.code !== "EEXIST") throw error;
-    const previous = JSON.parse(await fs.readFile(receipt, "utf8"));
-    if (previous.deliveryHash !== deliveryHash || previous.payloadHash !== payloadHash ||
-        previous.state !== "durable_intake" || previous.dispatchStatus !== "not_started" ||
-        previous.durable !== true || previous.dispatched !== false) {
-      throw Error("Intake receipt collision or tampering");
-    }
-    return { duplicate: true, deliveryHash, stage: previous.stage };
-  }
+  let created = false;
   try {
+    file = await files.open(temp, "wx", 0o600);
     await file.writeFile(JSON.stringify(body) + "\n");
     await file.sync();
-  } finally { await file.close(); }
-  const directoryHandle = await fs.open(directory, "r");
+    await file.close();
+    file = null;
+    try {
+      // Hard linking is atomic and refuses to replace a competing receipt.
+      // The existing destination is never opened for a partial write.
+      await files.link(temp, receipt);
+      created = true;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+  } finally {
+    if (file) await file.close();
+    await files.unlink(temp).catch(error => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
+  // Fsync the directory after final publication AND temporary cleanup.
+  // A competing duplicate ACK also syncs it in case the publisher crashed
+  // after link(), before its own directory sync.
+  const directoryHandle = await files.open(directory, "r");
   try { await directoryHandle.sync(); } finally { await directoryHandle.close(); }
-  return { duplicate: false, deliveryHash, stage: body.stage };
+  if (created) return { duplicate: false, deliveryHash, stage: body.stage };
+
+  let previous;
+  try {
+    const stat = await files.lstat(receipt);
+    if (!stat.isFile() || (stat.mode & 0o077) !== 0) {
+      throw Error("Invalid receipt inode or permissions");
+    }
+    previous = JSON.parse(await files.readFile(receipt, "utf8"));
+  } catch {
+    throw Error("Intake receipt collision or tampering");
+  }
+  if (previous.deliveryHash !== deliveryHash || previous.eventHash !== eventHash ||
+      previous.signedPayloadSha256 !== validated.signedPayloadSha256 ||
+      previous.state !== "durable_intake" || previous.dispatchStatus !== "not_started" ||
+      previous.reviewLaunchStatus !== "not_started" || previous.durable !== true ||
+      previous.dispatched !== false) {
+    throw Error("Intake receipt collision or tampering");
+  }
+  return { duplicate: true, deliveryHash, stage: previous.stage };
 }

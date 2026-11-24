@@ -74,6 +74,111 @@ test("fsynced receipt dedupes the signed delivery and rejects changed metadata",
   } finally { await fs.rm(dir,{recursive:true,force:true}); }
 });
 
+test("same signed body remains idempotent after OAuth issue status or project changes", async () => {
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"abr18-oauth-replay-"));
+  try {
+    const original=intake();
+    const first=await persistNoPromptIntake(dir,original);
+    assert.equal(first.duplicate,false);
+    const differentFacts=intake({verifiedIssue:{
+      ...original.verifiedIssue,
+      stateType:"completed",
+      projectId:"00000000-0000-4000-8000-000000000042",
+    }});
+    const retry=await persistNoPromptIntake(dir,differentFacts);
+    assert.equal(retry.duplicate,true);
+    assert.equal(retry.deliveryHash,first.deliveryHash);
+    assert.equal(retry.stage,first.stage);
+    const receipt=JSON.parse(await fs.readFile(path.join(dir,"event-intelligence",
+      "linear-intake",first.deliveryHash+".json"),"utf8"));
+    assert.equal(receipt.verifiedIssue.stateType,"started");
+    assert.equal(receipt.verifiedIssue.projectId,original.verifiedIssue.projectId);
+    assert.equal(receipt.eventHash.length,64);
+    assert.notEqual(receipt.payloadHash,undefined);
+  } finally {await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test("interrupted partial write cannot leave a final receipt or poison retry", async () => {
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"abr18-partial-write-"));
+  try {
+    const files={...fs,async open(file,flags,mode) {
+      const handle=await fs.open(file,flags,mode);
+      if(flags!=="wx")return handle;
+      return {
+        async writeFile() {
+          await handle.writeFile("{incomplete-json");
+          throw Error("simulated power loss while writing");
+        },
+        async sync(){await handle.sync()},
+        async close(){await handle.close()},
+      };
+    }};
+    await assert.rejects(persistNoPromptIntake(dir,intake(),{files}),/power loss/);
+    const directory=path.join(dir,"event-intelligence","linear-intake");
+    assert.deepEqual(await fs.readdir(directory),[]);
+    const retry=await persistNoPromptIntake(dir,intake());
+    assert.equal(retry.duplicate,false);
+    assert.equal((await fs.readdir(directory)).length,1);
+  } finally {await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test("publish/link error cannot expose incomplete receipt; retry is safe", async () => {
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"abr18-publish-"));
+  try {
+    const files={...fs,async link() {throw Object.assign(Error("simulated link failure"),{code:"EIO"})}};
+    await assert.rejects(persistNoPromptIntake(dir,intake(),{files}),/link failure/);
+    const directory=path.join(dir,"event-intelligence","linear-intake");
+    assert.deepEqual(await fs.readdir(directory),[]);
+    const recovered=await persistNoPromptIntake(dir,intake());
+    assert.equal(recovered.duplicate,false);
+  } finally {await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test("lost ACK after receipt publish can be retried without another write", async () => {
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"abr18-lost-ack-"));
+  try {
+    const directory=path.join(dir,"event-intelligence","linear-intake");
+    let injected=false;
+    const files={...fs,async open(file,flags,mode) {
+      const handle=await fs.open(file,flags,mode);
+      if (file===directory && flags==="r" && !injected) {
+        injected=true;
+        return {
+          async sync(){throw Error("simulated directory fsync lost ACK")},
+          async close(){await handle.close()},
+        };
+      }
+      return handle;
+    }};
+    await assert.rejects(persistNoPromptIntake(dir,intake(),{files}),/lost ACK/);
+    const contents=await fs.readdir(directory);
+    assert.equal(contents.length,1);
+    const saved=JSON.parse(await fs.readFile(path.join(directory,contents[0]),"utf8"));
+    assert.equal(saved.durable,true);
+    const retry=await persistNoPromptIntake(dir,intake({
+      verifiedIssue:{...intake().verifiedIssue,stateType:"completed"},
+    }));
+    assert.equal(retry.duplicate,true);
+    assert.equal(await fs.readdir(directory).then(x=>x.length),1);
+  } finally {await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test("concurrent same signed deliveries publish only one completed receipt", async () => {
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"abr18-concurrent-"));
+  try {
+    const results=await Promise.all(Array.from({length:8},
+      ()=>persistNoPromptIntake(dir,intake())));
+    assert.equal(results.filter(r=>r.duplicate===false).length,1);
+    assert.equal(results.filter(r=>r.duplicate===true).length,7);
+    const directory=path.join(dir,"event-intelligence","linear-intake");
+    const files=await fs.readdir(directory);
+    assert.equal(files.length,1);
+    const saved=JSON.parse(await fs.readFile(path.join(directory,files[0]),"utf8"));
+    assert.equal(saved.durable,true);
+    assert.equal(saved.dispatched,false);
+  } finally {await fs.rm(dir,{recursive:true,force:true});}
+});
+
 test("private bridge intake refuses wrong method, disabled flag, and bad bearer/identity", async () => {
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),"abr18-intake-auth-"));
   let saves=0;

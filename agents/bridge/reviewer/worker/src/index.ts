@@ -376,9 +376,24 @@ async function handleLinearWebhook(
   // Use Linear's unique delivery ID for deduplication.
   // payload.webhookId identifies the webhook configuration itself and is reused
   // across different events, which can incorrectly suppress AgentSessionEvent.
-  const webhookId =
-    request.headers.get("linear-delivery") ||
-    `event:${Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawBody)))).map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
+  const notificationIsAppUser = payload.type === "AppUserNotification" ||
+    payload.type === "Linear.AppUserNotification";
+  const notificationHasExplicitPrompt = [
+    getNested(payload, "promptContext"), getNested(payload, "data", "promptContext"),
+    getNested(payload, "notification", "promptContext"),
+    getNested(payload, "data", "notification", "promptContext"),
+  ].some(value => typeof value === "string" && value.trim());
+  // The coordinator already canonicalizes the delivery header to a signed
+  // body hash. Apply the same rule here before the early KV duplicate check,
+  // including when this handler is invoked without the coordinator.
+  const isShadowNoPrompt = notificationIsAppUser &&
+    !notificationHasExplicitPrompt && env.EVENT_INTELLIGENCE_MODE === "shadow";
+  const signedPayloadSha256 = Array.from(new Uint8Array(await crypto.subtle.digest(
+    "SHA-256", new TextEncoder().encode(rawBody),
+  ))).map(byte => byte.toString(16).padStart(2, "0")).join("");
+  const webhookId = isShadowNoPrompt
+    ? `event:${signedPayloadSha256}`
+    : request.headers.get("linear-delivery") || `event:${signedPayloadSha256}`;
 
   const linearEvent =
     request.headers.get("linear-event") ||
@@ -513,15 +528,7 @@ async function handleLinearWebhook(
 
   // Inbox and permission notifications may not contain an agent prompt.
   // Acknowledge them without sending malformed jobs to the local daemon.
-  const notificationIsAppUser = payload.type === "AppUserNotification" ||
-    payload.type === "Linear.AppUserNotification";
-  const notificationHasExplicitPrompt = [
-    getNested(payload, "promptContext"), getNested(payload, "data", "promptContext"),
-    getNested(payload, "notification", "promptContext"),
-    getNested(payload, "data", "notification", "promptContext"),
-  ].some(value => typeof value === "string" && value.trim());
-  if (notificationIsAppUser && !notificationHasExplicitPrompt &&
-      env.EVENT_INTELLIGENCE_MODE === "shadow") {
+  if (isShadowNoPrompt) {
     // The HMAC and app installation were verified above. A mutable delivery
     // header must never define this event's durable identity.
     if (env.SERVICE_NAME !== "linear-chatgpt-agent") {
@@ -534,9 +541,6 @@ async function handleLinearWebhook(
       return jsonResponse({ ok: false, accepted: false,
         error: "Reviewer intake credential is not configured" }, 503);
     }
-    const signedPayloadSha256 = Array.from(new Uint8Array(await crypto.subtle.digest(
-      "SHA-256", new TextEncoder().encode(rawBody),
-    ))).map(byte => byte.toString(16).padStart(2, "0")).join("");
     const issueId = extractNoPromptIssueId(payload);
     let verifiedIssue: {
       id: string; identifier: string; organizationId: string;

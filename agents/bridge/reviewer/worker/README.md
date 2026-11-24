@@ -53,3 +53,13 @@ The Bridge must have the exact corresponding secret in its protected
 environment. It must **not** use `BRIDGE_SHARED_SECRET`: the latter
 authenticates coding `/jobs` callers and does not establish reviewer identity.
 Missing intake credentials fail closed (503) with no KV delivery claim.
+
+### ABR-18 PR #291 review hardening — signed-body deduplication
+
+The Worker selects the SHA-256 of the **HMAC-signed webhook body** for
+shadow no-prompt intake *before* its early KV duplicate lookup. The unsigned
+Linear delivery header is not an authoritative identity, even if the
+Worker's organization Durable Object already normalizes it. Two signed
+bodies sharing a caller-provided delivery header must each be admitted,
+persisted, and acknowledged independently. Identical signed bodies remain
+idempotent, and no durable-intake ACK represents agent launch.
