@@ -203,8 +203,12 @@ export function createSubmissionGithubBroker({mappings,loadPrivateKey,fetchImpl=
            (r.commit_id!==null&&!SHA.test(r.commit_id))))throw fail();
         const currentReviews=reviews.filter(r=>r.commit_id===head&&r.submitted_at&&
           ['APPROVED','CHANGES_REQUESTED','COMMENTED','DISMISSED'].includes(r.state));
+        // Comments do not resolve a requested change; a request can remain active
+        // across pushes until the reviewer approves or the review is dismissed.
+        const decisionReviews=reviews.filter(r=>r.submitted_at&&
+          ['APPROVED','CHANGES_REQUESTED','DISMISSED'].includes(r.state));
         const latestByActor=new Map();
-        for(const r of currentReviews){
+        for(const r of decisionReviews){
           if(!/^[A-Za-z0-9-]{1,39}$/.test(r.user?.login||'')||
              !Number.isFinite(Date.parse(r.submitted_at)))throw fail();
           const actor=r.user.login.toLowerCase(),previous=latestByActor.get(actor);
