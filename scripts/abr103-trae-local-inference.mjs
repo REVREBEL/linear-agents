@@ -38,15 +38,35 @@ const CONFIG=[
   ''
 ].join('\n');
 
+const meaningfulResponse=r=>!!r&&typeof r==='object'&&r.model===MODEL&&(
+  (typeof r.content==='string'&&r.content.trim().length>0)||
+  (Array.isArray(r.tool_calls)&&r.tool_calls.some(c=>c&&
+    c.name==='task_done'&&typeof c.call_id==='string'&&c.call_id.length>0))
+);
 export function verifyTraeTrajectory(d){
-  return !!d&&d.success===true&&d.provider===PROVIDER&&d.model===MODEL&&
-    Array.isArray(d.llm_interactions)&&d.llm_interactions.length>=1&&
-    d.llm_interactions.every(x=>x.provider===PROVIDER&&x.model===MODEL)&&
-    Array.isArray(d.agent_steps)&&d.agent_steps.length>=1&&
-    d.agent_steps.length<=2;
+  if(!d||d.success!==true||d.provider!==PROVIDER||d.model!==MODEL||
+    !Array.isArray(d.llm_interactions)||d.llm_interactions.length<1||
+    !Array.isArray(d.agent_steps)||d.agent_steps.length<1||
+    d.agent_steps.length>2)return false;
+  // Trae's trajectory_recorder.py records actual LLMResponse fields inside
+  // each interaction and its paired completed step. Metadata alone is
+  // never proof of inference, even when the top-level success flag is true.
+  if(!d.llm_interactions.every(x=>x&&x.provider===PROVIDER&&
+      x.model===MODEL&&meaningfulResponse(x.response)))return false;
+  return d.agent_steps.every(x=>x&&x.state==='completed'&&
+    !x.error&&meaningfulResponse(x.llm_response)&&
+    (x.tool_calls==null||Array.isArray(x.tool_calls))&&
+    (x.tool_results==null||Array.isArray(x.tool_results))&&
+    !(x.tool_results||[]).some(result=>result?.success!==true))&&
+    d.agent_steps.some(x=>x.llm_response);
+}
+export function assertTraeStagingIdentity({uid,platform}){
+  if(platform!=='linux'||!Number.isSafeInteger(uid)||uid<=0)
+    throw Error('ABR103_NONROOT_REQUIRED');
+  return true;
 }
 export async function runTraeLocalCanary(){
-  if(process.platform!=='linux'||process.getuid?.()===0)throw Error('ABR103_NONROOT_REQUIRED');
+  assertTraeStagingIdentity({uid:process.getuid?.(),platform:process.platform});
   if(realpathSync(BASE)!==BASE||!statSync(BASE).isDirectory()||
      statSync(BASE).uid!==process.getuid()||(statSync(BASE).mode&0o077))
     throw Error('ABR103_PRIVATE_STAGING_REQUIRED');
