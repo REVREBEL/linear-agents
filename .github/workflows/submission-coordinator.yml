@@ -20,6 +20,8 @@ on:
       - 'scripts/test-abr103-native-staging-canary.mjs'
       - 'scripts/abr103-staging-tree-guard.mjs'
       - 'scripts/test-abr103-staging-tree-guard.mjs'
+      - 'scripts/abr103-trae-local-inference.mjs'
+      - 'scripts/test-abr103-trae-local-inference.mjs'
       - 'scripts/linux/m5-sealed-git-access.sh'
       - 'jobs/persistence/submission-exclusive-lease.mjs'
       - 'scripts/fixtures/submission-provider-fixture.mjs'
@@ -58,6 +60,8 @@ on:
       - 'scripts/test-abr103-native-staging-canary.mjs'
       - 'scripts/abr103-staging-tree-guard.mjs'
       - 'scripts/test-abr103-staging-tree-guard.mjs'
+      - 'scripts/abr103-trae-local-inference.mjs'
+      - 'scripts/test-abr103-trae-local-inference.mjs'
       - 'scripts/linux/m5-sealed-git-access.sh'
       - 'jobs/persistence/submission-exclusive-lease.mjs'
       - 'scripts/fixtures/submission-provider-fixture.mjs'
@@ -106,6 +110,8 @@ jobs:
           fi
       - name: Native staging canary static denial tests
         run: node --test scripts/test-abr103-native-staging-canary.mjs scripts/test-abr103-staging-tree-guard.mjs
+      - name: Trae isolated local inference transcript denial tests
+        run: node --test scripts/test-abr103-trae-local-inference.mjs
       - name: Sealed release readiness parser tests
         run: python3 scripts/test-submission-host-readiness.py
       - name: Private command and real isolated Git preflight

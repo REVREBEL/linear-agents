@@ -258,6 +258,49 @@ approved namespace, a service-wide task ledger, or authenticated
 publication. The production operator binding remains separately
 controlled and fail-closed.
 
+### ABR-103 native Trae local-model staging
+
+`abr103-trae-local-inference.mjs` is a **non-production** local
+inference canary. It constructs an ephemeral, bridge-owned private
+staging HOME/workspace and Trae YAML with **only the `task_done` tool**
+and Ollama model `qwen3.5:9b-opencode`. It pins
+`--trajectory-file` inside that private staging HOME, bounds execution
+by the staging process-tree guard, verifies the recorded model response
+and step, returns bounded credential-free JSON evidence and deletes
+the complete ephemeral directory. CI covers only the transcript
+validator and root rejection; no AI inference runs in CI.
+
+On the approved Ubuntu host with Ollama listening at
+`127.0.0.1:11434`, run as the non-root Bridge user:
+
+```sh
+runuser -u bridge -- env -i HOME=/opt/state/agent-bridge/m5-provider-homes/trae PATH=/usr/bin:/bin /usr/bin/node scripts/abr103-trae-local-inference.mjs
+```
+
+The parent `/opt/state/agent-bridge/m5-provider-homes/trae` must
+already exist, be owned by `bridge` and mode `0700`. The default Trae
+executable is `/opt/agents/trae/trae-agent/.venv/bin/trae-cli`. An operator
+may pin a different absolute executable or private staging parent with
+`ABR103_TRAE_EXEC` and `ABR103_TRAE_BASE`; relative paths are rejected and
+the executable must be a regular executable file. A missing or broken
+Trae install fails as `ABR103_TRAE_EXEC_UNAVAILABLE` rather than reporting
+a model result. A successful report has `nativeLaunch=true`,
+`validatedTrajectory=true` and `pass=true`. This canary **intentionally
+uses host loopback** for local Ollama, so it does **not** establish the
+external-credential isolation, authenticated model egress, native private
+FD3, production process supervisor or Linear/GitHub write/receipt
+acceptance gates.
+
+November 24 host recheck: the Trae tree moved to `/opt/agents/trae`, while
+its existing venv shebang and editable-install path still reference the
+retired `/opt/agent-tools/trae-agent` location. The canary now defaults to
+the current executable path and fails clearly, but repairing that host
+venv is a separate operator action. OpenCode is now `v2.4.1` (previously
+`1.19.5`), and the cached AGY OAuth access token expired on
+2026-11-07. Neither drift is release approval. The same recheck found
+the sealed Git index at `root:root 0644` without the required named
+`bridge` ACL, so the root operator's post-deployment
+`m5-sealed-git-access.sh --check` remains outstanding.
 
 ## ABR-18 Phase 2A — reviewer-only shadow rollout configuration
 

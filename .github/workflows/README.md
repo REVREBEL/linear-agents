@@ -69,3 +69,13 @@ native-staging denial tests. The tests require Linux process groups but
 not any installed provider model, network egress or credentials.
 They **do not** certify the eventual production isolation supervisor,
 provider configuration, authenticated egress or publication.
+
+### ABR-103 Trae local-model inference regression
+
+The Submission Coordinator workflow covers
+`scripts/abr103-trae-local-inference.mjs` and its denial test. CI
+tests transcript acceptance and rejects absent, failed or foreign
+provider/model evidence without requiring Ollama or agent credentials.
+The **live** read-only model proof runs separately as the `bridge`
+service UID with the installed local Qwen model. This is not a
+production GitHub/Linear submission, authentication, or egress approval.

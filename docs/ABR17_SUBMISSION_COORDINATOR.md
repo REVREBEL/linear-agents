@@ -556,3 +556,51 @@ must still prove credentials, authenticated model networking and FD3
 through each actual provider tool descendant; it needs operator-approved
 configuration, canonical job lifecycle, and real Linear/GitHub receipts.
 The root-owned operator host binding is intentionally fail-closed.
+
+### November 23, 2026 — ABR-103 real Trae local inference
+
+Trae CLI 0.1.0 executed a true read-only inference using locally
+installed `qwen3.5:9b-opencode` through Ollama, with only
+`task_done` enabled. The recorded trajectory reported one model
+interaction, one agent step and a successful result. The first
+ad-hoc run placed the trajectory in the invoking Desktop Commander
+tool's current directory rather than the private staging HOME;
+the follow-up operator canary pins a private
+`--trajectory-file` and deletes the ephemeral directory after
+checking the exact provider/model and finite step count.
+
+Local inference is **not** authenticated external model access and
+does not prove approved egress or FD3 through Trae's own tool
+descendants. AGY and ChatGPT CLI still require their independent
+native-authenticated coding identities; publication/recovery
+acceptance remains open.
+
+### November 24, 2026 — ABR-103 host drift recheck
+
+Read-only recheck of the live `bridge` service found the sealed release
+at clean `ffabc48ced64c353eac321971b6d698614320dd1`, managed submission
+still disabled, and the root-owned fail-closed staging binding installed
+at `/etc/agent-bridge/managed-submission-host.mjs` (SHA-256
+`05370b945200dd164d2b32a09089361a7bd4652858ad704c353f34de6ae1a306`).
+The binding exports deny-only `verifyActivation`, `resolvePlan` and
+`isolatedSpawn`; it cannot authorize a launch.
+
+The post-deployment sealed Git ACL gate is **not** currently satisfied:
+`/var/lib/bridge-runtime/.git/index` is `root:root 0644` with no named
+`bridge` ACL. The reviewed root operator check requires `0600`/`0640`
+plus read-only service access, so `m5-sealed-git-access.sh --check`
+would fail. A root operator must restore the scoped ACL after the
+approved sealed deployment; no permission change was made here.
+
+Provider drift blocks simple replay of the November 23 evidence:
+Trae moved to `/opt/agents/trae/trae-agent`, but its venv shebang and
+editable-install path still point to the retired
+`/opt/agent-tools/trae-agent` tree, so the current executable cannot
+import `trae_agent`. OpenCode is now `v2.4.1` rather than `1.19.5`.
+The cached AGY OAuth access token expired on 2026-11-07. The Trae
+canary now defaults to the current executable path, supports explicit
+absolute operator overrides and fails clearly when the install is
+broken. Repairing the host venv, refreshing AGY OAuth, provisioning the
+dedicated ChatGPT CLI identity and proving native descendant FD3 remain
+operator-owned acceptance gates. No service restart, flag change or
+credential mutation was performed.
